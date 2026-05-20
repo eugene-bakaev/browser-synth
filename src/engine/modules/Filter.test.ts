@@ -34,6 +34,7 @@ describe('FilterModule', () => {
     expect(filter.name).toBe('Filter');
     expect(filter.inputs).toHaveProperty('main');
     expect(filter.inputs).toHaveProperty('cutoff');
+    expect(filter.inputs).toHaveProperty('resonance');
     expect(filter.outputs).toHaveProperty('main');
   });
 

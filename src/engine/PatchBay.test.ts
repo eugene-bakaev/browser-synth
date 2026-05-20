@@ -38,7 +38,7 @@ describe('PatchBay', () => {
     const target = ctx.createGain();
     const connectSpy = vi.spyOn(source, 'connect');
     
-    patchBay.connect(source, target);
+    patchBay.connect(source as any, target as any);
     
     expect(connectSpy).toHaveBeenCalledWith(target);
   });
@@ -48,7 +48,7 @@ describe('PatchBay', () => {
     const target = ctx.createGain().gain;
     const connectSpy = vi.spyOn(source, 'connect');
     
-    patchBay.connect(source, target);
+    patchBay.connect(source as any, target as any);
     
     expect(connectSpy).toHaveBeenCalledWith(target);
   });
@@ -57,7 +57,7 @@ describe('PatchBay', () => {
     const source = ctx.createGain().gain as any;
     const target = ctx.createGain();
     
-    expect(() => patchBay.connect(source, target)).toThrow("Source must be an AudioNode to connect to a target.");
+    expect(() => patchBay.connect(source, target as any)).toThrow("Source must be an AudioNode to connect to a target.");
   });
 
   it('should disconnect an AudioNode from another AudioNode', () => {
@@ -65,7 +65,7 @@ describe('PatchBay', () => {
     const target = ctx.createGain();
     const disconnectSpy = vi.spyOn(source, 'disconnect');
     
-    patchBay.disconnect(source, target);
+    patchBay.disconnect(source as any, target as any);
     
     expect(disconnectSpy).toHaveBeenCalledWith(target);
   });

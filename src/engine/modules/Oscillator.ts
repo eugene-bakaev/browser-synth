@@ -5,6 +5,9 @@ export class OscillatorModule implements Module {
   private osc: OscillatorNode;
   private gain: GainNode;
   
+  coarseTune: number = 0; // -3 to +3 octaves
+  private baseFreq: number = 440;
+
   readonly inputs = {};
   readonly outputs: Record<string, ModulePort>;
 
@@ -17,7 +20,22 @@ export class OscillatorModule implements Module {
   }
 
   setFrequency(freq: number) {
-    this.osc.frequency.setValueAtTime(freq, 0);
+    this.baseFreq = freq;
+    this.updateFrequency();
+  }
+
+  private updateFrequency() {
+    const freq = this.baseFreq * Math.pow(2, this.coarseTune);
+    this.osc.frequency.setValueAtTime(freq, 0); // Using 0 for immediate change in this prototype
+  }
+
+  setCoarseTune(octaves: number) {
+    this.coarseTune = octaves;
+    this.updateFrequency();
+  }
+
+  setFineTune(cents: number) {
+    this.osc.detune.setValueAtTime(cents, 0);
   }
 
   setWaveform(type: OscillatorType) {

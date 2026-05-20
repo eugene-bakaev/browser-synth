@@ -11,7 +11,8 @@ export class FilterModule implements Module {
     this.filter.type = 'lowpass';
     this.inputs = { 
         main: this.filter,
-        cutoff: this.filter.frequency 
+        cutoff: this.filter.frequency,
+        resonance: this.filter.Q
     };
     this.outputs = { main: this.filter };
   }

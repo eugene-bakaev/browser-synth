@@ -16,6 +16,12 @@ describe('EnvelopeModule', () => {
     param = new AudioParam();
   });
 
+  it('should implement Module interface', () => {
+    expect(envelope.name).toBe('Envelope');
+    expect(envelope.inputs).toEqual({});
+    expect(envelope.outputs).toEqual({});
+  });
+
   it('should trigger ADSR envelope on AudioParam', () => {
     const time = 10;
     const duration = 1;

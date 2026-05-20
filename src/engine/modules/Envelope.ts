@@ -1,6 +1,10 @@
-import { Module, ModulePort } from '../types';
+import { Module } from '../types';
 
-export class EnvelopeModule {
+export class EnvelopeModule implements Module {
+  readonly name = 'Envelope';
+  readonly inputs = {};
+  readonly outputs = {};
+
   a = 0.01; d = 0.2; s = 0.5; r = 0.5;
 
   trigger(param: AudioParam, time: number, duration: number) {
