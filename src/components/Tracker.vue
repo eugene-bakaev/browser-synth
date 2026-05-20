@@ -1,22 +1,20 @@
 <template>
   <div class="tracker-container">
-    <!-- Header Row -->
-    <div class="tracker-header">
+    <div class="tracker-row tracker-header">
       <div class="col-step">STEP</div>
       <div class="col-note">NOTE</div>
       <div class="col-oct">OCT</div>
       <div class="col-len">LEN</div>
     </div>
     
-    <!-- Vertical Steps -->
     <div class="tracker-steps">
       <div 
         v-for="(step, i) in steps" 
         :key="i" 
-        class="step-row" 
+        class="tracker-row step-row" 
         :class="{ active: currentStep === i }"
       >
-        <div class="col-step step-num">{{ i.toString().padStart(2, '0') }}</div>
+        <div class="col-step">{{ i.toString().padStart(2, '0') }}</div>
         <div class="col-note">
           <select v-model="step.note">
             <option :value="null">---</option>
@@ -52,32 +50,36 @@ defineProps<{
   padding: 10px;
   border-radius: 4px;
   font-family: monospace;
-  width: max-content;
+  width: 260px; /* Fixed width to contain the grid nicely */
+}
+
+/* CSS Grid guarantees perfectly aligned columns */
+.tracker-row {
+  display: grid;
+  grid-template-columns: 40px 70px 45px 55px;
+  align-items: center;
+  gap: 5px;
 }
 
 .tracker-header {
-  display: flex;
   color: #888;
   font-weight: bold;
   padding-bottom: 5px;
   border-bottom: 1px solid #333;
   margin-bottom: 5px;
+  text-align: center;
 }
 
 .tracker-steps {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 400px;
-  overflow-y: auto;
 }
 
 .step-row {
-  display: flex;
-  align-items: center;
   background: #222;
   border: 1px solid #333;
-  padding: 2px 0;
+  padding: 2px;
 }
 
 .step-row.active {
@@ -85,20 +87,20 @@ defineProps<{
   border-color: #666;
 }
 
-/* Explicit Column Widths */
-.col-step { width: 40px; text-align: center; color: #666; font-size: 0.8rem; }
-.col-note { width: 60px; text-align: center; }
-.col-oct { width: 40px; text-align: center; }
-.col-len { width: 50px; text-align: center; }
+.col-step { text-align: center; color: #666; font-size: 0.8rem; }
 
 select, input { 
   background: #000; 
   color: #0f0; 
-  border: none; 
+  border: 1px solid #000; 
   font-family: monospace; 
-  width: 100%; 
-  height: 20px; 
-  text-align: center; 
+  font-size: 0.9rem;
+  width: 100%;
+  padding: 2px 0;
+  text-align: center;
+  text-align-last: center; /* Fixes select text alignment */
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* Hide number arrows for cleaner look */

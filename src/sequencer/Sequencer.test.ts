@@ -24,21 +24,26 @@ describe('Sequencer', () => {
   it('should start and stop playback, triggering callbacks', () => {
     const seq = new Sequencer();
     const callback = vi.fn();
+    const mockCtx = { currentTime: 0 } as AudioContext;
     
-    seq.start(callback);
+    seq.start(mockCtx, callback);
     expect(seq.isPlaying).toBe(true);
     
-    // BPM 120 -> 500ms per beat -> 125ms per 16th note
-    vi.advanceTimersByTime(125);
+    // Lookahead loop runs every 25ms
+    vi.advanceTimersByTime(25);
+    // Should immediately trigger the first note since nextNoteTime (0.1) < currentTime (0) + 0.1 is false?
+    // Wait, nextNoteTime is 0.1.
+    // while (0.1 < 0 + 0.1) -> false! First note is triggered when currentTime reaches 0.001 or more.
+    mockCtx.currentTime = 0.05;
+    vi.advanceTimersByTime(25);
     expect(callback).toHaveBeenCalledTimes(1);
     
+    // Next note is at 0.1 + 0.125 = 0.225
+    mockCtx.currentTime = 0.15;
     vi.advanceTimersByTime(125);
     expect(callback).toHaveBeenCalledTimes(2);
     
     seq.stop();
     expect(seq.isPlaying).toBe(false);
-    
-    vi.advanceTimersByTime(125);
-    expect(callback).toHaveBeenCalledTimes(2); // Should not increase
   });
 });

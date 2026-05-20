@@ -10,20 +10,26 @@ export class Sequencer {
   private currentStep = 0;
   private timer: any = null;
   isPlaying = false;
+  private nextNoteTime = 0;
 
-  start(callback: (step: Step) => void) {
+  start(ctx: AudioContext, callback: (step: Step, time: number) => void) {
     if (this.isPlaying) return;
     this.isPlaying = true;
     
-    // Convert BPM to 16th note interval (ms)
-    // 60 / BPM = beat duration (s)
-    // beat duration / 4 = 16th note duration
-    const stepTime = (60 / this.bpm) / 4;
+    this.currentStep = 0;
+    this.nextNoteTime = ctx.currentTime + 0.1; // Start slightly in the future to absorb JS jitter
     
+    // Check every 25ms to see if a note needs to be scheduled
     this.timer = setInterval(() => {
-      callback(this.steps[this.currentStep]);
-      this.currentStep = (this.currentStep + 1) % 16;
-    }, stepTime * 1000);
+      const stepTime = (60 / this.bpm) / 4;
+      
+      // Lookahead window of 0.1 seconds
+      while (this.nextNoteTime < ctx.currentTime + 0.1) {
+        callback(this.steps[this.currentStep], this.nextNoteTime);
+        this.currentStep = (this.currentStep + 1) % 16;
+        this.nextNoteTime += stepTime;
+      }
+    }, 25);
   }
 
   stop() {
@@ -32,6 +38,5 @@ export class Sequencer {
         clearInterval(this.timer);
         this.timer = null;
     }
-    this.currentStep = 0;
   }
 }

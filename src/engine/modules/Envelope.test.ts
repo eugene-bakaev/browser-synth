@@ -3,8 +3,10 @@ import { EnvelopeModule } from './Envelope';
 
 class AudioParam {
   cancelScheduledValues = vi.fn();
+  cancelAndHoldAtTime = vi.fn();
   setValueAtTime = vi.fn();
   linearRampToValueAtTime = vi.fn();
+  setTargetAtTime = vi.fn();
 }
 
 describe('EnvelopeModule', () => {
@@ -22,19 +24,17 @@ describe('EnvelopeModule', () => {
     expect(envelope.outputs).toEqual({});
   });
 
-  it('should trigger ADSR envelope on AudioParam', () => {
+  it('should trigger ADSR envelope on AudioParam with min and max', () => {
     const time = 10;
     const duration = 1;
-    envelope.trigger(param as any, time, duration);
+    envelope.trigger(param as any, time, duration, 0, 100);
 
-    expect(param.cancelScheduledValues).toHaveBeenCalledWith(time);
-    expect(param.setValueAtTime).toHaveBeenCalledWith(0, time);
-    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(1, time + envelope.a);
-    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(envelope.s, time + envelope.a + envelope.d);
+    expect(param.cancelAndHoldAtTime).toHaveBeenCalledWith(time);
+    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(100, time + envelope.a);
+    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(100 * envelope.s, time + envelope.a + envelope.d);
     
     const releaseTime = time + duration;
-    expect(param.cancelScheduledValues).toHaveBeenCalledWith(releaseTime);
-    expect(param.setValueAtTime).toHaveBeenCalledWith(envelope.s, releaseTime);
-    expect(param.linearRampToValueAtTime).toHaveBeenCalledWith(0, releaseTime + envelope.r);
+    expect(param.cancelAndHoldAtTime).toHaveBeenCalledWith(releaseTime);
+    expect(param.setTargetAtTime).toHaveBeenCalledWith(0, releaseTime, expect.any(Number));
   });
 });

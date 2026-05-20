@@ -19,23 +19,23 @@ export class OscillatorModule implements Module {
     this.outputs = { main: this.gain };
   }
 
-  setFrequency(freq: number) {
+  setFrequencyAtTime(freq: number, time: number) {
     this.baseFreq = freq;
-    this.updateFrequency();
+    const finalFreq = this.baseFreq * Math.pow(2, this.coarseTune);
+    this.osc.frequency.setValueAtTime(finalFreq, time);
   }
 
-  private updateFrequency() {
-    const freq = this.baseFreq * Math.pow(2, this.coarseTune);
-    this.osc.frequency.setValueAtTime(freq, 0); // Using 0 for immediate change in this prototype
+  setFrequency(freq: number) {
+    this.setFrequencyAtTime(freq, this.osc.context.currentTime);
   }
 
   setCoarseTune(octaves: number) {
     this.coarseTune = octaves;
-    this.updateFrequency();
+    this.setFrequency(this.baseFreq);
   }
 
   setFineTune(cents: number) {
-    this.osc.detune.setValueAtTime(cents, 0);
+    this.osc.detune.setValueAtTime(cents, this.osc.context.currentTime);
   }
 
   setWaveform(type: OscillatorType) {

@@ -16,6 +16,9 @@ export class SynthEngine {
   filterEnv: EnvelopeModule;
   masterVCA: GainNode;
 
+  baseCutoff: number = 2000;
+  filterEnvAmount: number = 3000;
+
   constructor() {
     this.ctx = new AudioContext();
     this.patchBay = new PatchBay();
@@ -37,22 +40,22 @@ export class SynthEngine {
     this.masterVCA.connect(this.ctx.destination);
   }
 
-  trigger(freq: number, duration: number) {
+  trigger(freq: number, duration: number, time?: number) {
     if (this.ctx.state === 'suspended') {
         this.ctx.resume();
     }
-    const now = this.ctx.currentTime;
-    
+    const scheduleTime = time ?? this.ctx.currentTime;
+
     // Frequency is now handled internally by OscillatorModule factoring in coarseTune
-    this.osc1.setFrequency(freq);
-    this.osc2.setFrequency(freq); 
-    
+    this.osc1.setFrequencyAtTime(freq, scheduleTime);
+    this.osc2.setFrequencyAtTime(freq, scheduleTime); 
+
     // Trigger Amplitude Envelope
-    this.ampEnv.trigger(this.masterVCA.gain, now, duration);
-    
+    this.ampEnv.trigger(this.masterVCA.gain, scheduleTime, duration, 0, 1);
+
     // Trigger Filter Envelope (Modulating Cutoff)
     if (this.filter.inputs.cutoff instanceof AudioParam) {
-        this.filterEnv.trigger(this.filter.inputs.cutoff, now, duration);
+        this.filterEnv.trigger(this.filter.inputs.cutoff, scheduleTime, duration, this.baseCutoff, this.baseCutoff + this.filterEnvAmount);
     }
   }
 }

@@ -4,13 +4,16 @@ import { SynthEngine } from './SynthEngine';
 class MockAudioNode {
   connect = vi.fn();
   disconnect = vi.fn();
+  context = { currentTime: 0 };
 }
 
 class MockAudioParam {
   value = 0;
   cancelScheduledValues = vi.fn();
+  cancelAndHoldAtTime = vi.fn();
   setValueAtTime = vi.fn();
   linearRampToValueAtTime = vi.fn();
+  setTargetAtTime = vi.fn();
 }
 
 class MockGainNode extends MockAudioNode {
