@@ -66,20 +66,20 @@
           <div class="module-group">
             <h3>Filter Env</h3>
             <div class="knob-row">
-              <Knob label="A" :min="0" :max="2" :step="0.01" v-model="engine.filterEnv.a" />
-              <Knob label="D" :min="0" :max="2" :step="0.01" v-model="engine.filterEnv.d" />
-              <Knob label="S" :min="0" :max="1" :step="0.01" v-model="engine.filterEnv.s" />
-              <Knob label="R" :min="0" :max="5" :step="0.01" v-model="engine.filterEnv.r" />
+              <Knob label="A" :min="0" :max="2" :step="0.01" v-model="filterEnv.a" />
+              <Knob label="D" :min="0" :max="2" :step="0.01" v-model="filterEnv.d" />
+              <Knob label="S" :min="0" :max="1" :step="0.01" v-model="filterEnv.s" />
+              <Knob label="R" :min="0" :max="5" :step="0.01" v-model="filterEnv.r" />
             </div>
           </div>
 
           <div class="module-group">
             <h3>Amp Env</h3>
             <div class="knob-row">
-              <Knob label="A" :min="0" :max="2" :step="0.01" v-model="engine.ampEnv.a" />
-              <Knob label="D" :min="0" :max="2" :step="0.01" v-model="engine.ampEnv.d" />
-              <Knob label="S" :min="0" :max="1" :step="0.01" v-model="engine.ampEnv.s" />
-              <Knob label="R" :min="0" :max="5" :step="0.01" v-model="engine.ampEnv.r" />
+              <Knob label="A" :min="0" :max="2" :step="0.01" v-model="ampEnv.a" />
+              <Knob label="D" :min="0" :max="2" :step="0.01" v-model="ampEnv.d" />
+              <Knob label="S" :min="0" :max="1" :step="0.01" v-model="ampEnv.s" />
+              <Knob label="R" :min="0" :max="5" :step="0.01" v-model="ampEnv.r" />
             </div>
           </div>
         </div>
@@ -99,6 +99,35 @@ import Knob from './components/Knob.vue';
 const engine = new SynthEngine();
 const sequencer = reactive(new Sequencer());
 const currentStep = ref(-1);
+
+// Envelopes Reactivity (since engine itself is not reactive to avoid AudioContext proxy bugs)
+const filterEnv = reactive({
+  a: engine.filterEnv.a,
+  d: engine.filterEnv.d,
+  s: engine.filterEnv.s,
+  r: engine.filterEnv.r,
+});
+
+const ampEnv = reactive({
+  a: engine.ampEnv.a,
+  d: engine.ampEnv.d,
+  s: engine.ampEnv.s,
+  r: engine.ampEnv.r,
+});
+
+watch(filterEnv, (newVal) => {
+  engine.filterEnv.a = newVal.a;
+  engine.filterEnv.d = newVal.d;
+  engine.filterEnv.s = newVal.s;
+  engine.filterEnv.r = newVal.r;
+}, { deep: true });
+
+watch(ampEnv, (newVal) => {
+  engine.ampEnv.a = newVal.a;
+  engine.ampEnv.d = newVal.d;
+  engine.ampEnv.s = newVal.s;
+  engine.ampEnv.r = newVal.r;
+}, { deep: true });
 
 // Waveforms & Tuning
 const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
