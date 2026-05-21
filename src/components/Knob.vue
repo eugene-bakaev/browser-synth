@@ -178,12 +178,12 @@ const resetToDefault = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 5px;
+  margin: 2px;
   user-select: none;
 }
 
 .knob-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: #888;
   font-weight: bold;
   text-transform: uppercase;
@@ -193,8 +193,8 @@ const resetToDefault = () => {
 }
 
 .knob-dial-container {
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   cursor: ns-resize;
   position: relative;
   display: flex;
@@ -210,14 +210,14 @@ const resetToDefault = () => {
 
 .knob-value {
   font-family: monospace;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: #00f0ff;
   margin-top: 3px;
   background: #000;
   border: 1px solid #222;
   padding: 1px 4px;
   border-radius: 3px;
-  min-width: 36px;
+  min-width: 32px;
   text-align: center;
 }
 </style>

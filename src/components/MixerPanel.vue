@@ -18,5 +18,5 @@ const osc2Level = defineModel<number>('osc2Level', { required: true });
 <style scoped>
 .module-group { background: #222; padding: 15px; border-radius: 8px; }
 h3 { margin-top: 0; color: #888; border-bottom: 1px solid #333; padding-bottom: 5px; }
-.knob-row { display: flex; gap: 15px; flex-wrap: wrap; }
+.knob-row { display: flex; gap: 15px; flex-wrap: nowrap; }
 </style>

@@ -127,7 +127,7 @@ body {
   font-family: 'Outfit', 'Inter', sans-serif; 
 }
 .synth-container { 
-  max-width: 1200px; 
+  max-width: 1450px; 
   margin: 0 auto; 
   padding: 30px 20px; 
   box-sizing: border-box; 
@@ -237,7 +237,8 @@ h1 {
 }
 .tracks-grid {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 20px;
   justify-content: center;
   width: 100%;
@@ -292,8 +293,9 @@ h1 {
 .engine-section { 
   flex: 1; 
   display: flex; 
-  flex-direction: column; 
+  flex-direction: row; 
   gap: 15px; 
+  align-items: flex-start;
 }
 
 /* Glow indicators on modular panels in focus view */
