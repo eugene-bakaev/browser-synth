@@ -1,120 +1,228 @@
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, computed } from 'vue';
 import { SynthEngine } from '../engine/SynthEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 
-// Keep a single instance of the audio context and sequencer to prevent multiple instances on HMR/reload
-const engine = new SynthEngine();
+// Instantiate a single shared AudioContext and 4 engines to ensure perfect sync
+const sharedCtx = new AudioContext();
+const engines = [
+  new SynthEngine(sharedCtx),
+  new SynthEngine(sharedCtx),
+  new SynthEngine(sharedCtx),
+  new SynthEngine(sharedCtx),
+];
 const sequencer = reactive(new Sequencer());
+
+interface TrackState {
+  osc1Type: OscillatorType;
+  osc2Type: OscillatorType;
+  osc1Coarse: number;
+  osc1Fine: number;
+  osc2Coarse: number;
+  osc2Fine: number;
+  osc1Level: number;
+  osc2Level: number;
+  filterCutoff: number;
+  filterRes: number;
+  filterEnvAmount: number;
+  filterEnv: { a: number; d: number; s: number; r: number };
+  ampEnv: { a: number; d: number; s: number; r: number };
+}
+
+// Persist the reactive states at module scope so they survive HMR/reload
+const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) => ({
+  osc1Type: 'sawtooth',
+  osc2Type: 'sawtooth',
+  osc1Coarse: 0,
+  osc1Fine: 0,
+  osc2Coarse: 0,
+  osc2Fine: index === 0 ? 10 : 0, // default detune on first track
+  osc1Level: 0.5,
+  osc2Level: 0.5,
+  filterCutoff: 2000,
+  filterRes: 1,
+  filterEnvAmount: 3000,
+  filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+  ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+})));
+
+// Function to synchronize state back to individual engines
+const syncTrackToEngine = (i: number) => {
+  const state = trackStates[i];
+  const engine = engines[i];
+  
+  engine.osc1.setWaveform(state.osc1Type);
+  engine.osc2.setWaveform(state.osc2Type);
+  engine.osc1.setCoarseTune(state.osc1Coarse);
+  engine.osc1.setFineTune(state.osc1Fine);
+  engine.osc2.setCoarseTune(state.osc2Coarse);
+  engine.osc2.setFineTune(state.osc2Fine);
+  engine.mixer.setChannelGain(1, state.osc1Level);
+  engine.mixer.setChannelGain(2, state.osc2Level);
+  
+  engine.baseCutoff = state.filterCutoff;
+  engine.filterEnvAmount = state.filterEnvAmount;
+  
+  if (engine.filter.inputs.resonance instanceof AudioParam) {
+    engine.filter.inputs.resonance.setTargetAtTime(state.filterRes, sharedCtx.currentTime, 0.01);
+  }
+  
+  engine.filterEnv.a = state.filterEnv.a;
+  engine.filterEnv.d = state.filterEnv.d;
+  engine.filterEnv.s = state.filterEnv.s;
+  engine.filterEnv.r = state.filterEnv.r;
+  
+  engine.ampEnv.a = state.ampEnv.a;
+  engine.ampEnv.d = state.ampEnv.d;
+  engine.ampEnv.s = state.ampEnv.s;
+  engine.ampEnv.r = state.ampEnv.r;
+};
+
+// Initialize engines
+for (let i = 0; i < 4; i++) {
+  syncTrackToEngine(i);
+}
+
+// Watch trackStates deeply and apply updates to corresponding engines
+watch(trackStates, (newStates) => {
+  for (let i = 0; i < 4; i++) {
+    syncTrackToEngine(i);
+  }
+}, { deep: true });
 
 export function useSynth() {
   const currentStep = ref(-1);
+  const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
-  // Waveforms & Tuning
   const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
-  const osc1Type = ref<OscillatorType>('sawtooth');
-  const osc2Type = ref<OscillatorType>('sawtooth');
 
-  const osc1Coarse = ref(0);
-  const osc1Fine = ref(0);
-  const osc2Coarse = ref(0);
-  const osc2Fine = ref(10); // Slight detune by default
-
-  watch(osc1Type, (val) => engine.osc1.setWaveform(val));
-  watch(osc2Type, (val) => engine.osc2.setWaveform(val));
-  watch(osc1Coarse, (val) => engine.osc1.setCoarseTune(val));
-  watch(osc1Fine, (val) => engine.osc1.setFineTune(val));
-  watch(osc2Coarse, (val) => engine.osc2.setCoarseTune(val));
-  watch(osc2Fine, (val) => engine.osc2.setFineTune(val));
-
-  // Mixer
-  const osc1Level = ref(0.5);
-  const osc2Level = ref(0.5);
-
-  watch(osc1Level, (val) => engine.mixer.setChannelGain(1, val));
-  watch(osc2Level, (val) => engine.mixer.setChannelGain(2, val));
-
-  // Filter
-  const filterCutoff = ref(2000);
-  const filterRes = ref(1);
-  const filterEnvAmount = ref(3000);
-
-  watch(filterCutoff, (val) => {
-    engine.baseCutoff = val;
-  });
-
-  watch(filterEnvAmount, (val) => {
-    engine.filterEnvAmount = val;
-  });
-
-  watch(filterRes, (val) => {
-    if (engine.filter.inputs.resonance instanceof AudioParam) {
-      engine.filter.inputs.resonance.setTargetAtTime(val, engine.ctx.currentTime, 0.05);
+  // Proximity values bound dynamically to the currently active track's settings
+  const osc1Type = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc1Type : 'sawtooth',
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc1Type = val;
     }
   });
 
-  // Envelopes Reactivity (since engine itself is not reactive to avoid AudioContext proxy bugs)
-  const filterEnv = reactive({
-    a: engine.filterEnv.a,
-    d: engine.filterEnv.d,
-    s: engine.filterEnv.s,
-    r: engine.filterEnv.r,
+  const osc2Type = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc2Type : 'sawtooth',
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc2Type = val;
+    }
   });
 
-  const ampEnv = reactive({
-    a: engine.ampEnv.a,
-    d: engine.ampEnv.d,
-    s: engine.ampEnv.s,
-    r: engine.ampEnv.r,
+  const osc1Coarse = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc1Coarse : 0,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc1Coarse = val;
+    }
   });
 
-  watch(filterEnv, (newVal) => {
-    engine.filterEnv.a = newVal.a;
-    engine.filterEnv.d = newVal.d;
-    engine.filterEnv.s = newVal.s;
-    engine.filterEnv.r = newVal.r;
-  }, { deep: true });
+  const osc1Fine = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc1Fine : 0,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc1Fine = val;
+    }
+  });
 
-  watch(ampEnv, (newVal) => {
-    engine.ampEnv.a = newVal.a;
-    engine.ampEnv.d = newVal.d;
-    engine.ampEnv.s = newVal.s;
-    engine.ampEnv.r = newVal.r;
-  }, { deep: true });
+  const osc2Coarse = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc2Coarse : 0,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc2Coarse = val;
+    }
+  });
 
-  // Initialize default values to engine
-  engine.osc1.setWaveform(osc1Type.value);
-  engine.osc2.setWaveform(osc2Type.value);
-  engine.osc1.setFineTune(osc1Fine.value);
-  engine.osc2.setFineTune(osc2Fine.value);
-  engine.mixer.setChannelGain(1, osc1Level.value);
-  engine.mixer.setChannelGain(2, osc2Level.value);
+  const osc2Fine = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc2Fine : 0,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc2Fine = val;
+    }
+  });
+
+  const osc1Level = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc1Level : 0.5,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc1Level = val;
+    }
+  });
+
+  const osc2Level = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].osc2Level : 0.5,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].osc2Level = val;
+    }
+  });
+
+  const filterCutoff = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].filterCutoff : 2000,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].filterCutoff = val;
+    }
+  });
+
+  const filterRes = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].filterRes : 1,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].filterRes = val;
+    }
+  });
+
+  const filterEnvAmount = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].filterEnvAmount : 3000,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].filterEnvAmount = val;
+    }
+  });
+
+  // Dynamic references to the active track's ADSR structures
+  const filterEnv = computed(() => {
+    if (activeTrackIndex.value === null) {
+      return { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
+    }
+    return trackStates[activeTrackIndex.value].filterEnv;
+  });
+
+  const ampEnv = computed(() => {
+    if (activeTrackIndex.value === null) {
+      return { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
+    }
+    return trackStates[activeTrackIndex.value].ampEnv;
+  });
 
   const togglePlay = () => {
-    if (engine.ctx.state === 'suspended') {
-      engine.ctx.resume();
+    if (sharedCtx.state === 'suspended') {
+      sharedCtx.resume();
     }
 
     if (sequencer.isPlaying) {
       sequencer.stop();
       currentStep.value = -1;
     } else {
-      sequencer.start(engine.ctx, (step, time) => {
-        currentStep.value = (currentStep.value + 1) % 16; 
+      sequencer.start(sharedCtx, (stepIndex, time) => {
+        currentStep.value = stepIndex;
         
-        if (step.note) {
-          const freq = noteToFreq(step.note, step.octave);
-          const tickDuration = (60 / sequencer.bpm) / 4;
-          const duration = step.length * tickDuration;
-          engine.trigger(freq, duration, time);
+        // Trigger all tracks in parallel
+        for (let i = 0; i < 4; i++) {
+          const step = sequencer.tracks[i].steps[stepIndex];
+          if (step.note) {
+            const freq = noteToFreq(step.note, step.octave);
+            const tickDuration = (60 / sequencer.bpm) / 4;
+            const duration = step.length * tickDuration;
+            engines[i].trigger(freq, duration, time);
+          }
         }
       });
     }
   };
 
+  const selectTrack = (index: number | null) => {
+    activeTrackIndex.value = index;
+  };
+
   return {
-    engine,
+    engines,
     sequencer,
+    activeTrackIndex,
     currentStep,
     waveforms,
     osc1Type,
@@ -131,5 +239,6 @@ export function useSynth() {
     filterEnv,
     ampEnv,
     togglePlay,
+    selectTrack,
   };
 }

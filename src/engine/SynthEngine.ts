@@ -19,8 +19,8 @@ export class SynthEngine {
   baseCutoff: number = 2000;
   filterEnvAmount: number = 3000;
 
-  constructor() {
-    this.ctx = new AudioContext();
+  constructor(sharedCtx?: AudioContext) {
+    this.ctx = sharedCtx ?? new AudioContext();
     this.patchBay = new PatchBay();
     
     this.osc1 = new OscillatorModule(this.ctx);
