@@ -41,4 +41,14 @@ export class OscillatorModule implements Module {
   setWaveform(type: OscillatorType) {
     this.osc.type = type;
   }
+
+  dispose() {
+    try {
+      this.osc.stop();
+    } catch (e) {
+      // already stopped or not started
+    }
+    this.osc.disconnect();
+    this.gain.disconnect();
+  }
 }

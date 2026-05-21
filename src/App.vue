@@ -24,7 +24,7 @@
           :key="track.id"
           :steps="track.steps"
           :currentStep="currentStep"
-          :title="track.name"
+          :title="`${track.name} [${getTrackEngineType(index).toUpperCase()}]`"
           :color="TRACK_COLORS[index]"
           :isFocused="false"
           @select-track="selectTrack(index)"
@@ -39,8 +39,25 @@
           ← BACK TO OVERVIEW
         </button>
         <h2 :style="{ color: TRACK_COLORS[activeTrackIndex] }">
-          Editing: {{ sequencer.tracks[activeTrackIndex].name }}
+          Editing: {{ sequencer.tracks[activeTrackIndex].name }} ({{ engineType.toUpperCase() }})
         </h2>
+        
+        <div class="engine-selector">
+          <button 
+            :class="{ active: engineType === 'synth' }" 
+            @click="engineType = 'synth'"
+            :style="engineType === 'synth' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          >
+            SYNTH
+          </button>
+          <button 
+            :class="{ active: engineType === 'kick' }" 
+            @click="engineType = 'kick'"
+            :style="engineType === 'kick' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          >
+            KICK MACHINE
+          </button>
+        </div>
       </div>
 
       <div class="focused-layout">
@@ -55,31 +72,41 @@
         </section>
 
         <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
-          <OscillatorPanel
-            v-model:osc1Type="osc1Type"
-            v-model:osc1Coarse="osc1Coarse"
-            v-model:osc1Fine="osc1Fine"
-            v-model:osc2Type="osc2Type"
-            v-model:osc2Coarse="osc2Coarse"
-            v-model:osc2Fine="osc2Fine"
-            :waveforms="waveforms"
-          />
+          <template v-if="engineType === 'synth'">
+            <OscillatorPanel
+              v-model:osc1Type="osc1Type"
+              v-model:osc1Coarse="osc1Coarse"
+              v-model:osc1Fine="osc1Fine"
+              v-model:osc2Type="osc2Type"
+              v-model:osc2Coarse="osc2Coarse"
+              v-model:osc2Fine="osc2Fine"
+              :waveforms="waveforms"
+            />
 
-          <MixerPanel
-            v-model:osc1Level="osc1Level"
-            v-model:osc2Level="osc2Level"
-          />
+            <MixerPanel
+              v-model:osc1Level="osc1Level"
+              v-model:osc2Level="osc2Level"
+            />
 
-          <FilterPanel
-            v-model:cutoff="filterCutoff"
-            v-model:res="filterRes"
-            v-model:envAmount="filterEnvAmount"
-          />
+            <FilterPanel
+              v-model:cutoff="filterCutoff"
+              v-model:res="filterRes"
+              v-model:envAmount="filterEnvAmount"
+            />
 
-          <EnvelopePanel
-            :filterEnv="filterEnv"
-            :ampEnv="ampEnv"
-          />
+            <EnvelopePanel
+              :filterEnv="filterEnv"
+              :ampEnv="ampEnv"
+            />
+          </template>
+          
+          <template v-else-if="engineType === 'kick'">
+            <KickPanel
+              v-model:tune="kickTune"
+              v-model:decay="kickDecay"
+              v-model:click="kickClick"
+            />
+          </template>
         </section>
       </div>
     </div>
@@ -93,12 +120,14 @@ import OscillatorPanel from './components/OscillatorPanel.vue';
 import MixerPanel from './components/MixerPanel.vue';
 import FilterPanel from './components/FilterPanel.vue';
 import EnvelopePanel from './components/EnvelopePanel.vue';
+import KickPanel from './components/KickPanel.vue';
 
 const {
   sequencer,
   activeTrackIndex,
   currentStep,
   waveforms,
+  engineType,
   osc1Type,
   osc2Type,
   osc1Coarse,
@@ -112,8 +141,12 @@ const {
   filterEnvAmount,
   filterEnv,
   ampEnv,
+  kickTune,
+  kickDecay,
+  kickClick,
   togglePlay,
   selectTrack,
+  getTrackEngineType,
 } = useSynth();
 
 const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purple, Orange, Green
@@ -305,5 +338,33 @@ h1 {
 }
 .engine-section .module-group:hover {
   border-color: var(--track-glow);
+}
+
+/* Engine Selector Buttons */
+.engine-selector {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+.engine-selector button {
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.engine-selector button:hover {
+  color: #aaa;
+  border-color: #444;
+}
+.engine-selector button.active {
+  background: #222;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 </style>

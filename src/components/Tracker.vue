@@ -2,7 +2,7 @@
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
     <div class="tracker-title-bar" @click="$emit('select-track')">
       <span class="track-name">{{ title }}</span>
-      <span class="focus-hint" v-if="!isFocused">EDIT SYNTH</span>
+      <span class="focus-hint" v-if="!isFocused">EDIT</span>
     </div>
 
     <div class="tracker-row tracker-header">

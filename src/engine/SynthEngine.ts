@@ -3,8 +3,9 @@ import { OscillatorModule } from './modules/Oscillator';
 import { MixerModule } from './modules/Mixer';
 import { FilterModule } from './modules/Filter';
 import { EnvelopeModule } from './modules/Envelope';
+import { SoundEngine } from './types';
 
-export class SynthEngine {
+export class SynthEngine implements SoundEngine {
   ctx: AudioContext;
   private patchBay: PatchBay;
   
@@ -57,5 +58,16 @@ export class SynthEngine {
     if (this.filter.inputs.cutoff instanceof AudioParam) {
         this.filterEnv.trigger(this.filter.inputs.cutoff, scheduleTime, duration, this.baseCutoff, this.baseCutoff + this.filterEnvAmount);
     }
+  }
+
+  dispose() {
+    this.osc1.dispose();
+    this.osc2.dispose();
+    if (this.mixer.inputs.ch1 instanceof AudioNode) this.mixer.inputs.ch1.disconnect();
+    if (this.mixer.inputs.ch2 instanceof AudioNode) this.mixer.inputs.ch2.disconnect();
+    if (this.mixer.outputs.main instanceof AudioNode) this.mixer.outputs.main.disconnect();
+    if (this.filter.inputs.main instanceof AudioNode) this.filter.inputs.main.disconnect();
+    if (this.filter.outputs.main instanceof AudioNode) this.filter.outputs.main.disconnect();
+    this.masterVCA.disconnect();
   }
 }
