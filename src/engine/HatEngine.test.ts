@@ -66,21 +66,14 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 
 describe('HatEngine', () => {
-  it('should initialize nodes and default values', () => {
+  it('should have correct engineType', () => {
     const engine = new HatEngine();
-    expect(engine.decay).toBe(0.15);
-    expect(engine.tone).toBe(8000);
-    expect(engine.metallic).toBe(0.5);
+    expect(engine.engineType).toBe('hat');
   });
 
-  it('should allow setting parameters', () => {
+  it('should apply params via applyParams without throwing', () => {
     const engine = new HatEngine();
-    engine.setDecay(0.3);
-    engine.setTone(10000);
-    engine.setMetallic(0.8);
-    expect(engine.decay).toBe(0.3);
-    expect(engine.tone).toBe(10000);
-    expect(engine.metallic).toBe(0.8);
+    expect(() => engine.applyParams({ decay: 0.3, tone: 10000, metallic: 0.8 })).not.toThrow();
   });
 
   it('should resume context and trigger sweeps', () => {

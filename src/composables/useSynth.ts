@@ -1,4 +1,4 @@
-import { ref, reactive, watch, computed } from 'vue';
+import { ref, reactive, watch, computed, type WritableComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine } from '../engine/KickEngine';
@@ -19,6 +19,15 @@ const engines: SoundEngine[] = [
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
+
+// Factory map: engineType -> constructor. No instanceof needed.
+const engineFactories: Record<EngineType, (ctx: AudioContext) => SoundEngine> = {
+  synth: (ctx) => new SynthEngine(ctx),
+  kick: (ctx) => new KickEngine(ctx),
+  hat: (ctx) => new HatEngine(ctx),
+  snare: (ctx) => new SnareEngine(ctx),
+  clap: (ctx) => new ClapEngine(ctx),
+};
 
 export interface TrackState {
   engineType: EngineType;
@@ -61,10 +70,10 @@ export interface TrackState {
 
 // Persist the reactive states at module scope so they survive HMR/reload
 const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) => ({
-  engineType: 'synth',
+  engineType: 'synth' as EngineType,
   synth: {
-    osc1Type: 'sawtooth',
-    osc2Type: 'sawtooth',
+    osc1Type: 'sawtooth' as OscillatorType,
+    osc2Type: 'sawtooth' as OscillatorType,
     osc1Coarse: 0,
     osc1Fine: 0,
     osc2Coarse: 0,
@@ -99,78 +108,21 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) =>
   }
 })));
 
-// Function to synchronize state back to individual engines
+// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
 const syncTrackToEngine = (i: number) => {
   const state = trackStates[i];
   let engine = engines[i];
-  
-  const currentType = engine instanceof SynthEngine ? 'synth' :
-                      engine instanceof KickEngine ? 'kick' :
-                      engine instanceof HatEngine ? 'hat' :
-                      engine instanceof SnareEngine ? 'snare' :
-                      engine instanceof ClapEngine ? 'clap' : null;
-  
   const targetType = state.engineType;
-  
-  if (currentType !== targetType) {
+
+  // Swap engine if type changed
+  if (engine.engineType !== targetType) {
     engine.dispose();
-    if (targetType === 'synth') {
-      engine = new SynthEngine(sharedCtx);
-    } else if (targetType === 'kick') {
-      engine = new KickEngine(sharedCtx);
-    } else if (targetType === 'hat') {
-      engine = new HatEngine(sharedCtx);
-    } else if (targetType === 'snare') {
-      engine = new SnareEngine(sharedCtx);
-    } else {
-      engine = new ClapEngine(sharedCtx);
-    }
+    engine = engineFactories[targetType](sharedCtx);
     engines[i] = engine;
   }
-  
-  if (engine instanceof SynthEngine) {
-    engine.osc1.setWaveform(state.synth.osc1Type);
-    engine.osc2.setWaveform(state.synth.osc2Type);
-    engine.osc1.setCoarseTune(state.synth.osc1Coarse);
-    engine.osc1.setFineTune(state.synth.osc1Fine);
-    engine.osc2.setCoarseTune(state.synth.osc2Coarse);
-    engine.osc2.setFineTune(state.synth.osc2Fine);
-    engine.mixer.setChannelGain(1, state.synth.osc1Level);
-    engine.mixer.setChannelGain(2, state.synth.osc2Level);
-    
-    engine.baseCutoff = state.synth.filterCutoff;
-    engine.filterEnvAmount = state.synth.filterEnvAmount;
-    
-    if (engine.filter.inputs.resonance instanceof AudioParam) {
-      engine.filter.inputs.resonance.setTargetAtTime(state.synth.filterRes, sharedCtx.currentTime, 0.01);
-    }
-    
-    engine.filterEnv.a = state.synth.filterEnv.a;
-    engine.filterEnv.d = state.synth.filterEnv.d;
-    engine.filterEnv.s = state.synth.filterEnv.s;
-    engine.filterEnv.r = state.synth.filterEnv.r;
-    
-    engine.ampEnv.a = state.synth.ampEnv.a;
-    engine.ampEnv.d = state.synth.ampEnv.d;
-    engine.ampEnv.s = state.synth.ampEnv.s;
-    engine.ampEnv.r = state.synth.ampEnv.r;
-  } else if (engine instanceof KickEngine) {
-    engine.setTune(state.kick.tune);
-    engine.setDecay(state.kick.decay);
-    engine.setClick(state.kick.click);
-  } else if (engine instanceof HatEngine) {
-    engine.setDecay(state.hat.decay);
-    engine.setTone(state.hat.tone);
-    engine.setMetallic(state.hat.metallic);
-  } else if (engine instanceof SnareEngine) {
-    engine.setTune(state.snare.tune);
-    engine.setDecay(state.snare.decay);
-    engine.setSnappy(state.snare.snappy);
-  } else if (engine instanceof ClapEngine) {
-    engine.setDecay(state.clap.decay);
-    engine.setTone(state.clap.tone);
-    engine.setSloppy(state.clap.sloppy);
-  }
+
+  // Apply params polymorphically — each engine knows how to interpret its own params
+  engine.applyParams(state[targetType] as Record<string, any>);
 };
 
 // Initialize engines
@@ -179,7 +131,7 @@ for (let i = 0; i < 4; i++) {
 }
 
 // Watch trackStates deeply and apply updates to corresponding engines
-watch(trackStates, (newStates) => {
+watch(trackStates, () => {
   for (let i = 0; i < 4; i++) {
     syncTrackToEngine(i);
   }
@@ -191,192 +143,64 @@ export function useSynth() {
 
   const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
-  // Proximity values bound dynamically to the currently active track's settings
+  // --- Generic helper to create writable computed refs bound to the active track ---
+  function trackParam<K extends keyof TrackState, P extends keyof TrackState[K]>(
+    engine: K, param: P, fallback: TrackState[K][P]
+  ): WritableComputedRef<TrackState[K][P]> {
+    return computed({
+      get: () => activeTrackIndex.value !== null
+        ? trackStates[activeTrackIndex.value][engine][param]
+        : fallback,
+      set: (val: TrackState[K][P]) => {
+        if (activeTrackIndex.value !== null) {
+          trackStates[activeTrackIndex.value][engine][param] = val;
+        }
+      }
+    });
+  }
+
+  // Engine type selector (slightly different shape — lives on TrackState directly)
   const engineType = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].engineType : 'synth',
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].engineType : 'synth' as EngineType,
     set: (val: EngineType) => {
       if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].engineType = val;
     }
   });
 
-  const osc1Type = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc1Type : 'sawtooth',
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc1Type = val;
-    }
-  });
+  // --- Synth params ---
+  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth' as OscillatorType);
+  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth' as OscillatorType);
+  const osc1Coarse = trackParam('synth', 'osc1Coarse', 0);
+  const osc1Fine = trackParam('synth', 'osc1Fine', 0);
+  const osc2Coarse = trackParam('synth', 'osc2Coarse', 0);
+  const osc2Fine = trackParam('synth', 'osc2Fine', 0);
+  const osc1Level = trackParam('synth', 'osc1Level', 0.5);
+  const osc2Level = trackParam('synth', 'osc2Level', 0.5);
+  const filterCutoff = trackParam('synth', 'filterCutoff', 2000);
+  const filterRes = trackParam('synth', 'filterRes', 1);
+  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 3000);
+  const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+  const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
-  const osc2Type = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc2Type : 'sawtooth',
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc2Type = val;
-    }
-  });
+  // --- Kick params ---
+  const kickTune = trackParam('kick', 'tune', 55);
+  const kickDecay = trackParam('kick', 'decay', 0.3);
+  const kickClick = trackParam('kick', 'click', 0.5);
 
-  const osc1Coarse = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc1Coarse : 0,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc1Coarse = val;
-    }
-  });
+  // --- Hat params ---
+  const hatDecay = trackParam('hat', 'decay', 0.15);
+  const hatTone = trackParam('hat', 'tone', 8000);
+  const hatMetallic = trackParam('hat', 'metallic', 0.5);
 
-  const osc1Fine = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc1Fine : 0,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc1Fine = val;
-    }
-  });
+  // --- Snare params ---
+  const snareTune = trackParam('snare', 'tune', 180);
+  const snareDecay = trackParam('snare', 'decay', 0.25);
+  const snareSnappy = trackParam('snare', 'snappy', 0.5);
 
-  const osc2Coarse = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc2Coarse : 0,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc2Coarse = val;
-    }
-  });
-
-  const osc2Fine = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc2Fine : 0,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc2Fine = val;
-    }
-  });
-
-  const osc1Level = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc1Level : 0.5,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc1Level = val;
-    }
-  });
-
-  const osc2Level = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.osc2Level : 0.5,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.osc2Level = val;
-    }
-  });
-
-  const filterCutoff = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.filterCutoff : 2000,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.filterCutoff = val;
-    }
-  });
-
-  const filterRes = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.filterRes : 1,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.filterRes = val;
-    }
-  });
-
-  const filterEnvAmount = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].synth.filterEnvAmount : 3000,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].synth.filterEnvAmount = val;
-    }
-  });
-
-  const filterEnv = computed(() => {
-    if (activeTrackIndex.value === null) {
-      return { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
-    }
-    return trackStates[activeTrackIndex.value].synth.filterEnv;
-  });
-
-  const ampEnv = computed(() => {
-    if (activeTrackIndex.value === null) {
-      return { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
-    }
-    return trackStates[activeTrackIndex.value].synth.ampEnv;
-  });
-
-  // Writable computed properties for Kick parameters
-  const kickTune = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].kick.tune : 55,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].kick.tune = val;
-    }
-  });
-
-  const kickDecay = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].kick.decay : 0.3,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].kick.decay = val;
-    }
-  });
-
-  const kickClick = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].kick.click : 0.5,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].kick.click = val;
-    }
-  });
-
-  // Writable computed properties for Hat parameters
-  const hatDecay = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.decay : 0.15,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.decay = val;
-    }
-  });
-
-  const hatTone = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.tone : 8000,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.tone = val;
-    }
-  });
-
-  const hatMetallic = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.metallic : 0.5,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.metallic = val;
-    }
-  });
-
-  // Writable computed properties for Snare parameters
-  const snareTune = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.tune : 180,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.tune = val;
-    }
-  });
-
-  const snareDecay = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.decay : 0.25,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.decay = val;
-    }
-  });
-
-  const snareSnappy = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.snappy : 0.5,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.snappy = val;
-    }
-  });
-
-  // Writable computed properties for Clap parameters
-  const clapDecay = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.decay : 0.25,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.decay = val;
-    }
-  });
-
-  const clapTone = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.tone : 1000,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.tone = val;
-    }
-  });
-
-  const clapSloppy = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.sloppy : 0.015,
-    set: (val) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.sloppy = val;
-    }
-  });
+  // --- Clap params ---
+  const clapDecay = trackParam('clap', 'decay', 0.25);
+  const clapTone = trackParam('clap', 'tone', 1000);
+  const clapSloppy = trackParam('clap', 'sloppy', 0.015);
 
   const togglePlay = () => {
     if (sharedCtx.state === 'suspended') {

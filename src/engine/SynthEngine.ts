@@ -6,19 +6,20 @@ import { EnvelopeModule } from './modules/Envelope';
 import { SoundEngine } from './types';
 
 export class SynthEngine implements SoundEngine {
-  ctx: AudioContext;
+  readonly engineType = 'synth';
+  readonly ctx: AudioContext;
   private patchBay: PatchBay;
   
-  osc1: OscillatorModule;
-  osc2: OscillatorModule;
-  mixer: MixerModule;
-  filter: FilterModule;
-  ampEnv: EnvelopeModule;
-  filterEnv: EnvelopeModule;
-  masterVCA: GainNode;
+  private osc1: OscillatorModule;
+  private osc2: OscillatorModule;
+  private mixer: MixerModule;
+  private filter: FilterModule;
+  private ampEnv: EnvelopeModule;
+  private filterEnv: EnvelopeModule;
+  private masterVCA: GainNode;
 
-  baseCutoff: number = 2000;
-  filterEnvAmount: number = 3000;
+  private baseCutoff: number = 2000;
+  private filterEnvAmount: number = 3000;
 
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -39,6 +40,60 @@ export class SynthEngine implements SoundEngine {
     this.patchBay.connect(this.mixer.outputs.main, this.filter.inputs.main);
     this.patchBay.connect(this.filter.outputs.main, this.masterVCA);
     this.masterVCA.connect(this.ctx.destination);
+  }
+
+  // --- Setter methods (encapsulated API) ---
+
+  setOsc1Type(type: OscillatorType) { this.osc1.setWaveform(type); }
+  setOsc2Type(type: OscillatorType) { this.osc2.setWaveform(type); }
+
+  setOsc1Coarse(val: number) { this.osc1.setCoarseTune(val); }
+  setOsc1Fine(val: number) { this.osc1.setFineTune(val); }
+  setOsc2Coarse(val: number) { this.osc2.setCoarseTune(val); }
+  setOsc2Fine(val: number) { this.osc2.setFineTune(val); }
+
+  setOsc1Level(val: number) { this.mixer.setChannelGain(1, val); }
+  setOsc2Level(val: number) { this.mixer.setChannelGain(2, val); }
+
+  setFilterCutoff(val: number) { this.baseCutoff = val; }
+  setFilterEnvAmount(val: number) { this.filterEnvAmount = val; }
+
+  setFilterRes(val: number) {
+    if (this.filter.inputs.resonance instanceof AudioParam) {
+      this.filter.inputs.resonance.setTargetAtTime(val, this.ctx.currentTime, 0.01);
+    }
+  }
+
+  setFilterEnv(env: { a: number; d: number; s: number; r: number }) {
+    this.filterEnv.a = env.a;
+    this.filterEnv.d = env.d;
+    this.filterEnv.s = env.s;
+    this.filterEnv.r = env.r;
+  }
+
+  setAmpEnv(env: { a: number; d: number; s: number; r: number }) {
+    this.ampEnv.a = env.a;
+    this.ampEnv.d = env.d;
+    this.ampEnv.s = env.s;
+    this.ampEnv.r = env.r;
+  }
+
+  // --- Polymorphic param application ---
+
+  applyParams(params: Record<string, any>) {
+    if (params.osc1Type !== undefined) this.setOsc1Type(params.osc1Type);
+    if (params.osc2Type !== undefined) this.setOsc2Type(params.osc2Type);
+    if (params.osc1Coarse !== undefined) this.setOsc1Coarse(params.osc1Coarse);
+    if (params.osc1Fine !== undefined) this.setOsc1Fine(params.osc1Fine);
+    if (params.osc2Coarse !== undefined) this.setOsc2Coarse(params.osc2Coarse);
+    if (params.osc2Fine !== undefined) this.setOsc2Fine(params.osc2Fine);
+    if (params.osc1Level !== undefined) this.setOsc1Level(params.osc1Level);
+    if (params.osc2Level !== undefined) this.setOsc2Level(params.osc2Level);
+    if (params.filterCutoff !== undefined) this.setFilterCutoff(params.filterCutoff);
+    if (params.filterRes !== undefined) this.setFilterRes(params.filterRes);
+    if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);
+    if (params.filterEnv !== undefined) this.setFilterEnv(params.filterEnv);
+    if (params.ampEnv !== undefined) this.setAmpEnv(params.ampEnv);
   }
 
   trigger(freq: number, duration: number, time?: number) {

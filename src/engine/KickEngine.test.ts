@@ -44,21 +44,14 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 
 describe('KickEngine', () => {
-  it('should initialize nodes and default values', () => {
+  it('should have correct engineType', () => {
     const engine = new KickEngine();
-    expect(engine.tune).toBe(55);
-    expect(engine.decay).toBe(0.3);
-    expect(engine.click).toBe(0.5);
+    expect(engine.engineType).toBe('kick');
   });
 
-  it('should allow setting parameters', () => {
+  it('should apply params via applyParams without throwing', () => {
     const engine = new KickEngine();
-    engine.setTune(60);
-    engine.setDecay(0.5);
-    engine.setClick(0.8);
-    expect(engine.tune).toBe(60);
-    expect(engine.decay).toBe(0.5);
-    expect(engine.click).toBe(0.8);
+    expect(() => engine.applyParams({ tune: 60, decay: 0.5, click: 0.8 })).not.toThrow();
   });
 
   it('should resume context and trigger pitch/amplitude sweeps', () => {

@@ -2,7 +2,8 @@ import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
 
 export class HatEngine implements SoundEngine {
-  ctx: AudioContext;
+  readonly engineType = 'hat';
+  readonly ctx: AudioContext;
   
   // Metallic components
   private oscs: OscillatorNode[] = [];
@@ -18,9 +19,9 @@ export class HatEngine implements SoundEngine {
   private ampGain: GainNode;
 
   // Parameters
-  decay: number = 0.15;    // Decay time in seconds (0.02 - 0.6)
-  tone: number = 8000;     // Bandpass filter cutoff frequency (3000 - 14000)
-  metallic: number = 0.5;  // Blend between noise (0) and metal (1)
+  private decay: number = 0.15;    // Decay time in seconds (0.02 - 0.6)
+  private tone: number = 8000;     // Bandpass filter cutoff frequency (3000 - 14000)
+  private metallic: number = 0.5;  // Blend between noise (0) and metal (1)
 
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -83,11 +84,15 @@ export class HatEngine implements SoundEngine {
 
   setMetallic(val: number) {
     this.metallic = val;
-    // Crossfade/balance between noise and metallic source
     const time = this.ctx.currentTime;
-    // Equal power-like crossfade (or simple linear blend)
     this.noiseGain.gain.setValueAtTime(1.0 - val, time);
     this.metalGain.gain.setValueAtTime(val, time);
+  }
+
+  applyParams(params: Record<string, any>) {
+    if (params.decay !== undefined) this.setDecay(params.decay);
+    if (params.tone !== undefined) this.setTone(params.tone);
+    if (params.metallic !== undefined) this.setMetallic(params.metallic);
   }
 
   trigger(freq: number, duration: number, time?: number) {

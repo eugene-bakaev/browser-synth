@@ -1,14 +1,15 @@
 import { SoundEngine } from './types';
 
 export class KickEngine implements SoundEngine {
-  ctx: AudioContext;
+  readonly engineType = 'kick';
+  readonly ctx: AudioContext;
   private osc: OscillatorNode;
   private ampGain: GainNode;
 
   // Parameters
-  tune: number = 55;   // Base pitch in Hz (40 - 120)
-  decay: number = 0.3; // Decay time in seconds (0.05 - 1.5)
-  click: number = 0.5; // Click depth (0.0 - 1.0)
+  private tune: number = 55;   // Base pitch in Hz (40 - 120)
+  private decay: number = 0.3; // Decay time in seconds (0.05 - 1.5)
+  private click: number = 0.5; // Click depth (0.0 - 1.0)
 
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -34,6 +35,12 @@ export class KickEngine implements SoundEngine {
 
   setClick(val: number) {
     this.click = val;
+  }
+
+  applyParams(params: Record<string, any>) {
+    if (params.tune !== undefined) this.setTune(params.tune);
+    if (params.decay !== undefined) this.setDecay(params.decay);
+    if (params.click !== undefined) this.setClick(params.click);
   }
 
   trigger(freq: number, duration: number, time?: number) {

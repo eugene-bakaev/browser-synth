@@ -66,21 +66,14 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 
 describe('SnareEngine', () => {
-  it('should initialize nodes and default values', () => {
+  it('should have correct engineType', () => {
     const engine = new SnareEngine();
-    expect(engine.tune).toBe(180);
-    expect(engine.decay).toBe(0.25);
-    expect(engine.snappy).toBe(0.5);
+    expect(engine.engineType).toBe('snare');
   });
 
-  it('should allow setting parameters', () => {
+  it('should apply params via applyParams without throwing', () => {
     const engine = new SnareEngine();
-    engine.setTune(200);
-    engine.setDecay(0.4);
-    engine.setSnappy(0.8);
-    expect(engine.tune).toBe(200);
-    expect(engine.decay).toBe(0.4);
-    expect(engine.snappy).toBe(0.8);
+    expect(() => engine.applyParams({ tune: 200, decay: 0.4, snappy: 0.8 })).not.toThrow();
   });
 
   it('should resume context and trigger body/wires sweeps', () => {

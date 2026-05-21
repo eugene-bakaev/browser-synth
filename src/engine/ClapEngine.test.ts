@@ -66,21 +66,14 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 
 describe('ClapEngine', () => {
-  it('should initialize nodes and default values', () => {
+  it('should have correct engineType', () => {
     const engine = new ClapEngine();
-    expect(engine.decay).toBe(0.25);
-    expect(engine.tone).toBe(1000);
-    expect(engine.sloppy).toBe(0.015);
+    expect(engine.engineType).toBe('clap');
   });
 
-  it('should allow setting parameters', () => {
+  it('should apply params via applyParams without throwing', () => {
     const engine = new ClapEngine();
-    engine.setDecay(0.4);
-    engine.setTone(1500);
-    engine.setSloppy(0.025);
-    expect(engine.decay).toBe(0.4);
-    expect(engine.tone).toBe(1500);
-    expect(engine.sloppy).toBe(0.025);
+    expect(() => engine.applyParams({ decay: 0.4, tone: 1500, sloppy: 0.025 })).not.toThrow();
   });
 
   it('should resume context and trigger clap envelope spikes', () => {

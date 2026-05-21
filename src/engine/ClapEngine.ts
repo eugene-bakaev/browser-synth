@@ -2,7 +2,8 @@ import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
 
 export class ClapEngine implements SoundEngine {
-  ctx: AudioContext;
+  readonly engineType = 'clap';
+  readonly ctx: AudioContext;
 
   // Noise components
   private noiseGain: GainNode;
@@ -10,9 +11,9 @@ export class ClapEngine implements SoundEngine {
   private ampGain: GainNode;
 
   // Parameters
-  decay: number = 0.25;    // Clap tail decay in seconds (0.05 - 0.8)
-  tone: number = 1000;     // Bandpass filter cutoff frequency (500 - 3000)
-  sloppy: number = 0.015;  // Spacing between initial impulses (0.005 - 0.03)
+  private decay: number = 0.25;    // Clap tail decay in seconds (0.05 - 0.8)
+  private tone: number = 1000;     // Bandpass filter cutoff frequency (500 - 3000)
+  private sloppy: number = 0.015;  // Spacing between initial impulses (0.005 - 0.03)
 
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -46,6 +47,12 @@ export class ClapEngine implements SoundEngine {
 
   setSloppy(val: number) {
     this.sloppy = val;
+  }
+
+  applyParams(params: Record<string, any>) {
+    if (params.decay !== undefined) this.setDecay(params.decay);
+    if (params.tone !== undefined) this.setTone(params.tone);
+    if (params.sloppy !== undefined) this.setSloppy(params.sloppy);
   }
 
   trigger(freq: number, duration: number, time?: number) {
