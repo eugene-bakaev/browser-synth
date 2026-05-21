@@ -34,12 +34,12 @@ describe('Sequencer', () => {
     // Should immediately trigger the first note since nextNoteTime (0.1) < currentTime (0) + 0.1 is false?
     // Wait, nextNoteTime is 0.1.
     // while (0.1 < 0 + 0.1) -> false! First note is triggered when currentTime reaches 0.001 or more.
-    mockCtx.currentTime = 0.05;
+    (mockCtx as any).currentTime = 0.05;
     vi.advanceTimersByTime(25);
     expect(callback).toHaveBeenCalledTimes(1);
     
     // Next note is at 0.1 + 0.125 = 0.225
-    mockCtx.currentTime = 0.15;
+    (mockCtx as any).currentTime = 0.15;
     vi.advanceTimersByTime(125);
     expect(callback).toHaveBeenCalledTimes(2);
     

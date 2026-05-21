@@ -90,17 +90,22 @@ defineProps<{
 .col-step { text-align: center; color: #666; font-size: 0.8rem; }
 
 select, input { 
+  box-sizing: border-box;
+  height: 24px;
+  margin: 0;
   background: #000; 
   color: #0f0; 
-  border: 1px solid #000; 
+  border: 1px solid #333; 
   font-family: monospace; 
   font-size: 0.9rem;
   width: 100%;
-  padding: 2px 0;
+  padding: 0;
   text-align: center;
   text-align-last: center; /* Fixes select text alignment */
   appearance: none;
   -webkit-appearance: none;
+  border-radius: 3px;
+  display: block;
 }
 
 /* Hide number arrows for cleaner look */
