@@ -55,7 +55,28 @@
             @click="engineType = 'kick'"
             :style="engineType === 'kick' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
-            KICK MACHINE
+            KICK
+          </button>
+          <button 
+            :class="{ active: engineType === 'hat' }" 
+            @click="engineType = 'hat'"
+            :style="engineType === 'hat' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          >
+            HAT
+          </button>
+          <button 
+            :class="{ active: engineType === 'snare' }" 
+            @click="engineType = 'snare'"
+            :style="engineType === 'snare' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          >
+            SNARE
+          </button>
+          <button 
+            :class="{ active: engineType === 'clap' }" 
+            @click="engineType = 'clap'"
+            :style="engineType === 'clap' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          >
+            CLAP
           </button>
         </div>
       </div>
@@ -107,6 +128,30 @@
               v-model:click="kickClick"
             />
           </template>
+
+          <template v-else-if="engineType === 'hat'">
+            <HatPanel
+              v-model:decay="hatDecay"
+              v-model:tone="hatTone"
+              v-model:metallic="hatMetallic"
+            />
+          </template>
+
+          <template v-else-if="engineType === 'snare'">
+            <SnarePanel
+              v-model:tune="snareTune"
+              v-model:decay="snareDecay"
+              v-model:snappy="snareSnappy"
+            />
+          </template>
+
+          <template v-else-if="engineType === 'clap'">
+            <ClapPanel
+              v-model:decay="clapDecay"
+              v-model:tone="clapTone"
+              v-model:sloppy="clapSloppy"
+            />
+          </template>
         </section>
       </div>
     </div>
@@ -121,6 +166,9 @@ import MixerPanel from './components/MixerPanel.vue';
 import FilterPanel from './components/FilterPanel.vue';
 import EnvelopePanel from './components/EnvelopePanel.vue';
 import KickPanel from './components/KickPanel.vue';
+import HatPanel from './components/HatPanel.vue';
+import SnarePanel from './components/SnarePanel.vue';
+import ClapPanel from './components/ClapPanel.vue';
 
 const {
   sequencer,
@@ -144,6 +192,15 @@ const {
   kickTune,
   kickDecay,
   kickClick,
+  hatDecay,
+  hatTone,
+  hatMetallic,
+  snareTune,
+  snareDecay,
+  snareSnappy,
+  clapDecay,
+  clapTone,
+  clapSloppy,
   togglePlay,
   selectTrack,
   getTrackEngineType,

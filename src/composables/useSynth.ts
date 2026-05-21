@@ -2,6 +2,9 @@ import { ref, reactive, watch, computed } from 'vue';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine } from '../engine/KickEngine';
+import { HatEngine } from '../engine/HatEngine';
+import { SnareEngine } from '../engine/SnareEngine';
+import { ClapEngine } from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 
@@ -15,7 +18,7 @@ const engines: SoundEngine[] = [
 ];
 const sequencer = reactive(new Sequencer());
 
-export type EngineType = 'synth' | 'kick';
+export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
 
 export interface TrackState {
   engineType: EngineType;
@@ -38,6 +41,21 @@ export interface TrackState {
     tune: number;  // Hz (40 - 120)
     decay: number; // seconds (0.05 - 1.5)
     click: number; // ratio (0.0 - 1.0)
+  };
+  hat: {
+    decay: number;    // seconds (0.02 - 0.6)
+    tone: number;     // Hz (3000 - 14000)
+    metallic: number; // ratio (0.0 - 1.0)
+  };
+  snare: {
+    tune: number;   // Hz (100 - 250)
+    decay: number;  // seconds (0.05 - 0.8)
+    snappy: number; // ratio (0.0 - 1.0)
+  };
+  clap: {
+    decay: number;   // seconds (0.05 - 0.8)
+    tone: number;    // Hz (500 - 3000)
+    sloppy: number;  // seconds (0.005 - 0.03)
   };
 }
 
@@ -63,6 +81,21 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) =>
     tune: 55,
     decay: 0.3,
     click: 0.5,
+  },
+  hat: {
+    decay: 0.15,
+    tone: 8000,
+    metallic: 0.5,
+  },
+  snare: {
+    tune: 180,
+    decay: 0.25,
+    snappy: 0.5,
+  },
+  clap: {
+    decay: 0.25,
+    tone: 1000,
+    sloppy: 0.015,
   }
 })));
 
@@ -71,15 +104,26 @@ const syncTrackToEngine = (i: number) => {
   const state = trackStates[i];
   let engine = engines[i];
   
-  const currentTypeIsSynth = engine instanceof SynthEngine;
-  const targetTypeIsSynth = state.engineType === 'synth';
+  const currentType = engine instanceof SynthEngine ? 'synth' :
+                      engine instanceof KickEngine ? 'kick' :
+                      engine instanceof HatEngine ? 'hat' :
+                      engine instanceof SnareEngine ? 'snare' :
+                      engine instanceof ClapEngine ? 'clap' : null;
   
-  if (currentTypeIsSynth !== targetTypeIsSynth) {
+  const targetType = state.engineType;
+  
+  if (currentType !== targetType) {
     engine.dispose();
-    if (targetTypeIsSynth) {
+    if (targetType === 'synth') {
       engine = new SynthEngine(sharedCtx);
-    } else {
+    } else if (targetType === 'kick') {
       engine = new KickEngine(sharedCtx);
+    } else if (targetType === 'hat') {
+      engine = new HatEngine(sharedCtx);
+    } else if (targetType === 'snare') {
+      engine = new SnareEngine(sharedCtx);
+    } else {
+      engine = new ClapEngine(sharedCtx);
     }
     engines[i] = engine;
   }
@@ -114,6 +158,18 @@ const syncTrackToEngine = (i: number) => {
     engine.setTune(state.kick.tune);
     engine.setDecay(state.kick.decay);
     engine.setClick(state.kick.click);
+  } else if (engine instanceof HatEngine) {
+    engine.setDecay(state.hat.decay);
+    engine.setTone(state.hat.tone);
+    engine.setMetallic(state.hat.metallic);
+  } else if (engine instanceof SnareEngine) {
+    engine.setTune(state.snare.tune);
+    engine.setDecay(state.snare.decay);
+    engine.setSnappy(state.snare.snappy);
+  } else if (engine instanceof ClapEngine) {
+    engine.setDecay(state.clap.decay);
+    engine.setTone(state.clap.tone);
+    engine.setSloppy(state.clap.sloppy);
   }
 };
 
@@ -256,6 +312,72 @@ export function useSynth() {
     }
   });
 
+  // Writable computed properties for Hat parameters
+  const hatDecay = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.decay : 0.15,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.decay = val;
+    }
+  });
+
+  const hatTone = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.tone : 8000,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.tone = val;
+    }
+  });
+
+  const hatMetallic = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].hat.metallic : 0.5,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].hat.metallic = val;
+    }
+  });
+
+  // Writable computed properties for Snare parameters
+  const snareTune = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.tune : 180,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.tune = val;
+    }
+  });
+
+  const snareDecay = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.decay : 0.25,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.decay = val;
+    }
+  });
+
+  const snareSnappy = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].snare.snappy : 0.5,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].snare.snappy = val;
+    }
+  });
+
+  // Writable computed properties for Clap parameters
+  const clapDecay = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.decay : 0.25,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.decay = val;
+    }
+  });
+
+  const clapTone = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.tone : 1000,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.tone = val;
+    }
+  });
+
+  const clapSloppy = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].clap.sloppy : 0.015,
+    set: (val) => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].clap.sloppy = val;
+    }
+  });
+
   const togglePlay = () => {
     if (sharedCtx.state === 'suspended') {
       sharedCtx.resume();
@@ -314,6 +436,15 @@ export function useSynth() {
     kickTune,
     kickDecay,
     kickClick,
+    hatDecay,
+    hatTone,
+    hatMetallic,
+    snareTune,
+    snareDecay,
+    snareSnappy,
+    clapDecay,
+    clapTone,
+    clapSloppy,
     togglePlay,
     selectTrack,
     getTrackEngineType,

@@ -1,0 +1,122 @@
+import { SoundEngine } from './types';
+import { getNoiseBuffer } from './modules/Noise';
+
+export class SnareEngine implements SoundEngine {
+  ctx: AudioContext;
+
+  // Body (Tonal) components
+  private bodyOsc: OscillatorNode;
+  private bodyGain: GainNode;
+
+  // Snare Wires (Noise) components
+  private noiseGain: GainNode;
+  private noiseFilter: BiquadFilterNode;
+
+  // Master output
+  private masterGain: GainNode;
+
+  // Parameters
+  tune: number = 180;      // Base pitch in Hz (100 - 250)
+  decay: number = 0.25;    // Snare wires decay in seconds (0.05 - 0.8)
+  snappy: number = 0.5;    // Noise level ratio vs body (0.0 - 1.0)
+
+  constructor(sharedCtx?: AudioContext) {
+    this.ctx = sharedCtx ?? new AudioContext();
+
+    // 1. Initialize Body (Tonal) component
+    this.bodyOsc = this.ctx.createOscillator();
+    this.bodyOsc.type = 'triangle';
+    this.bodyOsc.frequency.value = this.tune;
+
+    this.bodyGain = this.ctx.createGain();
+    this.bodyGain.gain.value = 0;
+
+    this.bodyOsc.connect(this.bodyGain);
+    this.bodyOsc.start();
+
+    // 2. Initialize Snare Wires (Noise) component
+    this.noiseFilter = this.ctx.createBiquadFilter();
+    this.noiseFilter.type = 'bandpass';
+    this.noiseFilter.frequency.value = 1800; // centered in mid-high snare region
+    this.noiseFilter.Q.value = 1.0;
+
+    this.noiseGain = this.ctx.createGain();
+    this.noiseGain.gain.value = 0;
+
+    this.noiseFilter.connect(this.noiseGain);
+
+    // 3. Output Stage
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.value = 0.8; // general headroom level
+
+    this.bodyGain.connect(this.masterGain);
+    this.noiseGain.connect(this.masterGain);
+    this.masterGain.connect(this.ctx.destination);
+  }
+
+  setTune(freq: number) {
+    this.tune = freq;
+  }
+
+  setDecay(val: number) {
+    this.decay = val;
+  }
+
+  setSnappy(val: number) {
+    this.snappy = val;
+  }
+
+  trigger(freq: number, duration: number, time?: number) {
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    const scheduleTime = time ?? this.ctx.currentTime;
+
+    // --- 1. Trigger Body (Tonal) ---
+    // Fast pitch sweep (e.g. from tune * 2 down to tune)
+    this.bodyOsc.frequency.cancelScheduledValues(scheduleTime);
+    this.bodyOsc.frequency.setValueAtTime(this.tune * 1.8, scheduleTime);
+    this.bodyOsc.frequency.exponentialRampToValueAtTime(this.tune, scheduleTime + 0.06);
+
+    // Amplitude envelope for the body (always a tight decay, e.g. 0.08s)
+    const bodyMaxGain = (1.0 - this.snappy) * 1.2;
+    this.bodyGain.gain.cancelScheduledValues(scheduleTime);
+    this.bodyGain.gain.setValueAtTime(0, scheduleTime);
+    this.bodyGain.gain.linearRampToValueAtTime(bodyMaxGain, scheduleTime + 0.002);
+    this.bodyGain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 0.002 + 0.08);
+    this.bodyGain.gain.setValueAtTime(0, scheduleTime + 0.002 + 0.08 + 0.01);
+
+    // --- 2. Trigger Snare Wires (Noise) ---
+    const noiseSource = this.ctx.createBufferSource();
+    noiseSource.buffer = getNoiseBuffer(this.ctx);
+    noiseSource.loop = true;
+    noiseSource.connect(this.noiseFilter);
+    noiseSource.start(scheduleTime);
+    noiseSource.stop(scheduleTime + this.decay + 0.1);
+
+    noiseSource.onended = () => {
+      try {
+        noiseSource.disconnect();
+      } catch (e) {}
+    };
+
+    // Amplitude envelope for noise (decay controlled by user)
+    const noiseMaxGain = this.snappy * 1.5;
+    this.noiseGain.gain.cancelScheduledValues(scheduleTime);
+    this.noiseGain.gain.setValueAtTime(0, scheduleTime);
+    this.noiseGain.gain.linearRampToValueAtTime(noiseMaxGain, scheduleTime + 0.002);
+    this.noiseGain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 0.002 + this.decay);
+    this.noiseGain.gain.setValueAtTime(0, scheduleTime + 0.002 + this.decay + 0.01);
+  }
+
+  dispose() {
+    try {
+      this.bodyOsc.stop();
+    } catch (e) {}
+    this.bodyOsc.disconnect();
+    this.bodyGain.disconnect();
+    this.noiseFilter.disconnect();
+    this.noiseGain.disconnect();
+    this.masterGain.disconnect();
+  }
+}
