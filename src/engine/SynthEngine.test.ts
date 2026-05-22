@@ -83,6 +83,15 @@ describe('SynthEngine', () => {
     })).not.toThrow();
   });
 
+  it('should clamp parameters correctly including cutoff up to 20000', () => {
+    const engine = new SynthEngine();
+    engine.applyParams({ filterCutoff: 30000 });
+    expect((engine as any).baseCutoff).toBe(20000);
+
+    engine.applyParams({ filterCutoff: 10 });
+    expect((engine as any).baseCutoff).toBe(20);
+  });
+
   it('should dispose without throwing', () => {
     const engine = new SynthEngine();
     expect(() => engine.dispose()).not.toThrow();

@@ -55,7 +55,7 @@ export class SynthEngine implements SoundEngine {
   setOsc1Level(val: number) { this.mixer.setChannelGain(1, Math.max(0, Math.min(1, val))); }
   setOsc2Level(val: number) { this.mixer.setChannelGain(2, Math.max(0, Math.min(1, val))); }
 
-  setFilterCutoff(val: number) { this.baseCutoff = Math.max(20, Math.min(10000, val)); }
+  setFilterCutoff(val: number) { this.baseCutoff = Math.max(20, Math.min(20000, val)); }
   setFilterEnvAmount(val: number) { this.filterEnvAmount = Math.max(0, Math.min(5000, val)); }
 
   setFilterRes(val: number) {

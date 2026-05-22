@@ -76,6 +76,19 @@ describe('ClapEngine', () => {
     expect(() => engine.applyParams({ decay: 0.4, tone: 1500, sloppy: 0.025 })).not.toThrow();
   });
 
+  it('should clamp parameters correctly', () => {
+    const engine = new ClapEngine();
+    engine.applyParams({ decay: 10, tone: 10000, sloppy: 0.5 });
+    expect((engine as any).decay).toBe(0.8);
+    expect((engine as any).tone).toBe(3000);
+    expect((engine as any).sloppy).toBe(0.03);
+
+    engine.applyParams({ decay: 0.01, tone: 200, sloppy: 0.001 });
+    expect((engine as any).decay).toBe(0.05);
+    expect((engine as any).tone).toBe(500);
+    expect((engine as any).sloppy).toBe(0.005);
+  });
+
   it('should resume context and trigger clap envelope spikes', () => {
     const engine = new ClapEngine();
     expect(() => engine.trigger(440, 0.25)).not.toThrow();

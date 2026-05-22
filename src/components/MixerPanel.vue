@@ -2,8 +2,8 @@
   <div class="module-group">
     <h3>Mixer</h3>
     <div class="knob-row">
-      <Knob label="OSC 1 Level" :min="0" :max="1" :step="0.01" v-model="osc1Level" />
-      <Knob label="OSC 2 Level" :min="0" :max="1" :step="0.01" v-model="osc2Level" />
+      <Knob label="OSC 1 Level" :min="0" :max="1" :step="0.01" format="percent" v-model="osc1Level" />
+      <Knob label="OSC 2 Level" :min="0" :max="1" :step="0.01" format="percent" v-model="osc2Level" />
     </div>
   </div>
 </template>

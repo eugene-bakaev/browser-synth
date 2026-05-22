@@ -53,7 +53,7 @@
       </svg>
     </div>
     
-    <span class="knob-value">{{ modelValue }}</span>
+    <span class="knob-value">{{ formattedValue }}</span>
   </div>
 </template>
 
@@ -67,8 +67,10 @@ const props = withDefaults(defineProps<{
   step: number;
   modelValue: number;
   defaultValue?: number;
+  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio';
 }>(), {
-  defaultValue: undefined
+  defaultValue: undefined,
+  format: undefined
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -80,6 +82,38 @@ const filterId = `knob-filter-${instanceId}`;
 
 // Store initial value on mount to use for reset
 const initialValue = ref(props.modelValue);
+
+const formattedValue = computed(() => {
+  const val = props.modelValue;
+  if (!props.format) return val.toString();
+  
+  switch (props.format) {
+    case 'hz':
+      if (val >= 1000) {
+        return (val / 1000).toFixed(1) + 'k';
+      }
+      return Math.round(val) + 'Hz';
+    case 'ms':
+      if (val < 1.0) {
+        return Math.round(val * 1000) + 'ms';
+      }
+      return val.toFixed(2) + 's';
+    case 'percent':
+      return Math.round(val * 100) + '%';
+    case 'cents': {
+      const prefix = val > 0 ? '+' : '';
+      return `${prefix}${val}c`;
+    }
+    case 'octave': {
+      const prefix = val > 0 ? '+' : '';
+      return `${prefix}${val} oct`;
+    }
+    case 'ratio':
+      return val.toFixed(1);
+    default:
+      return val.toString();
+  }
+});
 
 const currentAngle = computed(() => {
   const pct = (props.modelValue - props.min) / (props.max - props.min);

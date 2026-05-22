@@ -2,9 +2,9 @@
   <div class="module-group kick-panel">
     <h3>Kick Machine</h3>
     <div class="knob-row">
-      <Knob label="Tune" :min="40" :max="120" :step="1" v-model="tune" />
-      <Knob label="Decay" :min="0.05" :max="1.5" :step="0.01" v-model="decay" />
-      <Knob label="Click" :min="0" :max="1" :step="0.01" v-model="click" />
+      <Knob label="Tune" :min="40" :max="120" :step="1" format="hz" v-model="tune" />
+      <Knob label="Decay" :min="0.05" :max="1.5" :step="0.01" format="ms" v-model="decay" />
+      <Knob label="Click" :min="0" :max="1" :step="0.01" format="percent" v-model="click" />
     </div>
   </div>
 </template>

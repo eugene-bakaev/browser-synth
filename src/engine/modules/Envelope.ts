@@ -16,6 +16,9 @@ export class EnvelopeModule implements Module {
         param.cancelScheduledValues(time);
     }
     
+    // Anchor the starting value of the envelope at trigger time to prevent pitch/cutoff slides from previous states
+    param.setValueAtTime(min, time);
+    
     param.linearRampToValueAtTime(min + range, time + this.a);
     param.linearRampToValueAtTime(min + range * this.s, time + this.a + this.d);
     

@@ -8,8 +8,8 @@
           <option v-for="t in waveforms" :key="t" :value="t">{{ t }}</option>
         </select>
         <div class="osc-knobs">
-          <Knob label="Coarse" :min="-3" :max="3" :step="1" v-model="osc1Coarse" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" v-model="osc1Fine" />
+          <Knob label="Coarse" :min="-3" :max="3" :step="1" format="octave" v-model="osc1Coarse" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" v-model="osc1Fine" />
         </div>
       </div>
       <div class="osc-unit">
@@ -18,8 +18,8 @@
           <option v-for="t in waveforms" :key="t" :value="t">{{ t }}</option>
         </select>
         <div class="osc-knobs">
-          <Knob label="Coarse" :min="-3" :max="3" :step="1" v-model="osc2Coarse" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" v-model="osc2Fine" />
+          <Knob label="Coarse" :min="-3" :max="3" :step="1" format="octave" v-model="osc2Coarse" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" v-model="osc2Fine" />
         </div>
       </div>
     </div>

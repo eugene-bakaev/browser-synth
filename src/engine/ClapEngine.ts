@@ -37,16 +37,16 @@ export class ClapEngine implements SoundEngine {
   }
 
   setDecay(val: number) {
-    this.decay = val;
+    this.decay = Math.max(0.05, Math.min(0.8, val));
   }
 
   setTone(val: number) {
-    this.tone = val;
-    this.noiseFilter.frequency.setValueAtTime(val, this.ctx.currentTime);
+    this.tone = Math.max(500, Math.min(3000, val));
+    this.noiseFilter.frequency.setValueAtTime(this.tone, this.ctx.currentTime);
   }
 
   setSloppy(val: number) {
-    this.sloppy = val;
+    this.sloppy = Math.max(0.005, Math.min(0.03, val));
   }
 
   applyParams(params: Record<string, any>) {

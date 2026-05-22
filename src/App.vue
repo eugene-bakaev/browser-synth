@@ -328,7 +328,7 @@ h1 {
 .tracks-grid {
   display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 20px;
   justify-content: center;
   width: 100%;
@@ -384,6 +384,7 @@ h1 {
   flex: 1; 
   display: flex; 
   flex-direction: row; 
+  flex-wrap: wrap;
   gap: 15px; 
   align-items: flex-start;
 }
@@ -430,7 +431,6 @@ h1 {
   background: #222;
   padding: 15px;
   border-radius: 8px;
-  min-width: 320px;
   box-sizing: border-box;
 }
 .module-group h3 {
