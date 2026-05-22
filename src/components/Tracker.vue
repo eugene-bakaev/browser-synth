@@ -21,12 +21,16 @@
       </div>
     </div>
 
-    <!-- Play Mode Selector (only for synth) -->
-    <div v-if="engineType === 'synth'" class="playmode-selector">
+    <!-- Play Mode Selector -->
+    <div 
+      class="playmode-selector" 
+      :style="{ visibility: engineType === 'synth' ? 'visible' : 'hidden' }"
+    >
       <button 
         class="mode-btn" 
         :class="{ active: playMode === 'mono' }" 
         @click="$emit('update:playMode', 'mono')"
+        :disabled="engineType !== 'synth'"
       >
         MONO
       </button>
@@ -34,6 +38,7 @@
         class="mode-btn" 
         :class="{ active: playMode === 'chord' }" 
         @click="$emit('update:playMode', 'chord')"
+        :disabled="engineType !== 'synth'"
       >
         CHORD
       </button>
