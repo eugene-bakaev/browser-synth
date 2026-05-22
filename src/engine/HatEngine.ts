@@ -23,7 +23,7 @@ export class HatEngine implements SoundEngine {
   private tone: number = 8000;     // Bandpass filter cutoff frequency (3000 - 14000)
   private metallic: number = 0.5;  // Blend between noise (0) and metal (1)
 
-  constructor(sharedCtx?: AudioContext) {
+  constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
 
     // 1. Initialize Metallic Mixer
@@ -33,20 +33,19 @@ export class HatEngine implements SoundEngine {
     // Highpass filter for the metallic oscillators to keep only the high-frequency sizzle
     this.metalFilter = this.ctx.createBiquadFilter();
     this.metalFilter.type = 'highpass';
-    this.metalFilter.frequency.value = 1000; // block low frequencies
-    this.metalMixer.connect(this.metalFilter);
+    this.metalFilter.frequency.value = 7000;
 
-    this.metalGain = this.ctx.createGain();
-    this.metalFilter.connect(this.metalGain);
+    this.metalFilter.connect(this.metalMixer);
 
-    // 2. Initialize Noise Source Gain
-    this.noiseGain = this.ctx.createGain();
-
-    // 3. Initialize Bandpass Filter & Master VCA
+    // 2. Bandpass filter for the entire hat sound (shared shaping)
     this.bandpassFilter = this.ctx.createBiquadFilter();
     this.bandpassFilter.type = 'bandpass';
     this.bandpassFilter.frequency.value = this.tone;
-    this.bandpassFilter.Q.value = 1.5; // moderately narrow bandpass
+    this.bandpassFilter.Q.value = 1.2;
+
+    // 3. Mixing stages
+    this.metalGain = this.ctx.createGain();
+    this.noiseGain = this.ctx.createGain();
 
     // Connect sources to the bandpass filter
     this.metalGain.connect(this.bandpassFilter);
@@ -57,7 +56,7 @@ export class HatEngine implements SoundEngine {
     this.ampGain.gain.value = 0;
 
     this.bandpassFilter.connect(this.ampGain);
-    this.ampGain.connect(this.ctx.destination);
+    this.ampGain.connect(destination ?? this.ctx.destination);
 
     // Sync parameters
     this.setMetallic(this.metallic);

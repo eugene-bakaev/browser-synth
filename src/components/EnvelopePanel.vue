@@ -1,5 +1,5 @@
 <template>
-  <div class="module-group">
+  <div v-if="(type === 'filter' || type === 'both') && filterEnv" class="module-group">
     <h3>Filter Env</h3>
     <div class="knob-row">
       <Knob label="A" :min="0" :max="2" :step="0.01" format="ms" v-model="filterEnv.a" />
@@ -9,7 +9,7 @@
     </div>
   </div>
 
-  <div class="module-group">
+  <div v-if="(type === 'amp' || type === 'both') && ampEnv" class="module-group">
     <h3>Amp Env</h3>
     <div class="knob-row">
       <Knob label="A" :min="0" :max="2" :step="0.01" format="ms" v-model="ampEnv.a" />
@@ -23,10 +23,16 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 
-defineProps<{
-  filterEnv: { a: number; d: number; s: number; r: number };
-  ampEnv: { a: number; d: number; s: number; r: number };
-}>();
+withDefaults(
+  defineProps<{
+    type?: 'filter' | 'amp' | 'both';
+    filterEnv?: { a: number; d: number; s: number; r: number };
+    ampEnv?: { a: number; d: number; s: number; r: number };
+  }>(),
+  {
+    type: 'both'
+  }
+);
 </script>
 
 <style scoped>

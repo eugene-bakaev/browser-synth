@@ -82,77 +82,86 @@
       </div>
 
       <div class="focused-layout">
-        <section class="sequencer-section">
-          <Tracker 
-            :steps="sequencer.tracks[activeTrackIndex].steps"
-            :currentStep="currentStep"
-            :title="sequencer.tracks[activeTrackIndex].name"
-            :color="TRACK_COLORS[activeTrackIndex]"
-            :isFocused="true"
-          />
-        </section>
+        <!-- Signal Flow Section -->
+        <div v-if="false" class="focused-flow-section">
+          <SignalFlow :engineType="engineType" :color="TRACK_COLORS[activeTrackIndex ?? 0]" />
+        </div>
 
-        <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
-          <template v-if="engineType === 'synth'">
-            <OscillatorPanel
-              v-model:osc1Type="osc1Type"
-              v-model:osc1Coarse="osc1Coarse"
-              v-model:osc1Fine="osc1Fine"
-              v-model:osc2Type="osc2Type"
-              v-model:osc2Coarse="osc2Coarse"
-              v-model:osc2Fine="osc2Fine"
-              :waveforms="waveforms"
+        <!-- Main Sequencer & Controls Layout -->
+        <div class="focused-main-section">
+          <section class="sequencer-section">
+            <Tracker 
+              :steps="sequencer.tracks[activeTrackIndex].steps"
+              :currentStep="currentStep"
+              :title="sequencer.tracks[activeTrackIndex].name"
+              :color="TRACK_COLORS[activeTrackIndex]"
+              :isFocused="true"
             />
+          </section>
 
-            <MixerPanel
-              v-model:osc1Level="osc1Level"
-              v-model:osc2Level="osc2Level"
-            />
+          <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
+            <template v-if="engineType === 'synth'">
+              <SynthPanel
+                v-model:osc1Type="osc1Type"
+                v-model:osc1Coarse="osc1Coarse"
+                v-model:osc1Fine="osc1Fine"
+                v-model:osc2Type="osc2Type"
+                v-model:osc2Coarse="osc2Coarse"
+                v-model:osc2Fine="osc2Fine"
+                v-model:osc1Level="osc1Level"
+                v-model:osc2Level="osc2Level"
+                v-model:filterCutoff="filterCutoff"
+                v-model:filterRes="filterRes"
+                v-model:filterEnvAmount="filterEnvAmount"
+                :waveforms="waveforms"
+                :filterEnv="filterEnv"
+                :ampEnv="ampEnv"
+                :analyser="analyser"
+                :color="TRACK_COLORS[activeTrackIndex]"
+              />
+            </template>
+            
+            <template v-else-if="engineType === 'kick'">
+              <KickPanel
+                v-model:tune="kickTune"
+                v-model:decay="kickDecay"
+                v-model:click="kickClick"
+                :analyser="analyser"
+                :color="TRACK_COLORS[activeTrackIndex]"
+              />
+            </template>
 
-            <FilterPanel
-              v-model:cutoff="filterCutoff"
-              v-model:res="filterRes"
-              v-model:envAmount="filterEnvAmount"
-            />
+            <template v-else-if="engineType === 'hat'">
+              <HatPanel
+                v-model:decay="hatDecay"
+                v-model:tone="hatTone"
+                v-model:metallic="hatMetallic"
+                :analyser="analyser"
+                :color="TRACK_COLORS[activeTrackIndex]"
+              />
+            </template>
 
-            <EnvelopePanel
-              :filterEnv="filterEnv"
-              :ampEnv="ampEnv"
-            />
-          </template>
-          
-          <template v-else-if="engineType === 'kick'">
-            <KickPanel
-              v-model:tune="kickTune"
-              v-model:decay="kickDecay"
-              v-model:click="kickClick"
-            />
-          </template>
+            <template v-else-if="engineType === 'snare'">
+              <SnarePanel
+                v-model:tune="snareTune"
+                v-model:decay="snareDecay"
+                v-model:snappy="snareSnappy"
+                :analyser="analyser"
+                :color="TRACK_COLORS[activeTrackIndex]"
+              />
+            </template>
 
-          <template v-else-if="engineType === 'hat'">
-            <HatPanel
-              v-model:decay="hatDecay"
-              v-model:tone="hatTone"
-              v-model:metallic="hatMetallic"
-            />
-          </template>
-
-          <template v-else-if="engineType === 'snare'">
-            <SnarePanel
-              v-model:tune="snareTune"
-              v-model:decay="snareDecay"
-              v-model:snappy="snareSnappy"
-            />
-          </template>
-
-          <template v-else-if="engineType === 'clap'">
-            <ClapPanel
-              v-model:decay="clapDecay"
-              v-model:tone="clapTone"
-              v-model:sloppy="clapSloppy"
-            />
-          </template>
-        </section>
+            <template v-else-if="engineType === 'clap'">
+              <ClapPanel
+                v-model:decay="clapDecay"
+                v-model:tone="clapTone"
+                v-model:sloppy="clapSloppy"
+                :analyser="analyser"
+                :color="TRACK_COLORS[activeTrackIndex]"
+              />
+            </template>
+          </section>
+        </div>
       </div>
     </div>
   </div>
@@ -161,16 +170,15 @@
 <script setup lang="ts">
 import { useSynth } from './composables/useSynth';
 import Tracker from './components/Tracker.vue';
-import OscillatorPanel from './components/OscillatorPanel.vue';
-import MixerPanel from './components/MixerPanel.vue';
-import FilterPanel from './components/FilterPanel.vue';
-import EnvelopePanel from './components/EnvelopePanel.vue';
+import SynthPanel from './components/SynthPanel.vue';
 import KickPanel from './components/KickPanel.vue';
 import HatPanel from './components/HatPanel.vue';
 import SnarePanel from './components/SnarePanel.vue';
 import ClapPanel from './components/ClapPanel.vue';
+import SignalFlow from './components/SignalFlow.vue';
 
 const {
+  analyser,
   sequencer,
   activeTrackIndex,
   currentStep,
@@ -373,20 +381,43 @@ h1 {
 }
 .focused-layout {
   display: flex;
-  gap: 30px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 20px;
   width: 100%;
+}
+.focused-flow-section {
+  width: 100%;
+}
+.focused-main-section {
+  display: flex;
+  flex-direction: row;
+  gap: 30px;
+  width: 100%;
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
 .sequencer-section {
   flex-shrink: 0;
+  width: 260px;
 }
 .engine-section { 
   flex: 1; 
-  display: flex; 
-  flex-direction: row; 
+  min-width: 320px;
+}
+.rack-columns {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  width: 100%;
   flex-wrap: wrap;
-  gap: 15px; 
   align-items: flex-start;
+}
+.rack-column {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
 }
 
 /* Glow indicators on modular panels in focus view */

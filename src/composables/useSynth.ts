@@ -10,11 +10,17 @@ import { noteToFreq } from '../utils/notes';
 
 // Instantiate a single shared AudioContext and 4 engines to ensure perfect sync
 const sharedCtx = new AudioContext();
+
+// Create a master AnalyserNode to capture output from all active engines
+const analyser = sharedCtx.createAnalyser();
+analyser.fftSize = 1024;
+analyser.connect(sharedCtx.destination);
+
 const engines: SoundEngine[] = [
-  new SynthEngine(sharedCtx),
-  new SynthEngine(sharedCtx),
-  new SynthEngine(sharedCtx),
-  new SynthEngine(sharedCtx),
+  new SynthEngine(sharedCtx, analyser),
+  new SynthEngine(sharedCtx, analyser),
+  new SynthEngine(sharedCtx, analyser),
+  new SynthEngine(sharedCtx, analyser),
 ];
 const sequencer = reactive(new Sequencer());
 
@@ -22,11 +28,11 @@ export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
 
 // Factory map: engineType -> constructor. No instanceof needed.
 const engineFactories: Record<EngineType, (ctx: AudioContext) => SoundEngine> = {
-  synth: (ctx) => new SynthEngine(ctx),
-  kick: (ctx) => new KickEngine(ctx),
-  hat: (ctx) => new HatEngine(ctx),
-  snare: (ctx) => new SnareEngine(ctx),
-  clap: (ctx) => new ClapEngine(ctx),
+  synth: (ctx) => new SynthEngine(ctx, analyser),
+  kick: (ctx) => new KickEngine(ctx, analyser),
+  hat: (ctx) => new HatEngine(ctx, analyser),
+  snare: (ctx) => new SnareEngine(ctx, analyser),
+  clap: (ctx) => new ClapEngine(ctx, analyser),
 };
 
 export interface TrackState {
@@ -238,6 +244,7 @@ export function useSynth() {
   };
 
   return {
+    analyser,
     engines,
     sequencer,
     activeTrackIndex,

@@ -21,7 +21,7 @@ export class SnareEngine implements SoundEngine {
   private decay: number = 0.25;    // Snare wires decay in seconds (0.05 - 0.8)
   private snappy: number = 0.5;    // Noise level ratio vs body (0.0 - 1.0)
 
-  constructor(sharedCtx?: AudioContext) {
+  constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
 
     // 1. Initialize Body (Tonal) gain
@@ -45,7 +45,7 @@ export class SnareEngine implements SoundEngine {
 
     this.bodyGain.connect(this.masterGain);
     this.noiseGain.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
+    this.masterGain.connect(destination ?? this.ctx.destination);
   }
 
   setTune(freq: number) {

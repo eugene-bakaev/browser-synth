@@ -11,11 +11,11 @@ export class KickEngine implements SoundEngine {
   private decay: number = 0.3; // Decay time in seconds (0.05 - 1.5)
   private click: number = 0.5; // Click depth (0.0 - 1.0)
 
-  constructor(sharedCtx?: AudioContext) {
+  constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
     this.ampGain = this.ctx.createGain();
     this.ampGain.gain.value = 0;
-    this.ampGain.connect(this.ctx.destination);
+    this.ampGain.connect(destination ?? this.ctx.destination);
   }
 
   setTune(freq: number) {

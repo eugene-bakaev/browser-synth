@@ -21,7 +21,7 @@ export class SynthEngine implements SoundEngine {
   private baseCutoff: number = 2000;
   private filterEnvAmount: number = 3000;
 
-  constructor(sharedCtx?: AudioContext) {
+  constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
     this.patchBay = new PatchBay();
     
@@ -39,7 +39,7 @@ export class SynthEngine implements SoundEngine {
     this.patchBay.connect(this.osc2.outputs.main, this.mixer.inputs.ch2);
     this.patchBay.connect(this.mixer.outputs.main, this.filter.inputs.main);
     this.patchBay.connect(this.filter.outputs.main, this.masterVCA);
-    this.masterVCA.connect(this.ctx.destination);
+    this.masterVCA.connect(destination ?? this.ctx.destination);
   }
 
   // --- Setter methods (encapsulated API) ---

@@ -15,7 +15,7 @@ export class ClapEngine implements SoundEngine {
   private tone: number = 1000;     // Bandpass filter cutoff frequency (500 - 3000)
   private sloppy: number = 0.015;  // Spacing between initial impulses (0.005 - 0.03)
 
-  constructor(sharedCtx?: AudioContext) {
+  constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
 
     // 1. Initialize filter
@@ -33,7 +33,7 @@ export class ClapEngine implements SoundEngine {
 
     this.noiseFilter.connect(this.noiseGain);
     this.noiseGain.connect(this.ampGain);
-    this.ampGain.connect(this.ctx.destination);
+    this.ampGain.connect(destination ?? this.ctx.destination);
   }
 
   setDecay(val: number) {
