@@ -22,6 +22,8 @@ describe('Sequencer', () => {
       track.steps.forEach(step => {
         expect(step.note).toBeNull();
         expect(step.octave).toBe(4);
+        expect(step.isChord).toBe(false);
+        expect(step.chordType).toBe('maj');
       });
     });
   });
@@ -61,6 +63,8 @@ describe('Sequencer', () => {
       seq.tracks[0].steps[2].velocity = 0.35;
       seq.tracks[0].steps[2].octave = 2;
       seq.tracks[0].steps[2].length = 4;
+      seq.tracks[0].steps[2].isChord = true;
+      seq.tracks[0].steps[2].chordType = 'min';
 
       seq.clearTrack(0);
 
@@ -70,6 +74,8 @@ describe('Sequencer', () => {
       expect(step.velocity).toBe(0.8);
       expect(step.octave).toBe(4);
       expect(step.length).toBe(1);
+      expect(step.isChord).toBe(false);
+      expect(step.chordType).toBe('maj');
     });
 
     it('should shift steps circularly left and right', () => {

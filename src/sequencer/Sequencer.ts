@@ -4,6 +4,8 @@ export interface Step {
   length: number; // Duration in ticks (16th notes)
   velocity: number; // Volume velocity (0.0 - 1.0)
   muted: boolean; // Step mute state
+  isChord?: boolean;
+  chordType?: string;
 }
 
 export interface Track {
@@ -21,7 +23,9 @@ export class Sequencer {
       octave: 4, 
       length: 1,
       velocity: 0.8,
-      muted: false
+      muted: false,
+      isChord: false,
+      chordType: 'maj'
     }))
   }));
   bpm = 120;
@@ -39,6 +43,8 @@ export class Sequencer {
       step.velocity = 0.8;
       step.octave = 4;
       step.length = 1;
+      step.isChord = false;
+      step.chordType = 'maj';
     });
   }
 
@@ -62,6 +68,8 @@ export class Sequencer {
         step.note = 'C';
         step.muted = false;
         step.velocity = 0.8;
+        step.isChord = false;
+        step.chordType = 'maj';
       }
     });
   }

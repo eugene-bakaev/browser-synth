@@ -62,6 +62,11 @@ describe('SynthEngine', () => {
     expect(() => engine.trigger(440, 0.5)).not.toThrow();
   });
 
+  it('should trigger a chord without throwing', () => {
+    const engine = new SynthEngine();
+    expect(() => engine.trigger([261.63, 329.63, 392.00], 0.5)).not.toThrow();
+  });
+
   it('should resume context if suspended', () => {
     const engine = new SynthEngine();
     engine.trigger(440, 0.5);

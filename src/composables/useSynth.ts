@@ -7,6 +7,7 @@ import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine } from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
+import { resolveChordFreqs } from '../utils/chords';
 
 // Instantiate a single shared AudioContext and 4 engines to ensure perfect sync
 const sharedCtx = new AudioContext();
@@ -61,6 +62,7 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
 
 export interface TrackState {
   engineType: EngineType;
+  playMode: 'mono' | 'chord';
   synth: {
     osc1Type: OscillatorType;
     osc2Type: OscillatorType;
@@ -106,6 +108,7 @@ export interface TrackState {
 // Persist the reactive states at module scope so they survive HMR/reload
 const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) => ({
   engineType: 'synth' as EngineType,
+  playMode: 'mono' as const,
   synth: {
     osc1Type: 'sawtooth' as OscillatorType,
     osc2Type: 'sawtooth' as OscillatorType,
@@ -281,6 +284,13 @@ export function useSynth() {
   const clapTone = trackParam('clap', 'tone', 1000);
   const clapSloppy = trackParam('clap', 'sloppy', 0.015);
 
+  const playMode = computed({
+    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].playMode : 'mono' as const,
+    set: (val: 'mono' | 'chord') => {
+      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].playMode = val;
+    }
+  });
+
   const togglePlay = () => {
     if (sharedCtx.state === 'suspended') {
       sharedCtx.resume();
@@ -297,14 +307,21 @@ export function useSynth() {
         for (let i = 0; i < 4; i++) {
           const step = sequencer.tracks[i].steps[stepIndex];
           if (step.note && !step.muted) {
-            const freq = noteToFreq(step.note, step.octave);
             const engineType = trackStates[i].engineType;
             if (engineType === 'synth') {
+              const currentPlayMode = trackStates[i].playMode || 'mono';
               const tickDuration = (60 / sequencer.bpm) / 4;
               const duration = step.length * tickDuration;
-              engines[i].trigger(freq, duration, time, 1.0);
+              if (currentPlayMode === 'chord') {
+                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
+                engines[i].trigger(freqs, duration, time, 1.0);
+              } else {
+                const freq = noteToFreq(step.note, step.octave);
+                engines[i].trigger(freq, duration, time, 1.0);
+              }
             } else {
               // Drum engine: trigger with standard freq, duration 0.15s, and pass step.velocity
+              const freq = noteToFreq(step.note, step.octave);
               engines[i].trigger(freq, 0.15, time, step.velocity);
             }
           }
@@ -331,6 +348,7 @@ export function useSynth() {
     currentStep,
     waveforms,
     engineType,
+    playMode,
     osc1Type,
     osc2Type,
     osc1Coarse,

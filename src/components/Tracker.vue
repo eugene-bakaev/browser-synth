@@ -21,14 +21,47 @@
       </div>
     </div>
 
+    <!-- Play Mode Selector (only for synth) -->
+    <div v-if="engineType === 'synth'" class="playmode-selector">
+      <button 
+        class="mode-btn" 
+        :class="{ active: playMode === 'mono' }" 
+        @click="$emit('update:playMode', 'mono')"
+      >
+        MONO
+      </button>
+      <button 
+        class="mode-btn" 
+        :class="{ active: playMode === 'chord' }" 
+        @click="$emit('update:playMode', 'chord')"
+      >
+        CHORD
+      </button>
+    </div>
+
     <!-- Grid Header -->
-    <div class="tracker-row tracker-header" :class="engineType === 'synth' ? 'synth-row' : 'drum-row'">
+    <div 
+      class="tracker-row tracker-header" 
+      :class="[
+        engineType === 'synth' 
+          ? (playMode === 'chord' ? 'chord-row' : 'synth-row') 
+          : 'drum-row'
+      ]"
+    >
       <div class="col-mute"></div>
       <div class="col-step">STEP</div>
       <template v-if="engineType === 'synth'">
-        <div class="col-note">NOTE</div>
-        <div class="col-oct">OCT</div>
-        <div class="col-len">LEN</div>
+        <template v-if="playMode === 'chord'">
+          <div class="col-note">ROOT</div>
+          <div class="col-chord-type">CHORD</div>
+          <div class="col-oct">OCT</div>
+          <div class="col-len">LEN</div>
+        </template>
+        <template v-else>
+          <div class="col-note">NOTE</div>
+          <div class="col-oct">OCT</div>
+          <div class="col-len">LEN</div>
+        </template>
       </template>
       <template v-else>
         <div class="col-trig">TRIG</div>
@@ -43,7 +76,9 @@
         :key="i" 
         class="tracker-row step-row" 
         :class="[
-          engineType === 'synth' ? 'synth-row' : 'drum-row',
+          engineType === 'synth' 
+            ? (playMode === 'chord' ? 'chord-row' : 'synth-row') 
+            : 'drum-row',
           { active: currentStep === i, 'step-muted': step.muted }
         ]"
       >
@@ -63,18 +98,39 @@
 
         <!-- Synth Layout -->
         <template v-if="engineType === 'synth'">
-          <div class="col-note">
-            <select v-model="step.note">
-              <option :value="null">---</option>
-              <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
-            </select>
-          </div>
-          <div class="col-oct">
-            <input type="number" v-model.number="step.octave" min="0" max="8" title="Octave">
-          </div>
-          <div class="col-len">
-            <input type="number" v-model.number="step.length" min="1" max="16" title="Length (ticks)">
-          </div>
+          <template v-if="playMode === 'chord'">
+            <div class="col-note">
+              <select v-model="step.note" title="Root Note">
+                <option :value="null">---</option>
+                <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </div>
+            <div class="col-chord-type">
+              <select v-model="step.chordType" :disabled="step.note === null" title="Chord Type">
+                <option v-for="(_, type) in CHORD_FORMULAS" :key="type" :value="type">{{ type }}</option>
+              </select>
+            </div>
+            <div class="col-oct">
+              <input type="number" v-model.number="step.octave" :disabled="step.note === null" min="0" max="8" title="Octave">
+            </div>
+            <div class="col-len">
+              <input type="number" v-model.number="step.length" :disabled="step.note === null" min="1" max="16" title="Length (ticks)">
+            </div>
+          </template>
+          <template v-else>
+            <div class="col-note">
+              <select v-model="step.note" title="Note">
+                <option :value="null">---</option>
+                <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </div>
+            <div class="col-oct">
+              <input type="number" v-model.number="step.octave" :disabled="step.note === null" min="0" max="8" title="Octave">
+            </div>
+            <div class="col-len">
+              <input type="number" v-model.number="step.length" :disabled="step.note === null" min="1" max="16" title="Length (ticks)">
+            </div>
+          </template>
         </template>
 
         <!-- Drum Layout -->
@@ -110,8 +166,9 @@
 import { ref } from 'vue';
 import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
+import { CHORD_FORMULAS } from '../utils/chords';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   steps: Step[];
   currentStep: number;
   title: string;
@@ -119,13 +176,17 @@ const props = defineProps<{
   isFocused?: boolean;
   trackId: number;
   engineType: string;
-}>();
+  playMode?: 'mono' | 'chord';
+}>(), {
+  playMode: 'mono'
+});
 
 const emit = defineEmits<{
   (e: 'select-track'): void;
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
   (e: 'fill', payload: { trackId: number; interval: number }): void;
+  (e: 'update:playMode', playMode: 'mono' | 'chord'): void;
 }>();
 
 const fillSelectRef = ref<HTMLSelectElement | null>(null);
@@ -279,8 +340,45 @@ const toggleDrumTrigger = (step: Step) => {
   grid-template-columns: 24px 26px 65px 50px 55px;
 }
 
+.tracker-row.chord-row {
+  grid-template-columns: 24px 20px 48px 65px 36px 36px;
+}
+
 .tracker-row.drum-row {
   grid-template-columns: 24px 26px 55px minmax(0, 1fr);
+}
+
+/* Play Mode Selector */
+.playmode-selector {
+  display: flex;
+  background: #181818;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  padding: 2px;
+}
+
+.mode-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  height: 20px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.mode-btn:hover {
+  color: #fff;
+}
+
+.mode-btn.active {
+  background: var(--track-color);
+  color: #000;
 }
 
 .tracker-header {
@@ -469,6 +567,11 @@ select, input[type="number"] {
 select:focus, input[type="number"]:focus {
   border-color: var(--track-color);
   outline: none;
+}
+
+select:disabled, input[type="number"]:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* Hide number arrows for cleaner look */
