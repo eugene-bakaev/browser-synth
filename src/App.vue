@@ -164,6 +164,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Track Mixer (Globally visible at the bottom) -->
+    <div class="mixer-section">
+      <TrackMixer 
+        :trackStates="trackStates" 
+        :sequencer="sequencer" 
+        :currentStep="currentStep" 
+      />
+    </div>
   </div>
 </template>
 
@@ -176,8 +185,10 @@ import HatPanel from './components/HatPanel.vue';
 import SnarePanel from './components/SnarePanel.vue';
 import ClapPanel from './components/ClapPanel.vue';
 import SignalFlow from './components/SignalFlow.vue';
+import TrackMixer from './components/TrackMixer.vue';
 
 const {
+  trackStates,
   analyser,
   sequencer,
   activeTrackIndex,
@@ -479,6 +490,10 @@ h1 {
   gap: 20px;
   justify-content: space-around;
   padding: 10px 0;
+}
+.mixer-section {
+  margin-top: 30px;
+  flex-shrink: 0;
 }
 </style>
 

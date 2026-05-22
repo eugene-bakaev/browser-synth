@@ -32,23 +32,31 @@ compressor.connect(masterGain);
 masterGain.connect(analyser);
 analyser.connect(sharedCtx.destination);
 
+// Create track gains for mixing/mute/solo (routed to the compressor)
+export const trackGains: GainNode[] = Array(4).fill(null).map(() => {
+  const g = sharedCtx.createGain();
+  g.gain.setValueAtTime(0.8, sharedCtx.currentTime); // default volume is 0.8
+  g.connect(compressor);
+  return g;
+});
+
 const engines: SoundEngine[] = [
-  new SynthEngine(sharedCtx, compressor),
-  new SynthEngine(sharedCtx, compressor),
-  new SynthEngine(sharedCtx, compressor),
-  new SynthEngine(sharedCtx, compressor),
+  new SynthEngine(sharedCtx, trackGains[0]),
+  new SynthEngine(sharedCtx, trackGains[1]),
+  new SynthEngine(sharedCtx, trackGains[2]),
+  new SynthEngine(sharedCtx, trackGains[3]),
 ];
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
 
-// Factory map: engineType -> constructor. Connect engines to the compressor.
-const engineFactories: Record<EngineType, (ctx: AudioContext) => SoundEngine> = {
-  synth: (ctx) => new SynthEngine(ctx, compressor),
-  kick: (ctx) => new KickEngine(ctx, compressor),
-  hat: (ctx) => new HatEngine(ctx, compressor),
-  snare: (ctx) => new SnareEngine(ctx, compressor),
-  clap: (ctx) => new ClapEngine(ctx, compressor),
+// Factory map: engineType -> constructor. Connect engines to their track gain node.
+const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
+  synth: (ctx, dest) => new SynthEngine(ctx, dest),
+  kick: (ctx, dest) => new KickEngine(ctx, dest),
+  hat: (ctx, dest) => new HatEngine(ctx, dest),
+  snare: (ctx, dest) => new SnareEngine(ctx, dest),
+  clap: (ctx, dest) => new ClapEngine(ctx, dest),
 };
 
 export interface TrackState {
@@ -87,6 +95,11 @@ export interface TrackState {
     decay: number;   // seconds (0.05 - 0.8)
     tone: number;    // Hz (500 - 3000)
     sloppy: number;  // seconds (0.005 - 0.03)
+  };
+  mixer: {
+    volume: number;
+    muted: boolean;
+    soloed: boolean;
   };
 }
 
@@ -127,6 +140,11 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) =>
     decay: 0.25,
     tone: 1000,
     sloppy: 0.015,
+  },
+  mixer: {
+    volume: 0.8,
+    muted: false,
+    soloed: false,
   }
 })));
 
@@ -139,7 +157,7 @@ const syncTrackToEngine = (i: number) => {
   // Swap engine if type changed
   if (engine.engineType !== targetType) {
     engine.dispose();
-    engine = engineFactories[targetType](sharedCtx);
+    engine = engineFactories[targetType](sharedCtx, trackGains[i]);
     engines[i] = engine;
   }
 
@@ -147,16 +165,55 @@ const syncTrackToEngine = (i: number) => {
   engine.applyParams(state[targetType] as Record<string, any>);
 };
 
-// Initialize engines
+// Calculate and apply target gains smoothly to prevent clicks/pops
+const updateMixerGains = () => {
+  const anySoloed = trackStates.some(ts => ts.mixer?.soloed);
+  for (let i = 0; i < 4; i++) {
+    const state = trackStates[i];
+    let targetGain = 0;
+    if (anySoloed) {
+      targetGain = (state.mixer.soloed && !state.mixer.muted) ? state.mixer.volume : 0;
+    } else {
+      targetGain = !state.mixer.muted ? state.mixer.volume : 0;
+    }
+    // Smooth transitions using setTargetAtTime
+    trackGains[i].gain.setTargetAtTime(targetGain, sharedCtx.currentTime, 0.015);
+  }
+};
+
+// Initialize engines and mixer gains
 for (let i = 0; i < 4; i++) {
   syncTrackToEngine(i);
 }
+updateMixerGains();
 
-// Watch each track state individually to prevent updating one track from triggering engine sync on other tracks
+// Watch engine type and specific parameters to trigger sync
 for (let i = 0; i < 4; i++) {
-  watch(() => trackStates[i], () => {
-    syncTrackToEngine(i);
-  }, { deep: true });
+  watch(
+    () => [
+      trackStates[i].engineType,
+      trackStates[i].synth,
+      trackStates[i].kick,
+      trackStates[i].hat,
+      trackStates[i].snare,
+      trackStates[i].clap
+    ],
+    () => {
+      syncTrackToEngine(i);
+    },
+    { deep: true }
+  );
+}
+
+// Watch mixer parameters separately to update gains
+for (let i = 0; i < 4; i++) {
+  watch(
+    () => trackStates[i].mixer,
+    () => {
+      updateMixerGains();
+    },
+    { deep: true }
+  );
 }
 
 export function useSynth() {
@@ -260,6 +317,7 @@ export function useSynth() {
   };
 
   return {
+    trackStates,
     analyser,
     engines,
     sequencer,
