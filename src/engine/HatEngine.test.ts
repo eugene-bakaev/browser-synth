@@ -84,11 +84,15 @@ describe('HatEngine', () => {
 
   it('should dispose correctly', () => {
     const engine = new HatEngine();
-    const mockOscs = (engine as any).oscs;
+    engine.trigger(440, 0.1);
+    const activeOscs = (engine as any).activeOscs;
+    expect(activeOscs.size).toBe(6);
+    const mockOscs = Array.from(activeOscs);
     engine.dispose();
     mockOscs.forEach((osc: any) => {
       expect(osc.stop).toHaveBeenCalled();
       expect(osc.disconnect).toHaveBeenCalled();
     });
+    expect(activeOscs.size).toBe(0);
   });
 });

@@ -43,8 +43,6 @@ const osc2Fine = defineModel<number>('osc2Fine', { required: true });
 </script>
 
 <style scoped>
-.module-group { background: #222; padding: 15px; border-radius: 8px; }
-h3 { margin-top: 0; color: #888; border-bottom: 1px solid #333; padding-bottom: 5px; }
 .osc-row { display: flex; flex-direction: column; gap: 12px; }
 .osc-unit { background: #333; padding: 10px; border-radius: 4px; display: flex; flex-direction: column; }
 .osc-unit h4 { margin: 0 0 10px 0; font-size: 0.8rem; color: #888; }

@@ -47,35 +47,36 @@ export class SynthEngine implements SoundEngine {
   setOsc1Type(type: OscillatorType) { this.osc1.setWaveform(type); }
   setOsc2Type(type: OscillatorType) { this.osc2.setWaveform(type); }
 
-  setOsc1Coarse(val: number) { this.osc1.setCoarseTune(val); }
-  setOsc1Fine(val: number) { this.osc1.setFineTune(val); }
-  setOsc2Coarse(val: number) { this.osc2.setCoarseTune(val); }
-  setOsc2Fine(val: number) { this.osc2.setFineTune(val); }
+  setOsc1Coarse(val: number) { this.osc1.setCoarseTune(Math.max(-3, Math.min(3, val))); }
+  setOsc1Fine(val: number) { this.osc1.setFineTune(Math.max(-100, Math.min(100, val))); }
+  setOsc2Coarse(val: number) { this.osc2.setCoarseTune(Math.max(-3, Math.min(3, val))); }
+  setOsc2Fine(val: number) { this.osc2.setFineTune(Math.max(-100, Math.min(100, val))); }
 
-  setOsc1Level(val: number) { this.mixer.setChannelGain(1, val); }
-  setOsc2Level(val: number) { this.mixer.setChannelGain(2, val); }
+  setOsc1Level(val: number) { this.mixer.setChannelGain(1, Math.max(0, Math.min(1, val))); }
+  setOsc2Level(val: number) { this.mixer.setChannelGain(2, Math.max(0, Math.min(1, val))); }
 
-  setFilterCutoff(val: number) { this.baseCutoff = val; }
-  setFilterEnvAmount(val: number) { this.filterEnvAmount = val; }
+  setFilterCutoff(val: number) { this.baseCutoff = Math.max(20, Math.min(10000, val)); }
+  setFilterEnvAmount(val: number) { this.filterEnvAmount = Math.max(0, Math.min(5000, val)); }
 
   setFilterRes(val: number) {
+    const clamped = Math.max(0, Math.min(20, val));
     if (this.filter.inputs.resonance instanceof AudioParam) {
-      this.filter.inputs.resonance.setTargetAtTime(val, this.ctx.currentTime, 0.01);
+      this.filter.inputs.resonance.setTargetAtTime(clamped, this.ctx.currentTime, 0.01);
     }
   }
 
   setFilterEnv(env: { a: number; d: number; s: number; r: number }) {
-    this.filterEnv.a = env.a;
-    this.filterEnv.d = env.d;
-    this.filterEnv.s = env.s;
-    this.filterEnv.r = env.r;
+    this.filterEnv.a = Math.max(0.001, env.a);
+    this.filterEnv.d = Math.max(0.001, env.d);
+    this.filterEnv.s = Math.max(0, Math.min(1, env.s));
+    this.filterEnv.r = Math.max(0.001, env.r);
   }
 
   setAmpEnv(env: { a: number; d: number; s: number; r: number }) {
-    this.ampEnv.a = env.a;
-    this.ampEnv.d = env.d;
-    this.ampEnv.s = env.s;
-    this.ampEnv.r = env.r;
+    this.ampEnv.a = Math.max(0.001, env.a);
+    this.ampEnv.d = Math.max(0.001, env.d);
+    this.ampEnv.s = Math.max(0, Math.min(1, env.s));
+    this.ampEnv.r = Math.max(0.001, env.r);
   }
 
   // --- Polymorphic param application ---

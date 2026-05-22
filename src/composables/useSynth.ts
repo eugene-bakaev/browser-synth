@@ -130,12 +130,12 @@ for (let i = 0; i < 4; i++) {
   syncTrackToEngine(i);
 }
 
-// Watch trackStates deeply and apply updates to corresponding engines
-watch(trackStates, () => {
-  for (let i = 0; i < 4; i++) {
+// Watch each track state individually to prevent updating one track from triggering engine sync on other tracks
+for (let i = 0; i < 4; i++) {
+  watch(() => trackStates[i], () => {
     syncTrackToEngine(i);
-  }
-}, { deep: true });
+  }, { deep: true });
+}
 
 export function useSynth() {
   const currentStep = ref(-1);

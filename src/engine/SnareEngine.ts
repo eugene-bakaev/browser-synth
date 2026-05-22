@@ -6,8 +6,8 @@ export class SnareEngine implements SoundEngine {
   readonly ctx: AudioContext;
 
   // Body (Tonal) components
-  private bodyOsc: OscillatorNode;
   private bodyGain: GainNode;
+  private activeOscs: Set<OscillatorNode> = new Set();
 
   // Snare Wires (Noise) components
   private noiseGain: GainNode;
@@ -24,16 +24,9 @@ export class SnareEngine implements SoundEngine {
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
 
-    // 1. Initialize Body (Tonal) component
-    this.bodyOsc = this.ctx.createOscillator();
-    this.bodyOsc.type = 'triangle';
-    this.bodyOsc.frequency.value = this.tune;
-
+    // 1. Initialize Body (Tonal) gain
     this.bodyGain = this.ctx.createGain();
     this.bodyGain.gain.value = 0;
-
-    this.bodyOsc.connect(this.bodyGain);
-    this.bodyOsc.start();
 
     // 2. Initialize Snare Wires (Noise) component
     this.noiseFilter = this.ctx.createBiquadFilter();
@@ -56,15 +49,15 @@ export class SnareEngine implements SoundEngine {
   }
 
   setTune(freq: number) {
-    this.tune = freq;
+    this.tune = Math.max(100, Math.min(250, freq));
   }
 
   setDecay(val: number) {
-    this.decay = val;
+    this.decay = Math.max(0.05, Math.min(0.8, val));
   }
 
   setSnappy(val: number) {
-    this.snappy = val;
+    this.snappy = Math.max(0, Math.min(1, val));
   }
 
   applyParams(params: Record<string, any>) {
@@ -80,10 +73,25 @@ export class SnareEngine implements SoundEngine {
     const scheduleTime = time ?? this.ctx.currentTime;
 
     // --- 1. Trigger Body (Tonal) ---
+    // Instantiate triangle oscillator dynamically
+    const bodyOsc = this.ctx.createOscillator();
+    bodyOsc.type = 'triangle';
+    bodyOsc.connect(this.bodyGain);
+
     // Fast pitch sweep (e.g. from tune * 2 down to tune)
-    this.bodyOsc.frequency.cancelScheduledValues(scheduleTime);
-    this.bodyOsc.frequency.setValueAtTime(this.tune * 1.8, scheduleTime);
-    this.bodyOsc.frequency.exponentialRampToValueAtTime(this.tune, scheduleTime + 0.06);
+    bodyOsc.frequency.setValueAtTime(this.tune * 1.8, scheduleTime);
+    bodyOsc.frequency.exponentialRampToValueAtTime(this.tune, scheduleTime + 0.06);
+
+    this.activeOscs.add(bodyOsc);
+    bodyOsc.start(scheduleTime);
+    bodyOsc.stop(scheduleTime + 0.15); // body decay is tight, 0.08s, so 0.15s is plenty
+
+    bodyOsc.onended = () => {
+      try {
+        bodyOsc.disconnect();
+      } catch (e) {}
+      this.activeOscs.delete(bodyOsc);
+    };
 
     // Amplitude envelope for the body (always a tight decay, e.g. 0.08s)
     const bodyMaxGain = (1.0 - this.snappy) * 1.2;
@@ -117,10 +125,16 @@ export class SnareEngine implements SoundEngine {
   }
 
   dispose() {
-    try {
-      this.bodyOsc.stop();
-    } catch (e) {}
-    this.bodyOsc.disconnect();
+    this.activeOscs.forEach((osc) => {
+      try {
+        osc.stop();
+      } catch (e) {}
+      try {
+        osc.disconnect();
+      } catch (e) {}
+    });
+    this.activeOscs.clear();
+
     this.bodyGain.disconnect();
     this.noiseFilter.disconnect();
     this.noiseGain.disconnect();

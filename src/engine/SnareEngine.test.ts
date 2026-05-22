@@ -84,9 +84,13 @@ describe('SnareEngine', () => {
 
   it('should dispose correctly', () => {
     const engine = new SnareEngine();
-    const mockOsc = (engine as any).bodyOsc;
+    engine.trigger(180, 0.25);
+    const activeOscs = (engine as any).activeOscs;
+    expect(activeOscs.size).toBe(1);
+    const mockOsc = Array.from(activeOscs)[0] as any;
     engine.dispose();
     expect(mockOsc.stop).toHaveBeenCalled();
     expect(mockOsc.disconnect).toHaveBeenCalled();
+    expect(activeOscs.size).toBe(0);
   });
 });

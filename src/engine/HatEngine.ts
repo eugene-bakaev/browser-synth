@@ -6,7 +6,7 @@ export class HatEngine implements SoundEngine {
   readonly ctx: AudioContext;
   
   // Metallic components
-  private oscs: OscillatorNode[] = [];
+  private activeOscs: Set<OscillatorNode> = new Set();
   private metalMixer: GainNode;
   private metalFilter: BiquadFilterNode;
   private metalGain: GainNode;
@@ -26,19 +26,9 @@ export class HatEngine implements SoundEngine {
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
 
-    // 1. Initialize Metallic Source (TR-808 style: 6 detuned square waves)
+    // 1. Initialize Metallic Mixer
     this.metalMixer = this.ctx.createGain();
     this.metalMixer.gain.value = 0.15; // keep it balanced
-
-    const metalFreqs = [205.3, 369.6, 304.4, 522.7, 370.0, 800.0];
-    metalFreqs.forEach((freq) => {
-      const osc = this.ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = freq;
-      osc.connect(this.metalMixer);
-      osc.start();
-      this.oscs.push(osc);
-    });
 
     // Highpass filter for the metallic oscillators to keep only the high-frequency sizzle
     this.metalFilter = this.ctx.createBiquadFilter();
@@ -74,19 +64,19 @@ export class HatEngine implements SoundEngine {
   }
 
   setDecay(val: number) {
-    this.decay = val;
+    this.decay = Math.max(0.02, Math.min(0.6, val));
   }
 
   setTone(val: number) {
-    this.tone = val;
-    this.bandpassFilter.frequency.setValueAtTime(val, this.ctx.currentTime);
+    this.tone = Math.max(3000, Math.min(14000, val));
+    this.bandpassFilter.frequency.setValueAtTime(this.tone, this.ctx.currentTime);
   }
 
   setMetallic(val: number) {
-    this.metallic = val;
+    this.metallic = Math.max(0, Math.min(1, val));
     const time = this.ctx.currentTime;
-    this.noiseGain.gain.setValueAtTime(1.0 - val, time);
-    this.metalGain.gain.setValueAtTime(val, time);
+    this.noiseGain.gain.setValueAtTime(1.0 - this.metallic, time);
+    this.metalGain.gain.setValueAtTime(this.metallic, time);
   }
 
   applyParams(params: Record<string, any>) {
@@ -101,7 +91,27 @@ export class HatEngine implements SoundEngine {
     }
     const scheduleTime = time ?? this.ctx.currentTime;
 
-    // 1. Create a one-shot noise source
+    // 1. Instantiate the metallic component square-wave oscillators dynamically
+    const metalFreqs = [205.3, 369.6, 304.4, 522.7, 370.0, 800.0];
+    metalFreqs.forEach((f) => {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = f;
+      osc.connect(this.metalMixer);
+      
+      this.activeOscs.add(osc);
+      osc.start(scheduleTime);
+      osc.stop(scheduleTime + this.decay + 0.1);
+      
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+        } catch (e) {}
+        this.activeOscs.delete(osc);
+      };
+    });
+
+    // 2. Create a one-shot noise source
     const noiseSource = this.ctx.createBufferSource();
     noiseSource.buffer = getNoiseBuffer(this.ctx);
     noiseSource.loop = true;
@@ -120,7 +130,7 @@ export class HatEngine implements SoundEngine {
       }
     };
 
-    // 2. Trigger the Amplitude Envelope
+    // 3. Trigger the Amplitude Envelope
     this.ampGain.gain.cancelScheduledValues(scheduleTime);
     this.ampGain.gain.setValueAtTime(0, scheduleTime);
     // Instant attack for hat click
@@ -131,12 +141,16 @@ export class HatEngine implements SoundEngine {
   }
 
   dispose() {
-    this.oscs.forEach((osc) => {
+    this.activeOscs.forEach((osc) => {
       try {
         osc.stop();
       } catch (e) {}
-      osc.disconnect();
+      try {
+        osc.disconnect();
+      } catch (e) {}
     });
+    this.activeOscs.clear();
+    
     this.metalMixer.disconnect();
     this.metalFilter.disconnect();
     this.metalGain.disconnect();
@@ -145,3 +159,4 @@ export class HatEngine implements SoundEngine {
     this.ampGain.disconnect();
   }
 }
+

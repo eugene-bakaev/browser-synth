@@ -30,7 +30,5 @@ defineProps<{
 </script>
 
 <style scoped>
-.module-group { margin-top: 0; background: #222; padding: 15px; border-radius: 8px; }
-h3 { margin-top: 0; color: #888; border-bottom: 1px solid #333; padding-bottom: 5px; }
 .knob-row { display: flex; gap: 10px; flex-wrap: nowrap; }
 </style>

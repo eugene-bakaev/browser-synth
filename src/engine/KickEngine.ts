@@ -3,8 +3,8 @@ import { SoundEngine } from './types';
 export class KickEngine implements SoundEngine {
   readonly engineType = 'kick';
   readonly ctx: AudioContext;
-  private osc: OscillatorNode;
   private ampGain: GainNode;
+  private activeOscs: Set<OscillatorNode> = new Set();
 
   // Parameters
   private tune: number = 55;   // Base pitch in Hz (40 - 120)
@@ -13,28 +13,21 @@ export class KickEngine implements SoundEngine {
 
   constructor(sharedCtx?: AudioContext) {
     this.ctx = sharedCtx ?? new AudioContext();
-    this.osc = this.ctx.createOscillator();
     this.ampGain = this.ctx.createGain();
-
-    this.osc.type = 'sine';
     this.ampGain.gain.value = 0;
-
-    this.osc.connect(this.ampGain);
     this.ampGain.connect(this.ctx.destination);
-    
-    this.osc.start();
   }
 
   setTune(freq: number) {
-    this.tune = freq;
+    this.tune = Math.max(40, Math.min(120, freq));
   }
 
   setDecay(val: number) {
-    this.decay = val;
+    this.decay = Math.max(0.05, Math.min(1.5, val));
   }
 
   setClick(val: number) {
-    this.click = val;
+    this.click = Math.max(0, Math.min(1, val));
   }
 
   applyParams(params: Record<string, any>) {
@@ -49,6 +42,11 @@ export class KickEngine implements SoundEngine {
     }
     const scheduleTime = time ?? this.ctx.currentTime;
 
+    // Create oscillator dynamically at trigger time
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.connect(this.ampGain);
+
     // Pitch sweep configuration
     const fClick = 3000 * this.click; // click transient range
     const fStart = this.tune * 4 + fClick;
@@ -56,10 +54,21 @@ export class KickEngine implements SoundEngine {
     const fBase = this.tune;
 
     // Reset and apply pitch sweep
-    this.osc.frequency.cancelScheduledValues(scheduleTime);
-    this.osc.frequency.setValueAtTime(fStart, scheduleTime);
-    this.osc.frequency.exponentialRampToValueAtTime(fBody, scheduleTime + 0.008);
-    this.osc.frequency.exponentialRampToValueAtTime(fBase, scheduleTime + 0.048);
+    osc.frequency.setValueAtTime(fStart, scheduleTime);
+    osc.frequency.exponentialRampToValueAtTime(fBody, scheduleTime + 0.008);
+    osc.frequency.exponentialRampToValueAtTime(fBase, scheduleTime + 0.048);
+
+    // Track oscillator
+    this.activeOscs.add(osc);
+    osc.start(scheduleTime);
+    osc.stop(scheduleTime + this.decay + 0.1);
+
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+      } catch (e) {}
+      this.activeOscs.delete(osc);
+    };
 
     // Reset and apply amplitude envelope (AD)
     this.ampGain.gain.cancelScheduledValues(scheduleTime);
@@ -71,12 +80,16 @@ export class KickEngine implements SoundEngine {
   }
 
   dispose() {
-    try {
-      this.osc.stop();
-    } catch (e) {
-      // already stopped or not started
-    }
-    this.osc.disconnect();
+    this.activeOscs.forEach((osc) => {
+      try {
+        osc.stop();
+      } catch (e) {}
+      try {
+        osc.disconnect();
+      } catch (e) {}
+    });
+    this.activeOscs.clear();
     this.ampGain.disconnect();
   }
 }
+

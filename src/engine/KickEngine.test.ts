@@ -62,10 +62,13 @@ describe('KickEngine', () => {
 
   it('should call stop on oscillator during disposal', () => {
     const engine = new KickEngine();
-    // Retrieve the mock oscillator from the engine
-    const mockOsc = (engine as any).osc;
+    engine.trigger(55, 0.3);
+    const activeOscs = (engine as any).activeOscs;
+    expect(activeOscs.size).toBe(1);
+    const mockOsc = Array.from(activeOscs)[0] as any;
     engine.dispose();
     expect(mockOsc.stop).toHaveBeenCalled();
     expect(mockOsc.disconnect).toHaveBeenCalled();
+    expect(activeOscs.size).toBe(0);
   });
 });
