@@ -4,7 +4,7 @@
     <div class="knob-row">
       <Knob label="Cutoff" :min="20" :max="20000" :step="1" format="hz" v-model="cutoff" />
       <Knob label="Res" :min="0" :max="20" :step="0.1" format="ratio" v-model="res" />
-      <Knob label="Env Amt" :min="0" :max="5000" :step="10" format="hz" v-model="envAmount" />
+      <Knob label="Env Amt" :min="0" :max="1" :step="0.01" format="percent" v-model="envAmount" />
     </div>
   </div>
 </template>

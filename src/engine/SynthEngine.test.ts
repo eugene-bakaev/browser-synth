@@ -77,10 +77,31 @@ describe('SynthEngine', () => {
       osc1Fine: 5,
       filterCutoff: 3000,
       filterRes: 2,
-      filterEnvAmount: 5000,
+      filterEnvAmount: 1.0,
       filterEnv: { a: 0.05, d: 0.3, s: 0.4, r: 0.6 },
       ampEnv: { a: 0.02, d: 0.1, s: 0.8, r: 0.3 },
     })).not.toThrow();
+  });
+
+  it('should handle filterEnvAmount in factor mode and Hz offset mode', () => {
+    const engine = new SynthEngine();
+    
+    // Default mode is factor mode (0 to 1)
+    engine.applyParams({ filterEnvAmount: 0.5 });
+    expect((engine as any).filterEnvAmount).toBe(0.5);
+    
+    // Clamps to 1 in factor mode
+    engine.applyParams({ filterEnvAmount: 5 });
+    expect((engine as any).filterEnvAmount).toBe(1.0);
+
+    // Switch to Hz offset mode
+    engine.applyParams({ useHzOffsetMode: true, filterEnvAmount: 3000 });
+    expect((engine as any).filterEnvAmount).toBe(3000);
+    expect((engine as any).useHzOffsetMode).toBe(true);
+
+    // Clamps to 5000 in Hz offset mode
+    engine.applyParams({ filterEnvAmount: 10000 });
+    expect((engine as any).filterEnvAmount).toBe(5000);
   });
 
   it('should clamp parameters correctly including cutoff up to 20000', () => {

@@ -104,7 +104,7 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) =>
     osc2Level: 0.5,
     filterCutoff: 2000,
     filterRes: 1,
-    filterEnvAmount: 3000,
+    filterEnvAmount: 0.6,
     filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
     ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
   },
@@ -200,7 +200,7 @@ export function useSynth() {
   const osc2Level = trackParam('synth', 'osc2Level', 0.5);
   const filterCutoff = trackParam('synth', 'filterCutoff', 2000);
   const filterRes = trackParam('synth', 'filterRes', 1);
-  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 3000);
+  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 0.6);
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 

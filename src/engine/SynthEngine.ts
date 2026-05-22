@@ -19,7 +19,9 @@ export class SynthEngine implements SoundEngine {
   private masterVCA: GainNode;
 
   private baseCutoff: number = 2000;
-  private filterEnvAmount: number = 3000;
+  // Default to factor mode (0.0 to 1.0). If useHzOffsetMode is true, uses raw Hz (0 to 5000).
+  private filterEnvAmount: number = 0.6;
+  private useHzOffsetMode: boolean = false;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -56,7 +58,16 @@ export class SynthEngine implements SoundEngine {
   setOsc2Level(val: number) { this.mixer.setChannelGain(2, Math.max(0, Math.min(1, val))); }
 
   setFilterCutoff(val: number) { this.baseCutoff = Math.max(20, Math.min(20000, val)); }
-  setFilterEnvAmount(val: number) { this.filterEnvAmount = Math.max(0, Math.min(5000, val)); }
+  setFilterEnvAmount(val: number) {
+    if (this.useHzOffsetMode) {
+      this.filterEnvAmount = Math.max(0, Math.min(5000, val));
+    } else {
+      this.filterEnvAmount = Math.max(0, Math.min(1, val));
+    }
+  }
+  setUseHzOffsetMode(enabled: boolean) {
+    this.useHzOffsetMode = enabled;
+  }
 
   setFilterRes(val: number) {
     const clamped = Math.max(0, Math.min(20, val));
@@ -92,6 +103,7 @@ export class SynthEngine implements SoundEngine {
     if (params.osc2Level !== undefined) this.setOsc2Level(params.osc2Level);
     if (params.filterCutoff !== undefined) this.setFilterCutoff(params.filterCutoff);
     if (params.filterRes !== undefined) this.setFilterRes(params.filterRes);
+    if (params.useHzOffsetMode !== undefined) this.setUseHzOffsetMode(params.useHzOffsetMode);
     if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);
     if (params.filterEnv !== undefined) this.setFilterEnv(params.filterEnv);
     if (params.ampEnv !== undefined) this.setAmpEnv(params.ampEnv);
@@ -112,7 +124,11 @@ export class SynthEngine implements SoundEngine {
 
     // Trigger Filter Envelope (Modulating Cutoff)
     if (this.filter.inputs.cutoff instanceof AudioParam) {
-        this.filterEnv.trigger(this.filter.inputs.cutoff, scheduleTime, duration, this.baseCutoff, this.baseCutoff + this.filterEnvAmount);
+        // Calculate dynamic sweep range based on active mode
+        const sweepRange = this.useHzOffsetMode 
+          ? this.filterEnvAmount 
+          : (this.filterEnvAmount * 5000); // 1.0 factor translates to 5000Hz max sweep
+        this.filterEnv.trigger(this.filter.inputs.cutoff, scheduleTime, duration, this.baseCutoff, this.baseCutoff + sweepRange);
     }
   }
 
