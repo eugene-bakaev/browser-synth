@@ -12,6 +12,7 @@ export class SnareEngine implements SoundEngine {
   // Snare Wires (Noise) components
   private noiseGain: GainNode;
   private noiseFilter: BiquadFilterNode;
+  private activeSources: Set<AudioBufferSourceNode> = new Set();
 
   // Master output
   private masterGain: GainNode;
@@ -106,6 +107,7 @@ export class SnareEngine implements SoundEngine {
     noiseSource.buffer = getNoiseBuffer(this.ctx);
     noiseSource.loop = true;
     noiseSource.connect(this.noiseFilter);
+    this.activeSources.add(noiseSource);
     noiseSource.start(scheduleTime);
     noiseSource.stop(scheduleTime + this.decay + 0.1);
 
@@ -113,6 +115,7 @@ export class SnareEngine implements SoundEngine {
       try {
         noiseSource.disconnect();
       } catch (e) {}
+      this.activeSources.delete(noiseSource);
     };
 
     // Amplitude envelope for noise (decay controlled by user)
@@ -134,6 +137,16 @@ export class SnareEngine implements SoundEngine {
       } catch (e) {}
     });
     this.activeOscs.clear();
+
+    this.activeSources.forEach((src) => {
+      try {
+        src.stop();
+      } catch (e) {}
+      try {
+        src.disconnect();
+      } catch (e) {}
+    });
+    this.activeSources.clear();
 
     this.bodyGain.disconnect();
     this.noiseFilter.disconnect();

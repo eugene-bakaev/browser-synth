@@ -30,7 +30,7 @@ export class MixerModule implements Module {
 
   setChannelGain(channel: 1 | 2, val: number) {
     const time = this.outGain.context.currentTime;
-    if (channel === 1) this.ch1Gain.gain.setValueAtTime(val, time);
-    if (channel === 2) this.ch2Gain.gain.setValueAtTime(val, time);
+    if (channel === 1) this.ch1Gain.gain.setTargetAtTime(val, time, 0.01);
+    if (channel === 2) this.ch2Gain.gain.setTargetAtTime(val, time, 0.01);
   }
 }

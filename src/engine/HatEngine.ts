@@ -7,6 +7,7 @@ export class HatEngine implements SoundEngine {
   
   // Metallic components
   private activeOscs: Set<OscillatorNode> = new Set();
+  private activeSources: Set<AudioBufferSourceNode> = new Set();
   private metalMixer: GainNode;
   private metalFilter: BiquadFilterNode;
   private metalGain: GainNode;
@@ -68,14 +69,14 @@ export class HatEngine implements SoundEngine {
 
   setTone(val: number) {
     this.tone = Math.max(3000, Math.min(14000, val));
-    this.bandpassFilter.frequency.setValueAtTime(this.tone, this.ctx.currentTime);
+    this.bandpassFilter.frequency.setTargetAtTime(this.tone, this.ctx.currentTime, 0.01);
   }
 
   setMetallic(val: number) {
     this.metallic = Math.max(0, Math.min(1, val));
     const time = this.ctx.currentTime;
-    this.noiseGain.gain.setValueAtTime(1.0 - this.metallic, time);
-    this.metalGain.gain.setValueAtTime(this.metallic, time);
+    this.noiseGain.gain.setTargetAtTime(1.0 - this.metallic, time, 0.01);
+    this.metalGain.gain.setTargetAtTime(this.metallic, time, 0.01);
   }
 
   applyParams(params: Record<string, any>) {
@@ -117,6 +118,7 @@ export class HatEngine implements SoundEngine {
     noiseSource.connect(this.noiseGain);
     
     // Play the noise source slightly longer than decay to prevent abrupt cuts before VCA closes
+    this.activeSources.add(noiseSource);
     noiseSource.start(scheduleTime);
     noiseSource.stop(scheduleTime + this.decay + 0.1);
 
@@ -127,6 +129,7 @@ export class HatEngine implements SoundEngine {
       } catch (e) {
         // already disconnected
       }
+      this.activeSources.delete(noiseSource);
     };
 
     // 3. Trigger the Amplitude Envelope
@@ -149,6 +152,16 @@ export class HatEngine implements SoundEngine {
       } catch (e) {}
     });
     this.activeOscs.clear();
+
+    this.activeSources.forEach((src) => {
+      try {
+        src.stop();
+      } catch (e) {}
+      try {
+        src.disconnect();
+      } catch (e) {}
+    });
+    this.activeSources.clear();
     
     this.metalMixer.disconnect();
     this.metalFilter.disconnect();

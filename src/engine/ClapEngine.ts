@@ -42,7 +42,7 @@ export class ClapEngine implements SoundEngine {
 
   setTone(val: number) {
     this.tone = Math.max(500, Math.min(3000, val));
-    this.noiseFilter.frequency.setValueAtTime(this.tone, this.ctx.currentTime);
+    this.noiseFilter.frequency.setTargetAtTime(this.tone, this.ctx.currentTime, 0.01);
   }
 
   setSloppy(val: number) {

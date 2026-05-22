@@ -11,28 +11,44 @@ import { noteToFreq } from '../utils/notes';
 // Instantiate a single shared AudioContext and 4 engines to ensure perfect sync
 const sharedCtx = new AudioContext();
 
+// Create a master dynamics compressor to prevent digital clipping/crackling
+const compressor = sharedCtx.createDynamicsCompressor();
+compressor.threshold.setValueAtTime(-12, sharedCtx.currentTime); // threshold in dB
+compressor.knee.setValueAtTime(30, sharedCtx.currentTime);       // knee in dB
+compressor.ratio.setValueAtTime(12, sharedCtx.currentTime);      // compression ratio
+compressor.attack.setValueAtTime(0.003, sharedCtx.currentTime);  // attack in seconds
+compressor.release.setValueAtTime(0.25, sharedCtx.currentTime);  // release in seconds
+
+// Create a master gain node to provide headroom
+const masterGain = sharedCtx.createGain();
+masterGain.gain.setValueAtTime(0.6, sharedCtx.currentTime);
+
 // Create a master AnalyserNode to capture output from all active engines
 const analyser = sharedCtx.createAnalyser();
 analyser.fftSize = 1024;
+
+// Route master chain
+compressor.connect(masterGain);
+masterGain.connect(analyser);
 analyser.connect(sharedCtx.destination);
 
 const engines: SoundEngine[] = [
-  new SynthEngine(sharedCtx, analyser),
-  new SynthEngine(sharedCtx, analyser),
-  new SynthEngine(sharedCtx, analyser),
-  new SynthEngine(sharedCtx, analyser),
+  new SynthEngine(sharedCtx, compressor),
+  new SynthEngine(sharedCtx, compressor),
+  new SynthEngine(sharedCtx, compressor),
+  new SynthEngine(sharedCtx, compressor),
 ];
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
 
-// Factory map: engineType -> constructor. No instanceof needed.
+// Factory map: engineType -> constructor. Connect engines to the compressor.
 const engineFactories: Record<EngineType, (ctx: AudioContext) => SoundEngine> = {
-  synth: (ctx) => new SynthEngine(ctx, analyser),
-  kick: (ctx) => new KickEngine(ctx, analyser),
-  hat: (ctx) => new HatEngine(ctx, analyser),
-  snare: (ctx) => new SnareEngine(ctx, analyser),
-  clap: (ctx) => new ClapEngine(ctx, analyser),
+  synth: (ctx) => new SynthEngine(ctx, compressor),
+  kick: (ctx) => new KickEngine(ctx, compressor),
+  hat: (ctx) => new HatEngine(ctx, compressor),
+  snare: (ctx) => new SnareEngine(ctx, compressor),
+  clap: (ctx) => new ClapEngine(ctx, compressor),
 };
 
 export interface TrackState {
