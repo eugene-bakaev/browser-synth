@@ -55,7 +55,7 @@ export class ClapEngine implements SoundEngine {
     if (params.sloppy !== undefined) this.setSloppy(params.sloppy);
   }
 
-  trigger(freq: number, duration: number, time?: number) {
+  trigger(freq: number, duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -83,23 +83,25 @@ export class ClapEngine implements SoundEngine {
     this.ampGain.gain.cancelScheduledValues(scheduleTime);
     this.ampGain.gain.setValueAtTime(0, scheduleTime);
 
+    const peak = 0.8 * velocity;
+
     // Pulse 1
-    this.ampGain.gain.linearRampToValueAtTime(0.8, scheduleTime + 0.001);
+    this.ampGain.gain.linearRampToValueAtTime(peak, scheduleTime + 0.001);
     this.ampGain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 0.008);
 
     // Pulse 2
     this.ampGain.gain.setValueAtTime(0.01, scheduleTime + s);
-    this.ampGain.gain.linearRampToValueAtTime(0.8, scheduleTime + s + 0.001);
+    this.ampGain.gain.linearRampToValueAtTime(peak, scheduleTime + s + 0.001);
     this.ampGain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + s + 0.008);
 
     // Pulse 3
     this.ampGain.gain.setValueAtTime(0.01, scheduleTime + 2 * s);
-    this.ampGain.gain.linearRampToValueAtTime(0.8, scheduleTime + 2 * s + 0.001);
+    this.ampGain.gain.linearRampToValueAtTime(peak, scheduleTime + 2 * s + 0.001);
     this.ampGain.gain.exponentialRampToValueAtTime(0.01, scheduleTime + 2 * s + 0.008);
 
     // Main Tail
     this.ampGain.gain.setValueAtTime(0.01, scheduleTime + 3 * s);
-    this.ampGain.gain.linearRampToValueAtTime(0.8, scheduleTime + 3 * s + 0.001);
+    this.ampGain.gain.linearRampToValueAtTime(peak, scheduleTime + 3 * s + 0.001);
     this.ampGain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 3 * s + 0.001 + d);
     this.ampGain.gain.setValueAtTime(0, scheduleTime + 3 * s + 0.001 + d + 0.01);
   }

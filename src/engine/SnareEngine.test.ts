@@ -93,4 +93,24 @@ describe('SnareEngine', () => {
     expect(mockOsc.disconnect).toHaveBeenCalled();
     expect(activeOscs.size).toBe(0);
   });
+
+  it('should scale the body and noise envelopes by velocity', () => {
+    const engine = new SnareEngine();
+    const g1 = new MockGainNode(); // body
+    const g2 = new MockGainNode(); // noise
+    const g3 = new MockGainNode(); // master
+    vi.spyOn(engine.ctx, 'createGain')
+      .mockReturnValueOnce(g1 as any)
+      .mockReturnValueOnce(g2 as any)
+      .mockReturnValueOnce(g3 as any);
+
+    const testEngine = new SnareEngine(engine.ctx as any);
+    testEngine.applyParams({ snappy: 0.5 });
+    testEngine.trigger(180, 0.25, 0, 0.5);
+
+    // bodyMaxGain = (1.0 - 0.5) * 1.2 * 0.5 = 0.3
+    // noiseMaxGain = 0.5 * 1.5 * 0.5 = 0.375
+    expect(g1.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.3, 0.002);
+    expect(g2.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.375, 0.002);
+  });
 });

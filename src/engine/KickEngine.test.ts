@@ -71,4 +71,14 @@ describe('KickEngine', () => {
     expect(mockOsc.disconnect).toHaveBeenCalled();
     expect(activeOscs.size).toBe(0);
   });
+
+  it('should scale the gain envelope by velocity', () => {
+    const engine = new KickEngine();
+    const mockGainNode = new MockGainNode();
+    vi.spyOn(engine.ctx, 'createGain').mockReturnValue(mockGainNode as any);
+    // Create new engine instance with mock context to trigger createGain mock
+    const testEngine = new KickEngine(engine.ctx as any);
+    testEngine.trigger(55, 0.3, 0, 0.5);
+    expect(mockGainNode.gain.linearRampToValueAtTime).toHaveBeenCalledWith(0.5, 0.002);
+  });
 });

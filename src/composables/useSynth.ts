@@ -296,11 +296,17 @@ export function useSynth() {
         // Trigger all tracks in parallel
         for (let i = 0; i < 4; i++) {
           const step = sequencer.tracks[i].steps[stepIndex];
-          if (step.note) {
+          if (step.note && !step.muted) {
             const freq = noteToFreq(step.note, step.octave);
-            const tickDuration = (60 / sequencer.bpm) / 4;
-            const duration = step.length * tickDuration;
-            engines[i].trigger(freq, duration, time);
+            const engineType = trackStates[i].engineType;
+            if (engineType === 'synth') {
+              const tickDuration = (60 / sequencer.bpm) / 4;
+              const duration = step.length * tickDuration;
+              engines[i].trigger(freq, duration, time, 1.0);
+            } else {
+              // Drum engine: trigger with standard freq, duration 0.15s, and pass step.velocity
+              engines[i].trigger(freq, 0.15, time, step.velocity);
+            }
           }
         }
       });

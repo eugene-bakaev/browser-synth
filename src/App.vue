@@ -27,7 +27,12 @@
           :title="`${track.name} [${getTrackEngineType(index).toUpperCase()}]`"
           :color="TRACK_COLORS[index]"
           :isFocused="false"
+          :trackId="track.id"
+          :engineType="getTrackEngineType(index)"
           @select-track="selectTrack(index)"
+          @clear="id => sequencer.clearTrack(id)"
+          @shift="payload => sequencer.shiftTrack(payload.trackId, payload.direction)"
+          @fill="payload => sequencer.fillTrack(payload.trackId, payload.interval)"
         />
       </div>
     </div>
@@ -96,6 +101,11 @@
               :title="sequencer.tracks[activeTrackIndex].name"
               :color="TRACK_COLORS[activeTrackIndex]"
               :isFocused="true"
+              :trackId="activeTrackIndex"
+              :engineType="engineType"
+              @clear="id => sequencer.clearTrack(id)"
+              @shift="payload => sequencer.shiftTrack(payload.trackId, payload.direction)"
+              @fill="payload => sequencer.fillTrack(payload.trackId, payload.interval)"
             />
           </section>
 
@@ -409,7 +419,7 @@ h1 {
 }
 .sequencer-section {
   flex-shrink: 0;
-  width: 260px;
+  width: 275px;
 }
 .engine-section { 
   flex: 1; 

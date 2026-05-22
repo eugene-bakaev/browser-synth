@@ -85,7 +85,7 @@ export class HatEngine implements SoundEngine {
     if (params.metallic !== undefined) this.setMetallic(params.metallic);
   }
 
-  trigger(freq: number, duration: number, time?: number) {
+  trigger(freq: number, duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -136,7 +136,7 @@ export class HatEngine implements SoundEngine {
     this.ampGain.gain.cancelScheduledValues(scheduleTime);
     this.ampGain.gain.setValueAtTime(0, scheduleTime);
     // Instant attack for hat click
-    this.ampGain.gain.linearRampToValueAtTime(0.8, scheduleTime + 0.002);
+    this.ampGain.gain.linearRampToValueAtTime(0.8 * velocity, scheduleTime + 0.002);
     // Exponential decay to silence
     this.ampGain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 0.002 + this.decay);
     this.ampGain.gain.setValueAtTime(0, scheduleTime + 0.002 + this.decay + 0.01);

@@ -8,7 +8,7 @@ export interface Module {
 
 export interface SoundEngine {
   readonly engineType: string;
-  trigger(freq: number, duration: number, time?: number): void;
+  trigger(freq: number, duration: number, time?: number, velocity?: number): void;
   applyParams(params: Record<string, any>): void;
   dispose(): void;
 }

@@ -36,7 +36,7 @@ export class KickEngine implements SoundEngine {
     if (params.click !== undefined) this.setClick(params.click);
   }
 
-  trigger(freq: number, duration: number, time?: number) {
+  trigger(freq: number, duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -73,7 +73,7 @@ export class KickEngine implements SoundEngine {
     // Reset and apply amplitude envelope (AD)
     this.ampGain.gain.cancelScheduledValues(scheduleTime);
     this.ampGain.gain.setValueAtTime(0, scheduleTime);
-    this.ampGain.gain.linearRampToValueAtTime(1.0, scheduleTime + 0.002);
+    this.ampGain.gain.linearRampToValueAtTime(velocity, scheduleTime + 0.002);
     // Exponential decay to a near-zero value (0.001), then drop to 0
     this.ampGain.gain.exponentialRampToValueAtTime(0.001, scheduleTime + 0.002 + this.decay);
     this.ampGain.gain.setValueAtTime(0, scheduleTime + 0.002 + this.decay + 0.01);

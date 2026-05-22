@@ -52,4 +52,61 @@ describe('Sequencer', () => {
     seq.stop();
     expect(seq.isPlaying).toBe(false);
   });
+
+  describe('Utility operations', () => {
+    it('should clear all steps of a track', () => {
+      const seq = new Sequencer();
+      seq.tracks[0].steps[2].note = 'C';
+      seq.tracks[0].steps[2].muted = true;
+      seq.tracks[0].steps[2].velocity = 0.35;
+      seq.tracks[0].steps[2].octave = 2;
+      seq.tracks[0].steps[2].length = 4;
+
+      seq.clearTrack(0);
+
+      const step = seq.tracks[0].steps[2];
+      expect(step.note).toBeNull();
+      expect(step.muted).toBe(false);
+      expect(step.velocity).toBe(0.8);
+      expect(step.octave).toBe(4);
+      expect(step.length).toBe(1);
+    });
+
+    it('should shift steps circularly left and right', () => {
+      const seq = new Sequencer();
+      // Set values at index 0, 1, 2
+      seq.tracks[0].steps[0].note = 'C';
+      seq.tracks[0].steps[1].note = 'D';
+      seq.tracks[0].steps[15].note = 'B';
+
+      // Shift right
+      seq.shiftTrack(0, 'right');
+      expect(seq.tracks[0].steps[0].note).toBe('B');
+      expect(seq.tracks[0].steps[1].note).toBe('C');
+      expect(seq.tracks[0].steps[2].note).toBe('D');
+      expect(seq.tracks[0].steps[15].note).toBeNull();
+
+      // Shift left (back to original)
+      seq.shiftTrack(0, 'left');
+      expect(seq.tracks[0].steps[0].note).toBe('C');
+      expect(seq.tracks[0].steps[1].note).toBe('D');
+      expect(seq.tracks[0].steps[15].note).toBe('B');
+    });
+
+    it('should fill steps at specific intervals', () => {
+      const seq = new Sequencer();
+      seq.fillTrack(0, 4);
+
+      seq.tracks[0].steps.forEach((step, index) => {
+        if (index % 4 === 0) {
+          expect(step.note).toBe('C');
+          expect(step.velocity).toBe(0.8);
+          expect(step.muted).toBe(false);
+        } else {
+          expect(step.note).toBeNull();
+        }
+      });
+    });
+  });
 });
+

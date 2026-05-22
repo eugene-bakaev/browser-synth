@@ -67,7 +67,7 @@ export class SnareEngine implements SoundEngine {
     if (params.snappy !== undefined) this.setSnappy(params.snappy);
   }
 
-  trigger(freq: number, duration: number, time?: number) {
+  trigger(freq: number, duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -95,7 +95,7 @@ export class SnareEngine implements SoundEngine {
     };
 
     // Amplitude envelope for the body (always a tight decay, e.g. 0.08s)
-    const bodyMaxGain = (1.0 - this.snappy) * 1.2;
+    const bodyMaxGain = (1.0 - this.snappy) * 1.2 * velocity;
     this.bodyGain.gain.cancelScheduledValues(scheduleTime);
     this.bodyGain.gain.setValueAtTime(0, scheduleTime);
     this.bodyGain.gain.linearRampToValueAtTime(bodyMaxGain, scheduleTime + 0.002);
@@ -119,7 +119,7 @@ export class SnareEngine implements SoundEngine {
     };
 
     // Amplitude envelope for noise (decay controlled by user)
-    const noiseMaxGain = this.snappy * 1.5;
+    const noiseMaxGain = this.snappy * 1.5 * velocity;
     this.noiseGain.gain.cancelScheduledValues(scheduleTime);
     this.noiseGain.gain.setValueAtTime(0, scheduleTime);
     this.noiseGain.gain.linearRampToValueAtTime(noiseMaxGain, scheduleTime + 0.002);
