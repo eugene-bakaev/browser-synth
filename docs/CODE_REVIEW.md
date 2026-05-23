@@ -307,15 +307,17 @@ Additional findings from the post-Fix-10 UI/audio behavior pass.
 
 Single dedicated UI-pass branch when appetite strikes. Each item is small (5–30 min) and independent.
 
-| # | Item | Where |
+| # | Item | Where / Status |
 |---|---|---|
-| **U1** | Envelope A/D/R UI min=0 but engine clamps to 0.001 (cosmetic lie) | `EnvelopePanel.vue`, `SynthVoice.ts` |
-| **U2** | Knob `ms ↔ s` boundary display discontinuity at 1s | `Knob.vue` `format='ms'` |
-| **U3** | Velocity slider asymmetry (drum shows `%`, synth doesn't) | `Tracker.vue` |
+| **U1** | ~~Envelope A/D/R UI min=0 but engine clamps to 0.001~~ | ✅ Done (`4a8aecd`) — min=0.001, step=0.001 |
+| **U2** | ~~Knob `ms ↔ s` boundary display discontinuity at 1s~~ | ✅ Done (`4a8aecd`) — always renders ms |
+| **U3** | ~~Velocity slider asymmetry (drum shows `%`, synth doesn't)~~ | ✅ Done (`4a8aecd`) — synth row now shows % too |
 | **U4** | Mixer Volume is linear gain shown as `%` (perception is log) | `TrackMixer.vue`, `useSynth.ts` gain math |
-| **U5** | Knob double-click reset captures stale `modelValue` after track switch | `Knob.vue:84` |
+| **U5** | ~~Knob double-click reset captures stale `modelValue` after track switch~~ | ✅ Done (`4a8aecd`) — every panel passes engine `DEFAULT_PARAMS` |
 | **U6** | Drum engines ignore `step.length`/`step.octave`/`step.note` value | `useSynth.ts:325`, drum engines |
 | **U7** | (resolved by `5881a6b` — Track 0 asymmetry removed) | — |
+
+The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `audioState` was a plain `let`, so the `analyser`/`trackGains` computeds in `useSynth.ts` cached their first evaluation (null) and never re-ran after `ensureAudio()` assigned. Converted to `shallowRef`. Tests passed because they call `ensureAudio()` before reading the computed; the browser caught it because the template reads first.
 
 ### 🟧 Architectural items (A-series)
 
