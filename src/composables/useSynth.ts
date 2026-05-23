@@ -59,6 +59,41 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
 
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
 
+const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap'];
+
+// JSON-clone: walks string-keyed enumerable props only, skipping the Symbol
+// metadata that Vue's reactive proxy attaches. structuredClone fails on
+// reactive proxies because it tries to clone the proxy's internal flags.
+// Safe here because our params are pure JSON: strings + numbers, no Dates,
+// no NaN/Infinity, no functions.
+function snapshot<T>(slice: T): T {
+  return JSON.parse(JSON.stringify(slice));
+}
+
+// Returns the subset of `newVal` keys whose values differ from `oldVal`, or
+// null if nothing changed. Used to feed engine.applyParams() the minimum set
+// of writes per knob turn instead of the full slice (was 13 writes/knob for
+// the synth; now typically 1).
+function diffParams<T extends Record<string, unknown>>(
+  newVal: T,
+  oldVal: T | undefined
+): Partial<T> | null {
+  if (!oldVal) return null;
+  const changed: Partial<T> = {};
+  let any = false;
+  for (const key of Object.keys(newVal) as Array<keyof T>) {
+    const a = newVal[key];
+    const b = oldVal[key];
+    if (a === b) continue;
+    if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+      if (JSON.stringify(a) === JSON.stringify(b)) continue;
+    }
+    changed[key] = a as T[keyof T];
+    any = true;
+  }
+  return any ? changed : null;
+}
+
 // === Audio state — lazy. Built on first user gesture (or test-driven ensureAudio). ===
 
 interface AudioState {
@@ -142,24 +177,38 @@ function buildAudioState(): AudioState {
   updateMixerGains();
 
   // Watchers live in a detached EffectScope so they can be stopped explicitly
-  // via disposeAudio() — without this the original code had no teardown path.
+  // via disposeSynth() — without this the original code had no teardown path.
   const scope = effectScope(true);
   scope.run(() => {
     for (let i = 0; i < 4; i++) {
+      // Engine-type change triggers full sync: dispose old, build new, apply
+      // the entire new slice. Slice watchers handle the steady-state case.
       watch(
-        () => [
-          trackStates[i].engineType,
-          trackStates[i].synth,
-          trackStates[i].kick,
-          trackStates[i].hat,
-          trackStates[i].snare,
-          trackStates[i].clap,
-        ],
-        () => syncTrackToEngine(i),
-        { deep: true }
+        () => trackStates[i].engineType,
+        () => syncTrackToEngine(i)
       );
-    }
-    for (let i = 0; i < 4; i++) {
+
+      // Per-slice narrow watchers. Wrapping the getter in snapshot() does two
+      // things: (a) Vue tracks every nested field as a dependency (no need
+      // for `deep: true`); (b) each fire produces a fresh plain snapshot so
+      // newVal/oldVal can be diffed — Vue would otherwise hand us the same
+      // reactive proxy reference for both.
+      for (const slice of ENGINE_SLICES) {
+        watch(
+          () => snapshot(trackStates[i][slice]),
+          (newVal, oldVal) => {
+            // Only apply if this slice is the active engine for the track.
+            // Edits to a non-active slice are buffered until that engine
+            // becomes active (the engineType watcher then full-syncs).
+            if (trackStates[i].engineType !== slice) return;
+            const changed = diffParams(newVal as Record<string, unknown>, oldVal as Record<string, unknown>);
+            if (changed) engines[i].applyParams(changed);
+          }
+        );
+      }
+
+      // Mixer watcher stays deep: solo logic is global, so any change has to
+      // recompute all 4 track gains via updateMixerGains.
       watch(
         () => trackStates[i].mixer,
         () => updateMixerGains(),

@@ -324,7 +324,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 | # | Item | Notes |
 |---|---|---|
 | **A1** | ~~Full singleton → composable refactor of `useSynth`~~ | ✅ **Done** — lazy `AudioContext`, watchers in `EffectScope`, explicit `ensureAudio()` / `disposeSynth()`. See ARCHITECTURE.md §6 + D8. |
-| **A2** | Narrow watcher paths in `useSynth` | Current `deep: true` watcher fires every setter on every knob turn. Pass only changed keys. |
+| **A2** | ~~Narrow watcher paths in `useSynth`~~ | ✅ **Done** — per-slice watchers + `diffParams` forward only changed keys. Regression tests in `useSynth.test.ts`. See ARCHITECTURE.md §6 reactivity flow. |
 | **A3** | Tagged-union `TrackState` | Each track currently stores config for all 5 engine types. Discriminated union by `engineType` instead. Naturally pairs with a preset system. |
 | **A4** | CSS scoping audit | `App.vue` uses unscoped `<style>`. Intentional for theme, but worth confirming what bleeds. |
 | **A5** | Sequencer reactivity audit | `reactive(new Sequencer())` proxies all 64 steps. Probably fine at this scale. |

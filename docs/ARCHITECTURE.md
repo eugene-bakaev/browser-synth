@@ -203,13 +203,15 @@ interface AudioState {
 ### Reactivity flow per knob turn (post-init)
 1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
 2. Setter writes into `trackStates[activeTrackIndex][engineType][param]`.
-3. The deep-watcher on `trackStates[i].synth` (etc., registered inside the `EffectScope`) fires `syncTrackToEngine(i)`.
-4. `syncTrackToEngine` calls `engines[i].applyParams(state[targetType])`.
-5. The engine's setters write to AudioParams using `setTargetAtTime` (smooth) where possible.
+3. The **narrow per-slice watcher** for `trackStates[i][engineType]` (registered inside the `EffectScope`) fires. Its getter is `snapshot(slice)` (JSON-clone) — Vue tracks all nested fields as deps and the snapshot gives the watcher distinct old/new plain objects.
+4. The watcher diffs old vs new via `diffParams()`, identifies the changed key(s), and calls `engines[i].applyParams(changed)` — typically just one key.
+5. The engine's setter writes to its AudioParam using `setTargetAtTime` (smooth) where possible.
+
+**Engine-type swap** is a separate watcher on `trackStates[i].engineType` → calls `syncTrackToEngine(i)` which fades trackGain to 0, disposes the old engine, builds the new one, and applies the new engine's full slice.
 
 **Knob turns *before* first play** mutate `trackStates` but trigger no watchers (none exist yet). When `ensureAudio()` runs, it builds engines from `trackStates`'s current values — so pre-play edits are honored on first play.
 
-**Known inefficiency (A2):** the deep watcher fires every setter on every knob turn — 13 `applyParams` writes per turn for the synth. Smooth-ramped params absorb it; non-ramped ones (`osc1Type`, `osc1Coarse`) can stutter on fast drags. Acceptable today, refactor when it matters.
+**Inactive-slice edits are no-ops.** Each per-slice watcher checks `trackStates[i].engineType === slice` before applying — so editing the kick slice while synth is active doesn't write to the synth engine. The kick state is buffered and applied if/when the user swaps to kick (via the engineType watcher's full sync).
 
 ### Reactivity flow per knob turn
 1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
