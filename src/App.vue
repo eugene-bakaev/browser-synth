@@ -236,34 +236,29 @@ const {
 const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purple, Orange, Green
 </script>
 
+<!--
+  Two style blocks below — split per A4 audit (docs/CODE_REVIEW.md).
+
+  1. Unscoped block = the global design system. Selectors used by panel
+     components rendered as children (.module-group, .knob-row, .rack-column*)
+     must stay here so they reach across component boundaries. Element-level
+     theme rules (body, header, h1) also live here.
+
+  2. Scoped block = App.vue's own layout. These classes are only referenced
+     from App.vue's template; scoping them prevents accidental bleed.
+
+  When adding new selectors:
+    - If a child component renders an element with this class → unscoped.
+    - If only App.vue's template uses it → scoped.
+-->
 <style>
-body { 
-  margin: 0; 
-  background: #111; 
-  color: #eee; 
-  font-family: 'Outfit', 'Inter', sans-serif; 
-}
-.synth-container { 
-  max-width: 1450px; 
-  margin: 0 auto; 
-  padding: 30px 20px; 
-  box-sizing: border-box; 
-  display: flex; 
-  flex-direction: column; 
-  min-height: 100vh;
-}
-header { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
-  margin-bottom: 30px; 
-  flex-shrink: 0;
-  border-bottom: 1px solid #222;
-  padding-bottom: 20px;
-}
-.brand {
-  display: flex;
-  flex-direction: column;
+/* === Design system / theme — global on purpose === */
+
+body {
+  margin: 0;
+  background: #111;
+  color: #eee;
+  font-family: 'Outfit', 'Inter', sans-serif;
 }
 h1 {
   margin: 0;
@@ -275,6 +270,87 @@ h1 {
   -webkit-text-fill-color: transparent;
   text-transform: uppercase;
 }
+
+/* Modular panel: shared by every engine panel + drum panel + mixer panel */
+.module-group {
+  background: #222;
+  padding: 15px;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.module-group h3 {
+  margin-top: 0;
+  color: #888;
+  border-bottom: 1px solid #333;
+  padding-bottom: 5px;
+  font-family: monospace;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+}
+
+/* Knob layout row — used by every engine/drum/envelope panel */
+.knob-row {
+  display: flex;
+  gap: 20px;
+  justify-content: space-around;
+  padding: 10px 0;
+}
+
+/* Multi-column rack used inside panel components (SynthPanel, drum panels) */
+.rack-columns {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.rack-column {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* Cross-component interaction: when a panel sits inside the focused engine
+   section, hovering it lights up the border in the active track's color.
+   Lives in unscoped because .module-group is rendered by child components. */
+.engine-section .module-group {
+  border: 1px solid #222;
+  transition: border-color 0.3s;
+}
+.engine-section .module-group:hover {
+  border-color: var(--track-glow);
+}
+</style>
+
+<style scoped>
+/* === App.vue's own layout — scoped === */
+
+.synth-container {
+  max-width: 1450px;
+  margin: 0 auto;
+  padding: 30px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #222;
+  padding-bottom: 20px;
+}
+.brand {
+  display: flex;
+  flex-direction: column;
+}
 .sub-brand {
   font-family: monospace;
   font-size: 0.75rem;
@@ -283,25 +359,25 @@ h1 {
   letter-spacing: 0.1em;
   margin-top: 2px;
 }
-.transport { 
-  display: flex; 
-  gap: 20px; 
-  align-items: center; 
+.transport {
+  display: flex;
+  gap: 20px;
+  align-items: center;
 }
-.transport button { 
-  padding: 10px 24px; 
-  background: #222; 
-  color: #aaa; 
-  border: 1px solid #333; 
-  cursor: pointer; 
-  font-weight: bold; 
+.transport button {
+  padding: 10px 24px;
+  background: #222;
+  color: #aaa;
+  border: 1px solid #333;
+  cursor: pointer;
+  font-weight: bold;
   letter-spacing: 0.05em;
   border-radius: 4px;
   transition: all 0.2s ease;
 }
-.transport button.playing { 
-  background: #4ade80; 
-  color: #000; 
+.transport button.playing {
+  background: #4ade80;
+  color: #000;
   border-color: #4ade80;
   box-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
 }
@@ -336,7 +412,6 @@ h1 {
   text-align: center;
   outline: none;
 }
-/* Hide spin buttons */
 .bpm input::-webkit-outer-spin-button,
 .bpm input::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -416,33 +491,9 @@ h1 {
   flex-shrink: 0;
   width: 275px;
 }
-.engine-section { 
-  flex: 1; 
-  min-width: 320px;
-}
-.rack-columns {
-  display: flex;
-  flex-direction: row;
-  gap: 20px;
-  width: 100%;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-.rack-column {
+.engine-section {
   flex: 1;
-  min-width: 280px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-/* Glow indicators on modular panels in focus view */
-.engine-section .module-group {
-  border: 1px solid #222;
-  transition: border-color 0.3s;
-}
-.engine-section .module-group:hover {
-  border-color: var(--track-glow);
+  min-width: 320px;
 }
 
 /* Engine Selector Buttons */
@@ -473,29 +524,6 @@ h1 {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
-/* Shared modular panel styles */
-.module-group {
-  background: #222;
-  padding: 15px;
-  border-radius: 8px;
-  box-sizing: border-box;
-}
-.module-group h3 {
-  margin-top: 0;
-  color: #888;
-  border-bottom: 1px solid #333;
-  padding-bottom: 5px;
-  font-family: monospace;
-  text-transform: uppercase;
-  font-size: 0.9rem;
-  letter-spacing: 0.05em;
-}
-.knob-row {
-  display: flex;
-  gap: 20px;
-  justify-content: space-around;
-  padding: 10px 0;
-}
 .mixer-section {
   margin-top: 30px;
   flex-shrink: 0;
