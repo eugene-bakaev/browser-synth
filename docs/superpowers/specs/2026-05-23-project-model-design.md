@@ -372,7 +372,72 @@ export function migrateToLatest(raw: unknown): Project {
 
 When V2 ships, future-us adds `if (v === 1) raw = migrateV1ToV2(raw); v = 2;` before the V2 return. Each migration is a pure function. Standard pattern.
 
-**Validation depth:** for V1, we trust `schemaVersion === 1` and don't deep-validate the shape. The cost of corruption is "knobs read wrong values" — visible immediately, recoverable by clearing localStorage. If corruption becomes a real problem in practice, swap in zod-based validation. Not worth the dep up front.
+### 6.1 Versioning policy: when to bump `schemaVersion`
+
+The version bumps for **breaking** changes only. Additive changes do not bump.
+
+| Change | Bump? | Migration needed? |
+|---|---|---|
+| Add a new field with a default (e.g. LFO on the synth, per-track `color`) | No | No — `reconcileWithDefaults` fills it in at load time |
+| Add a new engine type to `EngineType` and `EngineParamsMap` | No | No — `reconcileWithDefaults` adds the missing engine slot |
+| Rename a field (`osc1Coarse` → `osc1Semitones`) | Yes | Yes — rename key in old docs |
+| Change the *meaning* of an existing field (e.g. U4-style volume curve flip) | Yes | Yes — convert old values |
+| Remove a field | Yes | Yes — map old value to the new representation |
+| Change array length or top-level shape | Yes | Yes |
+
+The rule is: **bump only when an old save would behave wrong under new code, even after defaults are filled in.** Renames, semantic changes, and removals always bump. Pure additions never do.
+
+### 6.2 `reconcileWithDefaults`
+
+After `migrateToLatest`, the load path runs a reconciliation step that fills in any field missing relative to current `DEFAULT_PARAMS`. This is what makes additive changes free.
+
+```ts
+// src/project/storage.ts
+function reconcileWithDefaults(project: Project): Project {
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    bpm: project.bpm ?? 120,
+    tracks: project.tracks.map(reconcileTrack) as Project['tracks'],
+  };
+}
+
+function reconcileTrack(track: ProjectTrack): ProjectTrack {
+  const fresh = freshTrack();
+  return {
+    engineType: track.engineType ?? fresh.engineType,
+    engines: {
+      synth: deepMerge(SynthEngine.DEFAULT_PARAMS, track.engines?.synth),
+      kick:  deepMerge(KickEngine.DEFAULT_PARAMS,  track.engines?.kick),
+      hat:   deepMerge(HatEngine.DEFAULT_PARAMS,   track.engines?.hat),
+      snare: deepMerge(SnareEngine.DEFAULT_PARAMS, track.engines?.snare),
+      clap:  deepMerge(ClapEngine.DEFAULT_PARAMS,  track.engines?.clap),
+    },
+    mixer: deepMerge(DEFAULT_MIXER_STATE, track.mixer),
+    playMode: track.playMode ?? fresh.playMode,
+    steps: reconcileSteps(track.steps, fresh.steps),
+  };
+}
+
+// deepMerge: loaded values win for present fields; missing fields fall through
+// to defaults. Recurses into plain objects (like ADSR). Arrays are replaced
+// wholesale (no element-wise merge) — for steps, which have a fixed length-16
+// invariant, reconcileSteps handles position-by-position fill-in.
+
+function reconcileSteps(loaded: Step[] | undefined, defaults: Step[]): Step[] {
+  if (!Array.isArray(loaded)) return defaults.map(s => ({ ...s }));
+  // Position-by-position: keep loaded entries where present, fresh-defaults
+  // elsewhere. Tolerates length mismatches (over- or under-long saves).
+  return defaults.map((def, i) => {
+    return loaded[i] ? deepMerge(def, loaded[i]) : { ...def };
+  });
+}
+```
+
+`deepMerge` is a small utility (~10 lines). Recurses on plain objects, terminates on primitives and arrays. Lives in `src/utils/deepMerge.ts` (or inline in `storage.ts` — implementation choice). `reconcileSteps` is project-specific (knows about the length-16 invariant) and lives in `storage.ts`.
+
+This reconciler is also useful as a **defensive layer for corruption**: a save that's syntactically valid V1 JSON but missing fields (e.g. partial write, code bug in a prior version) gets repaired to a complete shape rather than crashing the app.
+
+**Validation depth:** for V1, beyond `schemaVersion === 1` + reconcile-with-defaults, we don't deep-type-check (no zod, no runtime assertions on field types). The cost of weird-type corruption is "knobs read wrong values" — visible immediately, recoverable by clearing localStorage. If real-world corruption becomes an issue, swap in zod-based validation. Not worth the dep up front.
 
 ---
 
@@ -406,6 +471,17 @@ Colocated test files (matching existing convention).
 - A burst of 200 rapid mutations produces exactly 1 write.
 - The dispose function returned by `installAutoSave` stops further writes.
 - A `setItem` write throwing (quota / disabled) is swallowed.
+
+### `reconcile.test.ts` (additive-changes coverage)
+- A doc missing an entire engine slot (e.g. `engines.kick`) gets the slot populated with `KickEngine.DEFAULT_PARAMS`.
+- A doc with a synth engine missing a single field (e.g. `osc1Level`) gets that field filled from `SynthEngine.DEFAULT_PARAMS.osc1Level`; the loaded `osc1Coarse` value is preserved.
+- A doc with a partial ADSR (e.g. `ampEnv: { a: 0.1 }` only) gets `d`/`s`/`r` filled from defaults; `a` is preserved.
+- A doc with a partial `mixer` (e.g. `{ volume: 0.5 }`) gets `muted`/`soloed` filled.
+- A doc with extra unknown fields passes through untouched (forward-compat — future code's fields survive a round-trip through old code).
+- `reconcileSteps` with a length-1 loaded array → returns length 16 (the one loaded step is reconciled at index 0, the other 15 are fresh-defaults).
+- `reconcileSteps` with a length-20 loaded array → returns length 16 (the first 16 are reconciled, the extras are dropped).
+- `reconcileSteps` with `undefined`/non-array → returns length-16 fresh defaults.
+- `deepMerge` on top-level: arrays in loaded values replace the default arrays wholesale (e.g. a future field `lfo.destinations: string[]` is replaced, not merged element-wise).
 
 ### `Sequencer.test.ts` (existing)
 - Existing scheduling tests stay green after updating the `start()` call signature to pass `getBpm` + `onStep`.
@@ -449,7 +525,8 @@ A working implementation of this design satisfies all of:
 6. Fresh app (cleared localStorage) starts with `freshProject()` defaults — verifiable by inspecting localStorage after first interaction.
 7. After a knob turn + page refresh, the knob's value is preserved.
 8. After an engine-type swap on track 0 (e.g. synth → kick → synth), the synth's params for track 0 are preserved.
-9. Migration registry handles missing/unknown schemaVersion per §6.
+9. Migration registry handles missing/unknown schemaVersion per §6.1.
+9a. `reconcileWithDefaults` covers additive-change forward-compat per §6.2: a V1 save written by a future build of the app (with extra fields) loads cleanly; a V1 save written by an older build (with missing fields added later) loads with defaults filled in.
 10. All existing 62 tests pass (after path updates); ~25 new tests pass; `vue-tsc` + `vite build` clean.
 11. No `AudioContext` is created at module load (A1 invariant preserved).
 12. The Visualizer still works on first Play (A1-reactivity invariant preserved — `audioState` shallowRef).
