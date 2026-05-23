@@ -163,32 +163,53 @@ The drum engines do **not** use `EnvelopeModule` — each implements its own bes
 
 ---
 
-## 6. `useSynth.ts` — the "singleton-dressed-as-a-composable"
+## 6. `useSynth.ts` — explicit lazy singleton
 
-> **⚠ Read this section before refactoring `useSynth`. The shape is misleading on purpose.**
+> Was the "singleton-dressed-as-a-composable" before A1 (commit `<TBD>`). Now: data state at module scope, **audio state is lazy** and built on first user gesture.
 
-`useSynth()` looks like a Vue composable but the audio state lives at **module scope**:
+### Layout
 
 ```ts
-const sharedCtx = new AudioContext();   // module-scope
-const trackStates = reactive([…]);       // module-scope
-const engines: SoundEngine[] = [];       // module-scope, lazy-filled
-const sequencer = reactive(new Sequencer()); // module-scope
-// watchers registered at module load
+// Module scope — pure data, no audio nodes
+const sequencer  = reactive(new Sequencer());
+const trackStates = reactive<TrackState[]>([...]);
+
+// Audio state — lazy. null until first ensureAudio() / togglePlay() call.
+let audioState: AudioState | null = null;
+
+interface AudioState {
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+  trackGains: GainNode[];
+  engines: SoundEngine[];
+  scope: EffectScope;  // owns the watchers, can be stopped
+}
 ```
 
-`useSynth()` itself only:
-1. Bumps an invocation counter and warns on the second call (almost always a wiring bug — local refs would be fresh but audio state shared).
-2. Builds **local** `ref` / `computed` for the currently-focused track (e.g. `osc1Type` is a `trackParam('synth', 'osc1Type', …)` that reads/writes the active track's slice).
-3. Returns those bindings.
+`useSynth()` is **idempotent** — call it from as many components as you like. Each call returns fresh local refs (`currentStep`, `activeTrackIndex`) but shares the module-scope data + audio state.
 
-### Why this shape
-A real composable would re-create the AudioContext on every call, register duplicate watchers, and break HMR. The current pattern is the minimum viable thing that:
-- Survives HMR (module is cached, audio state persists)
-- Only creates one AudioContext for the page
-- Lets `App.vue` swap focused tracks without rewiring audio
+### Lifecycle
+1. **App boot.** Module loads. Only `sequencer` and `trackStates` exist. No `AudioContext`, no engines, no watchers, no Chrome warning.
+2. **First user gesture** (`togglePlay`) calls `ensureAudio()` which builds the full audio graph: `AudioContext`, master chain, `trackGains`, engines from current `trackStates`, and watchers inside an `effectScope(true)`.
+3. **Subsequent gestures.** `ensureAudio()` is a no-op (audio is up).
+4. **Teardown.** `disposeSynth()` stops the effect scope, disposes engines, closes the AudioContext, and resets `audioState = null`. Exposed mainly for tests; production has no teardown trigger (the page just unloads).
 
-The full refactor (factor module-scope state into a real composable with `onUnmounted` teardown) is tracked as **A1** in [`CODE_REVIEW.md`](./CODE_REVIEW.md). Until that lands, treat `useSynth` as a singleton accessor and respect the warn-on-double-call.
+### `useSynth()` return shape
+- **Reactive data**: `trackStates`, `sequencer`, `activeTrackIndex`, `currentStep`
+- **Knob bindings**: per-engine writable computeds (e.g. `osc1Type`, `filterCutoff`, `kickTune` — see `trackParam` helper)
+- **Audio handles** (computed, null before init): `analyser`, `trackGains`
+- **Methods**: `togglePlay`, `selectTrack`, `getTrackEngineType`, `ensureAudio`
+
+### Reactivity flow per knob turn (post-init)
+1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
+2. Setter writes into `trackStates[activeTrackIndex][engineType][param]`.
+3. The deep-watcher on `trackStates[i].synth` (etc., registered inside the `EffectScope`) fires `syncTrackToEngine(i)`.
+4. `syncTrackToEngine` calls `engines[i].applyParams(state[targetType])`.
+5. The engine's setters write to AudioParams using `setTargetAtTime` (smooth) where possible.
+
+**Knob turns *before* first play** mutate `trackStates` but trigger no watchers (none exist yet). When `ensureAudio()` runs, it builds engines from `trackStates`'s current values — so pre-play edits are honored on first play.
+
+**Known inefficiency (A2):** the deep watcher fires every setter on every knob turn — 13 `applyParams` writes per turn for the synth. Smooth-ramped params absorb it; non-ramped ones (`osc1Type`, `osc1Coarse`) can stutter on fast drags. Acceptable today, refactor when it matters.
 
 ### Reactivity flow per knob turn
 1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
@@ -371,14 +392,16 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **Why.** Defaults were duplicated in three places (engine constructor, engine setter clamps, `useSynth` initialization) and silently diverged. Single source of truth eliminates that. `structuredClone` is required because nested ADSR objects would otherwise be shared by reference across tracks. The track-0 detune asymmetry should come back as an explicit named preset when F1 lands, not as hidden initialization magic.
 
-### D8 — `useSynth` is a module-scope singleton with a composable shape
+### D8 — `useSynth` is an explicit lazy singleton, not a true composable
 
-**Decision.** AudioContext, engines, sequencer, and watchers live at module scope. `useSynth()` returns fresh local refs but shares all audio state. Second invocation warns.
+**Decision.** Data state (`trackStates`, `sequencer`) lives at module scope. **Audio state** (`AudioContext`, master chain, `trackGains`, engines, watchers) is held in a module-scope `audioState: AudioState | null` and built lazily on first `togglePlay()` / `ensureAudio()`. Watchers live inside an `effectScope(true)` so they can be stopped via `disposeSynth()`. `useSynth()` is idempotent — multiple calls return fresh local refs but share all module-scope state.
 
-**Rejected alternative.** True composable: instantiate AudioContext + engines inside `useSynth()`, tear down on unmount.
+**Rejected alternative A (the original code).** All audio created at module load. `new AudioContext()` ran on import, before any user gesture — Chrome printed "AudioContext was not allowed to start". Watchers had no teardown path. `useSynth()` warned on second invocation because re-running the body would have leaked watchers.
 
-**Why.** The true-composable version re-creates the AudioContext on every call (browsers limit concurrent contexts), duplicates watchers (doubling work per knob turn), and loses state on HMR. The current shape is a deliberate compromise documented and guarded with a warn-on-double-call. Full refactor tracked as A1 in `CODE_REVIEW.md`.
+**Rejected alternative B (true composable).** Instantiate `AudioContext` + engines inside `useSynth()`, tear down on unmount. Re-creates the AudioContext on every call (browsers limit concurrent contexts), duplicates watchers (doubling work per knob turn), and loses HMR state.
+
+**Why this shape.** The lazy singleton is the middle ground that wins on every axis: no pre-gesture `AudioContext` creation, idempotent `useSynth()`, explicit teardown via `EffectScope` + `disposeSynth()`, single AudioContext for the page, and `trackStates` survives HMR re-mounts of components (the module is cached). Knob turns before first play still mutate `trackStates`; `ensureAudio()` builds engines from current state, so pre-play edits are honored on first play.
 
 ---
 
-*Last updated: 2026-05-23. When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*
+*Last updated: 2026-05-23 (post-A1 lazy-singleton refactor). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*

@@ -77,11 +77,14 @@ describe('TrackMixer Logic', () => {
   beforeAll(async () => {
     const mod = await import('../composables/useSynth');
     useSynth = mod.useSynth;
-    trackGains = mod.trackGains;
   });
 
   beforeEach(() => {
     synthData = useSynth();
+    // Audio state is lazy now — force it up so trackGains exist + watchers are live.
+    synthData.ensureAudio();
+    trackGains = synthData.trackGains.value;
+
     // Reset trackStates to defaults
     synthData.trackStates.forEach((ts: any, i: number) => {
       ts.mixer.volume = 0.8;
