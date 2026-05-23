@@ -19,8 +19,8 @@ export class SynthEngine implements SoundEngine {
   private osc1Level: number = 0.5;
   private osc2Level: number = 0.5;
   private baseCutoff: number = 2000;
-  private filterEnvAmount: number = 0.6;
-  private useHzOffsetMode: boolean = false;
+  // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
+  private filterEnvAmount: number = 2.4;
   private filterRes: number = 1;
   private filterEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
   private ampEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
@@ -44,7 +44,6 @@ export class SynthEngine implements SoundEngine {
         osc1Level: this.osc1Level,
         osc2Level: this.osc2Level,
         filterRes: this.filterRes,
-        useHzOffsetMode: this.useHzOffsetMode,
         filterCutoff: this.baseCutoff,
         filterEnvAmount: this.filterEnvAmount,
         filterEnv: this.filterEnv,
@@ -101,18 +100,9 @@ export class SynthEngine implements SoundEngine {
     this.voices.forEach(voice => voice.applyParams({ filterCutoff: this.baseCutoff }));
   }
 
-  setUseHzOffsetMode(enabled: boolean) {
-    this.useHzOffsetMode = enabled;
-    // Set HzOffsetMode on voices first, so filterEnvAmount clamps correctly on them
-    this.voices.forEach(voice => voice.applyParams({ useHzOffsetMode: this.useHzOffsetMode }));
-  }
-
   setFilterEnvAmount(val: number) {
-    if (this.useHzOffsetMode) {
-      this.filterEnvAmount = Math.max(0, Math.min(5000, val));
-    } else {
-      this.filterEnvAmount = Math.max(0, Math.min(1, val));
-    }
+    const max = SynthVoice.FILTER_ENV_MAX_OCTAVES;
+    this.filterEnvAmount = Math.max(-max, Math.min(max, val));
     this.voices.forEach(voice => voice.applyParams({ filterEnvAmount: this.filterEnvAmount }));
   }
 
@@ -153,7 +143,6 @@ export class SynthEngine implements SoundEngine {
     if (params.osc1Level !== undefined) this.setOsc1Level(params.osc1Level);
     if (params.osc2Level !== undefined) this.setOsc2Level(params.osc2Level);
     if (params.filterRes !== undefined) this.setFilterRes(params.filterRes);
-    if (params.useHzOffsetMode !== undefined) this.setUseHzOffsetMode(params.useHzOffsetMode);
     if (params.filterCutoff !== undefined) this.setFilterCutoff(params.filterCutoff);
     if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);
     if (params.filterEnv !== undefined) this.setFilterEnv(params.filterEnv);

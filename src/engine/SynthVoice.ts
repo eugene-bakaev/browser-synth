@@ -17,8 +17,11 @@ export class SynthVoice {
   voiceGain: GainNode;
 
   baseCutoff: number = 2000;
-  filterEnvAmount: number = 0.6;
-  useHzOffsetMode: boolean = false;
+  // Bipolar filter envelope amount, in OCTAVES from baseCutoff.
+  // +4 = sweep four octaves up; -4 = sweep four octaves down; 0 = no sweep.
+  // Logarithmic so the perceived sweep depth is consistent across all base cutoffs.
+  static readonly FILTER_ENV_MAX_OCTAVES = 4;
+  filterEnvAmount: number = 2.4;
 
   constructor(ctx: AudioContext, destination: AudioNode) {
     this.ctx = ctx;
@@ -56,17 +59,20 @@ export class SynthVoice {
     const v = Math.max(0, Math.min(1, velocity));
     this.ampEnv.trigger(this.voiceGain.gain, time, duration, 0, v);
 
-    // Trigger Filter Envelope (Modulating Cutoff)
+    // Trigger Filter Envelope (modulates cutoff up OR down by N octaves)
     if (this.filter.inputs.cutoff instanceof AudioParam) {
-      const sweepRange = this.useHzOffsetMode 
-        ? this.filterEnvAmount 
-        : (this.filterEnvAmount * 5000);
+      // Log scale: same perceived sweep depth regardless of base cutoff.
+      // Clamp peak to the audible range so we don't waste sweep above Nyquist
+      // or below the BiquadFilter's effective floor.
+      const peakCutoff = Math.max(20, Math.min(20000,
+        this.baseCutoff * Math.pow(2, this.filterEnvAmount)
+      ));
       this.filterEnv.trigger(
-        this.filter.inputs.cutoff, 
-        time, 
-        duration, 
-        this.baseCutoff, 
-        this.baseCutoff + sweepRange
+        this.filter.inputs.cutoff,
+        time,
+        duration,
+        this.baseCutoff,
+        peakCutoff
       );
     }
   }
@@ -90,20 +96,13 @@ export class SynthVoice {
       }
     }
 
-    if (params.useHzOffsetMode !== undefined) {
-      this.useHzOffsetMode = params.useHzOffsetMode;
-    }
-    
     if (params.filterCutoff !== undefined) {
       this.baseCutoff = Math.max(20, Math.min(20000, params.filterCutoff));
     }
-    
+
     if (params.filterEnvAmount !== undefined) {
-      if (this.useHzOffsetMode) {
-        this.filterEnvAmount = Math.max(0, Math.min(5000, params.filterEnvAmount));
-      } else {
-        this.filterEnvAmount = Math.max(0, Math.min(1, params.filterEnvAmount));
-      }
+      const max = SynthVoice.FILTER_ENV_MAX_OCTAVES;
+      this.filterEnvAmount = Math.max(-max, Math.min(max, params.filterEnvAmount));
     }
 
     if (params.filterEnv !== undefined) {

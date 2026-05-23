@@ -88,25 +88,45 @@ describe('SynthEngine', () => {
     })).not.toThrow();
   });
 
-  it('should handle filterEnvAmount in factor mode and Hz offset mode', () => {
+  it('should clamp filterEnvAmount to the bipolar ±4 octave range', () => {
     const engine = new SynthEngine();
-    
-    // Default mode is factor mode (0 to 1)
-    engine.applyParams({ filterEnvAmount: 0.5 });
-    expect((engine as any).filterEnvAmount).toBe(0.5);
-    
-    // Clamps to 1 in factor mode
-    engine.applyParams({ filterEnvAmount: 5 });
-    expect((engine as any).filterEnvAmount).toBe(1.0);
 
-    // Switch to Hz offset mode
-    engine.applyParams({ useHzOffsetMode: true, filterEnvAmount: 3000 });
-    expect((engine as any).filterEnvAmount).toBe(3000);
-    expect((engine as any).useHzOffsetMode).toBe(true);
+    // Mid-range values pass through
+    engine.applyParams({ filterEnvAmount: 2.4 });
+    expect((engine as any).filterEnvAmount).toBe(2.4);
 
-    // Clamps to 5000 in Hz offset mode
-    engine.applyParams({ filterEnvAmount: 10000 });
-    expect((engine as any).filterEnvAmount).toBe(5000);
+    // Negative values are allowed (downward sweep)
+    engine.applyParams({ filterEnvAmount: -2.0 });
+    expect((engine as any).filterEnvAmount).toBe(-2.0);
+
+    // Clamps to +4 octaves upper bound
+    engine.applyParams({ filterEnvAmount: 10 });
+    expect((engine as any).filterEnvAmount).toBe(4);
+
+    // Clamps to -4 octaves lower bound
+    engine.applyParams({ filterEnvAmount: -10 });
+    expect((engine as any).filterEnvAmount).toBe(-4);
+
+    // Neutral (no envelope effect on cutoff)
+    engine.applyParams({ filterEnvAmount: 0 });
+    expect((engine as any).filterEnvAmount).toBe(0);
+  });
+
+  it('should produce a downward filter sweep when filterEnvAmount is negative', () => {
+    const engine = new SynthEngine();
+    engine.applyParams({ filterCutoff: 2000, filterEnvAmount: -2 });
+
+    const voice = engine.voices[0];
+    const filterEnvSpy = vi.spyOn(voice.filterEnv, 'trigger');
+
+    engine.trigger(440, 0.5, 0);
+
+    // Voice should drive its filter envelope from baseCutoff (2000) down to
+    // 2000 * 2^(-2) = 500Hz — a clear downward sweep target.
+    expect(filterEnvSpy).toHaveBeenCalled();
+    const [, , , min, max] = filterEnvSpy.mock.calls[0];
+    expect(min).toBe(2000);
+    expect(max).toBeCloseTo(500, 1);
   });
 
   it('should clamp parameters correctly including cutoff up to 20000', () => {
