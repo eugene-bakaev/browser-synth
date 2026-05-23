@@ -45,12 +45,13 @@
     </div>
 
     <!-- Grid Header -->
-    <div 
-      class="tracker-row tracker-header" 
+    <div
+      class="tracker-row tracker-header"
       :class="[
-        engineType === 'synth' 
-          ? (playMode === 'chord' ? 'chord-row' : 'synth-row') 
-          : 'drum-row'
+        engineType === 'synth'
+          ? (playMode === 'chord' ? 'chord-row' : 'synth-row')
+          : 'drum-row',
+        { 'with-vel': isFocused && engineType === 'synth' }
       ]"
     >
       <div class="col-mute"></div>
@@ -67,6 +68,7 @@
           <div class="col-oct">OCT</div>
           <div class="col-len">LEN</div>
         </template>
+        <div v-if="isFocused" class="col-vel">VEL</div>
       </template>
       <template v-else>
         <div class="col-trig">TRIG</div>
@@ -76,15 +78,15 @@
     
     <!-- Step Grid -->
     <div class="tracker-steps">
-      <div 
-        v-for="(step, i) in steps" 
-        :key="i" 
-        class="tracker-row step-row" 
+      <div
+        v-for="(step, i) in steps"
+        :key="i"
+        class="tracker-row step-row"
         :class="[
-          engineType === 'synth' 
-            ? (playMode === 'chord' ? 'chord-row' : 'synth-row') 
+          engineType === 'synth'
+            ? (playMode === 'chord' ? 'chord-row' : 'synth-row')
             : 'drum-row',
-          { active: currentStep === i, 'step-muted': step.muted }
+          { active: currentStep === i, 'step-muted': step.muted, 'with-vel': isFocused && engineType === 'synth' }
         ]"
       >
         <!-- Step Mute Column -->
@@ -136,6 +138,18 @@
               <input type="number" v-model.number="step.length" :disabled="step.note === null" min="1" max="16" title="Length (ticks)">
             </div>
           </template>
+          <div v-if="isFocused" class="col-vel">
+            <input
+              type="range"
+              v-model.number="step.velocity"
+              min="0"
+              max="1"
+              step="0.05"
+              :disabled="step.note === null"
+              title="Velocity"
+              class="vel-slider"
+            >
+          </div>
         </template>
 
         <!-- Drum Layout -->
@@ -345,8 +359,16 @@ const toggleDrumTrigger = (step: Step) => {
   grid-template-columns: 24px 26px 65px 50px 55px;
 }
 
+.tracker-row.synth-row.with-vel {
+  grid-template-columns: 22px 22px 55px 40px 40px minmax(0, 1fr);
+}
+
 .tracker-row.chord-row {
   grid-template-columns: 24px 20px 48px 65px 36px 36px;
+}
+
+.tracker-row.chord-row.with-vel {
+  grid-template-columns: 22px 18px 40px 50px 28px 28px minmax(0, 1fr);
 }
 
 .tracker-row.drum-row {

@@ -23,7 +23,7 @@ export class SynthVoice {
   constructor(ctx: AudioContext, destination: AudioNode) {
     this.ctx = ctx;
     this.patchBay = new PatchBay();
-    
+
     this.osc1 = new OscillatorModule(ctx);
     this.osc2 = new OscillatorModule(ctx);
     this.mixer = new MixerModule(ctx);
@@ -33,6 +33,12 @@ export class SynthVoice {
     this.voiceGain = ctx.createGain();
     this.voiceGain.gain.value = 0;
 
+    // Initialize the filter cutoff to baseCutoff so it isn't sitting at the
+    // BiquadFilterNode default (~350Hz) until the first trigger.
+    if (this.filter.inputs.cutoff instanceof AudioParam) {
+      this.filter.inputs.cutoff.setValueAtTime(this.baseCutoff, ctx.currentTime);
+    }
+
     // Route: osc1 & osc2 -> mixer -> filter -> voiceGain -> destination
     this.patchBay.connect(this.osc1.outputs.main, this.mixer.inputs.ch1);
     this.patchBay.connect(this.osc2.outputs.main, this.mixer.inputs.ch2);
@@ -41,13 +47,14 @@ export class SynthVoice {
     this.voiceGain.connect(destination);
   }
 
-  trigger(freq: number, duration: number, time: number) {
+  trigger(freq: number, duration: number, time: number, velocity: number = 1.0) {
     // Set oscillator frequencies at targeted time
     this.osc1.setFrequencyAtTime(freq, time);
-    this.osc2.setFrequencyAtTime(freq, time); 
+    this.osc2.setFrequencyAtTime(freq, time);
 
-    // Trigger Amplitude Envelope on the local voice VCA
-    this.ampEnv.trigger(this.voiceGain.gain, time, duration, 0, 1);
+    // Trigger Amplitude Envelope on the local voice VCA, scaled by velocity
+    const v = Math.max(0, Math.min(1, velocity));
+    this.ampEnv.trigger(this.voiceGain.gain, time, duration, 0, v);
 
     // Trigger Filter Envelope (Modulating Cutoff)
     if (this.filter.inputs.cutoff instanceof AudioParam) {

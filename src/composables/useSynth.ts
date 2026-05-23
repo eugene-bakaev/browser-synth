@@ -41,12 +41,6 @@ export const trackGains: GainNode[] = Array(4).fill(null).map(() => {
   return g;
 });
 
-const engines: SoundEngine[] = [
-  new SynthEngine(sharedCtx, trackGains[0]),
-  new SynthEngine(sharedCtx, trackGains[1]),
-  new SynthEngine(sharedCtx, trackGains[2]),
-  new SynthEngine(sharedCtx, trackGains[3]),
-];
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
@@ -151,22 +145,9 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) =>
   }
 })));
 
-// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
-const syncTrackToEngine = (i: number) => {
-  const state = trackStates[i];
-  let engine = engines[i];
-  const targetType = state.engineType;
-
-  // Swap engine if type changed
-  if (engine.engineType !== targetType) {
-    engine.dispose();
-    engine = engineFactories[targetType](sharedCtx, trackGains[i]);
-    engines[i] = engine;
-  }
-
-  // Apply params polymorphically — each engine knows how to interpret its own params
-  engine.applyParams(state[targetType] as Record<string, any>);
-};
+// Engines are lazily built on first sync via the factory map so we don't
+// instantiate engine types the user may immediately swap away from.
+const engines: SoundEngine[] = [];
 
 // Calculate and apply target gains smoothly to prevent clicks/pops
 const updateMixerGains = () => {
@@ -182,6 +163,31 @@ const updateMixerGains = () => {
     // Smooth transitions using setTargetAtTime
     trackGains[i].gain.setTargetAtTime(targetGain, sharedCtx.currentTime, 0.015);
   }
+};
+
+// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
+const ENGINE_SWAP_FADE_SECONDS = 0.02;
+const syncTrackToEngine = (i: number) => {
+  const state = trackStates[i];
+  const targetType = state.engineType;
+  const existing = engines[i];
+
+  if (!existing || existing.engineType !== targetType) {
+    if (existing) {
+      // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop() doesn't click.
+      // The new engine connects to the same trackGain; updateMixerGains restores it after.
+      trackGains[i].gain.setTargetAtTime(0, sharedCtx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
+      const oldEngine = existing;
+      setTimeout(() => {
+        oldEngine.dispose();
+        updateMixerGains();
+      }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+    }
+    engines[i] = engineFactories[targetType](sharedCtx, trackGains[i]);
+  }
+
+  // Apply params polymorphically — each engine knows how to interpret its own params
+  engines[i].applyParams(state[targetType] as Record<string, any>);
 };
 
 // Initialize engines and mixer gains
@@ -219,7 +225,20 @@ for (let i = 0; i < 4; i++) {
   );
 }
 
+let useSynthInvocationCount = 0;
+
 export function useSynth() {
+  useSynthInvocationCount += 1;
+  if (useSynthInvocationCount > 1) {
+    // Audio context, engines, sequencer, and watchers are module-scoped singletons.
+    // A second call returns fresh local refs (currentStep, activeTrackIndex) but
+    // shares all audio/sequencer state — almost always a wiring bug.
+    console.warn(
+      `[useSynth] called ${useSynthInvocationCount} times — audio state is module-scoped and shared. ` +
+      `If this is intentional (e.g. multiple views), be aware that local UI refs are NOT shared.`
+    );
+  }
+
   const currentStep = ref(-1);
   const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
@@ -314,10 +333,10 @@ export function useSynth() {
               const duration = step.length * tickDuration;
               if (currentPlayMode === 'chord') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engines[i].trigger(freqs, duration, time, 1.0);
+                engines[i].trigger(freqs, duration, time, step.velocity);
               } else {
                 const freq = noteToFreq(step.note, step.octave);
-                engines[i].trigger(freq, duration, time, 1.0);
+                engines[i].trigger(freq, duration, time, step.velocity);
               }
             } else {
               // Drum engine: trigger with standard freq, duration 0.15s, and pass step.velocity
@@ -342,7 +361,6 @@ export function useSynth() {
   return {
     trackStates,
     analyser,
-    engines,
     sequencer,
     activeTrackIndex,
     currentStep,

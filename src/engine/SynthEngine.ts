@@ -160,7 +160,7 @@ export class SynthEngine implements SoundEngine {
     if (params.ampEnv !== undefined) this.setAmpEnv(params.ampEnv);
   }
 
-  trigger(freq: number | number[], duration: number, time?: number) {
+  trigger(freq: number | number[], duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -169,7 +169,7 @@ export class SynthEngine implements SoundEngine {
 
     freqs.forEach(f => {
       const voice = this.voices[this.activeVoiceIndex];
-      voice.trigger(f, duration, scheduleTime);
+      voice.trigger(f, duration, scheduleTime, velocity);
       this.activeVoiceIndex = (this.activeVoiceIndex + 1) % this.numVoices;
     });
   }

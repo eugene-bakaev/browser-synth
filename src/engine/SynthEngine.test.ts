@@ -118,6 +118,24 @@ describe('SynthEngine', () => {
     expect((engine as any).baseCutoff).toBe(20);
   });
 
+  it('should accept and forward velocity to the active voice', () => {
+    const engine = new SynthEngine();
+    const voice = engine.voices[0];
+    const voiceSpy = vi.spyOn(voice, 'trigger');
+
+    engine.trigger(440, 0.5, 0, 0.42);
+    expect(voiceSpy).toHaveBeenCalledWith(440, 0.5, 0, 0.42);
+  });
+
+  it('should default velocity to 1.0 when omitted', () => {
+    const engine = new SynthEngine();
+    const voice = engine.voices[0];
+    const voiceSpy = vi.spyOn(voice, 'trigger');
+
+    engine.trigger(440, 0.5);
+    expect(voiceSpy).toHaveBeenCalledWith(440, 0.5, expect.any(Number), 1.0);
+  });
+
   it('should dispose without throwing', () => {
     const engine = new SynthEngine();
     expect(() => engine.dispose()).not.toThrow();
