@@ -1,4 +1,4 @@
-import { ref, reactive, watch, computed, effectScope, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
+import { ref, reactive, watch, computed, effectScope, shallowRef, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine, type SynthEngineParams } from '../engine/SynthEngine';
 import { KickEngine, type KickEngineParams } from '../engine/KickEngine';
@@ -32,7 +32,7 @@ export interface TrackState {
   mixer: MixerState;
 }
 
-const DEFAULT_MIXER_STATE: MixerState = {
+export const DEFAULT_MIXER_STATE: MixerState = {
   volume: 0.8,
   muted: false,
   soloed: false,
@@ -104,7 +104,11 @@ interface AudioState {
   scope: EffectScope;
 }
 
-let audioState: AudioState | null = null;
+// shallowRef so the computed bindings below (analyser, trackGains) actually
+// re-evaluate when ensureAudio() flips this from null → AudioState. A plain
+// `let` looks identical here but Vue can't observe the assignment, so the
+// computeds would cache the initial null forever (oscilloscope stays flat).
+const audioState = shallowRef<AudioState | null>(null);
 
 function buildAudioState(): AudioState {
   const ctx = new AudioContext();
@@ -221,21 +225,22 @@ function buildAudioState(): AudioState {
 }
 
 function ensureAudio(): AudioState {
-  if (!audioState) {
-    audioState = buildAudioState();
+  if (!audioState.value) {
+    audioState.value = buildAudioState();
   }
-  return audioState;
+  return audioState.value;
 }
 
 // Exposed primarily for tests; production code does not call this.
 export function disposeSynth() {
-  if (!audioState) return;
-  audioState.scope.stop();
-  for (const engine of audioState.engines) {
+  const state = audioState.value;
+  if (!state) return;
+  state.scope.stop();
+  for (const engine of state.engines) {
     engine.dispose();
   }
-  audioState.ctx.close().catch(() => { /* ctx may already be closed */ });
-  audioState = null;
+  state.ctx.close().catch(() => { /* ctx may already be closed */ });
+  audioState.value = null;
 }
 
 export function useSynth() {
@@ -321,8 +326,8 @@ export function useSynth() {
 
   // Audio-derived bindings. `analyser` returns null until first ensureAudio()
   // so Visualizer renders a flat line during the pre-gesture window.
-  const analyser: ComputedRef<AnalyserNode | null> = computed(() => audioState?.analyser ?? null);
-  const trackGains: ComputedRef<GainNode[] | null> = computed(() => audioState?.trackGains ?? null);
+  const analyser: ComputedRef<AnalyserNode | null> = computed(() => audioState.value?.analyser ?? null);
+  const trackGains: ComputedRef<GainNode[] | null> = computed(() => audioState.value?.trackGains ?? null);
 
   const togglePlay = () => {
     // First user gesture: this is where the AudioContext + engines + watchers

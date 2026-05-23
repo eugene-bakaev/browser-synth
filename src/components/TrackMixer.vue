@@ -31,13 +31,14 @@
 
         <!-- Volume Section -->
         <div class="volume-container">
-          <Knob 
-            label="LEVEL" 
-            :min="0" 
-            :max="1" 
-            :step="0.01" 
-            format="percent" 
-            v-model="track.mixer.volume" 
+          <Knob
+            label="LEVEL"
+            :min="0"
+            :max="1"
+            :step="0.01"
+            :defaultValue="DEFAULT_MIXER_STATE.volume"
+            format="percent"
+            v-model="track.mixer.volume"
           />
         </div>
 
@@ -67,7 +68,7 @@
 
 <script setup lang="ts">
 import Knob from './Knob.vue';
-import type { TrackState } from '../composables/useSynth';
+import { DEFAULT_MIXER_STATE, type TrackState } from '../composables/useSynth';
 import type { Track } from '../sequencer/Sequencer';
 
 const props = defineProps<{
