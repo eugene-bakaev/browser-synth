@@ -323,7 +323,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 
 | # | Item | Notes |
 |---|---|---|
-| **A1** | Full singleton → composable refactor of `useSynth` | Module-scope AudioContext + engines + watchers should live inside a real composable with proper lifecycle. |
+| **A1** | ~~Full singleton → composable refactor of `useSynth`~~ | ✅ **Done** — lazy `AudioContext`, watchers in `EffectScope`, explicit `ensureAudio()` / `disposeSynth()`. See ARCHITECTURE.md §6 + D8. |
 | **A2** | Narrow watcher paths in `useSynth` | Current `deep: true` watcher fires every setter on every knob turn. Pass only changed keys. |
 | **A3** | Tagged-union `TrackState` | Each track currently stores config for all 5 engine types. Discriminated union by `engineType` instead. Naturally pairs with a preset system. |
 | **A4** | CSS scoping audit | `App.vue` uses unscoped `<style>`. Intentional for theme, but worth confirming what bleeds. |

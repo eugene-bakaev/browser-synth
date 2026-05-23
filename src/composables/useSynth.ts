@@ -1,4 +1,4 @@
-import { ref, reactive, watch, computed, type WritableComputedRef } from 'vue';
+import { ref, reactive, watch, computed, effectScope, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine, type SynthEngineParams } from '../engine/SynthEngine';
 import { KickEngine, type KickEngineParams } from '../engine/KickEngine';
@@ -9,50 +9,11 @@ import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
 
-// Instantiate a single shared AudioContext and 4 engines to ensure perfect sync
-const sharedCtx = new AudioContext();
-
-// Create a master dynamics compressor to prevent digital clipping/crackling
-const compressor = sharedCtx.createDynamicsCompressor();
-compressor.threshold.setValueAtTime(-12, sharedCtx.currentTime); // threshold in dB
-compressor.knee.setValueAtTime(30, sharedCtx.currentTime);       // knee in dB
-compressor.ratio.setValueAtTime(12, sharedCtx.currentTime);      // compression ratio
-compressor.attack.setValueAtTime(0.003, sharedCtx.currentTime);  // attack in seconds
-compressor.release.setValueAtTime(0.25, sharedCtx.currentTime);  // release in seconds
-
-// Create a master gain node to provide headroom
-const masterGain = sharedCtx.createGain();
-masterGain.gain.setValueAtTime(0.6, sharedCtx.currentTime);
-
-// Create a master AnalyserNode to capture output from all active engines
-const analyser = sharedCtx.createAnalyser();
-analyser.fftSize = 1024;
-
-// Route master chain
-compressor.connect(masterGain);
-masterGain.connect(analyser);
-analyser.connect(sharedCtx.destination);
-
-// Create track gains for mixing/mute/solo (routed to the compressor)
-export const trackGains: GainNode[] = Array(4).fill(null).map(() => {
-  const g = sharedCtx.createGain();
-  g.gain.setValueAtTime(0.8, sharedCtx.currentTime); // default volume is 0.8
-  g.connect(compressor);
-  return g;
-});
+// === Pure data state — safe to live at module scope (no audio nodes here) ===
 
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
-
-// Factory map: engineType -> constructor. Connect engines to their track gain node.
-const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
-  synth: (ctx, dest) => new SynthEngine(ctx, dest),
-  kick: (ctx, dest) => new KickEngine(ctx, dest),
-  hat: (ctx, dest) => new HatEngine(ctx, dest),
-  snare: (ctx, dest) => new SnareEngine(ctx, dest),
-  clap: (ctx, dest) => new ClapEngine(ctx, dest),
-};
 
 export interface MixerState {
   volume: number;
@@ -77,10 +38,6 @@ const DEFAULT_MIXER_STATE: MixerState = {
   soloed: false,
 };
 
-// Persist the reactive states at module scope so they survive HMR/reload.
-// Each per-engine slice deep-clones the engine's DEFAULT_PARAMS so the tracks
-// don't share nested objects (e.g. mutating track 0's filterEnv must not bleed
-// into track 1).
 const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
   engineType: 'synth' as EngineType,
   playMode: 'mono' as const,
@@ -92,106 +49,152 @@ const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
   mixer: { ...DEFAULT_MIXER_STATE },
 })));
 
-// Engines are lazily built on first sync via the factory map so we don't
-// instantiate engine types the user may immediately swap away from.
-const engines: SoundEngine[] = [];
-
-// Calculate and apply target gains smoothly to prevent clicks/pops
-const updateMixerGains = () => {
-  const anySoloed = trackStates.some(ts => ts.mixer?.soloed);
-  for (let i = 0; i < 4; i++) {
-    const state = trackStates[i];
-    let targetGain = 0;
-    if (anySoloed) {
-      targetGain = (state.mixer.soloed && !state.mixer.muted) ? state.mixer.volume : 0;
-    } else {
-      targetGain = !state.mixer.muted ? state.mixer.volume : 0;
-    }
-    // Smooth transitions using setTargetAtTime
-    trackGains[i].gain.setTargetAtTime(targetGain, sharedCtx.currentTime, 0.015);
-  }
+const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
+  synth: (ctx, dest) => new SynthEngine(ctx, dest),
+  kick:  (ctx, dest) => new KickEngine(ctx, dest),
+  hat:   (ctx, dest) => new HatEngine(ctx, dest),
+  snare: (ctx, dest) => new SnareEngine(ctx, dest),
+  clap:  (ctx, dest) => new ClapEngine(ctx, dest),
 };
 
-// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
-const syncTrackToEngine = (i: number) => {
-  const state = trackStates[i];
-  const targetType = state.engineType;
-  const existing = engines[i];
 
-  if (!existing || existing.engineType !== targetType) {
-    if (existing) {
-      // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop() doesn't click.
-      // The new engine connects to the same trackGain; updateMixerGains restores it after.
-      trackGains[i].gain.setTargetAtTime(0, sharedCtx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
-      const oldEngine = existing;
-      setTimeout(() => {
-        oldEngine.dispose();
-        updateMixerGains();
-      }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+// === Audio state — lazy. Built on first user gesture (or test-driven ensureAudio). ===
+
+interface AudioState {
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+  trackGains: GainNode[];
+  engines: SoundEngine[];
+  scope: EffectScope;
+}
+
+let audioState: AudioState | null = null;
+
+function buildAudioState(): AudioState {
+  const ctx = new AudioContext();
+
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-12, ctx.currentTime);
+  compressor.knee.setValueAtTime(30, ctx.currentTime);
+  compressor.ratio.setValueAtTime(12, ctx.currentTime);
+  compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+  compressor.release.setValueAtTime(0.25, ctx.currentTime);
+
+  const masterGain = ctx.createGain();
+  masterGain.gain.setValueAtTime(0.6, ctx.currentTime);
+
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+
+  compressor.connect(masterGain);
+  masterGain.connect(analyser);
+  analyser.connect(ctx.destination);
+
+  const trackGains: GainNode[] = Array(4).fill(null).map(() => {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.8, ctx.currentTime);
+    g.connect(compressor);
+    return g;
+  });
+
+  const engines: SoundEngine[] = [];
+
+  const syncTrackToEngine = (i: number) => {
+    const state = trackStates[i];
+    const targetType = state.engineType;
+    const existing = engines[i];
+
+    if (!existing || existing.engineType !== targetType) {
+      if (existing) {
+        // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop() doesn't click.
+        trackGains[i].gain.setTargetAtTime(0, ctx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
+        const oldEngine = existing;
+        setTimeout(() => {
+          oldEngine.dispose();
+          updateMixerGains();
+        }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+      }
+      engines[i] = engineFactories[targetType](ctx, trackGains[i]);
     }
-    engines[i] = engineFactories[targetType](sharedCtx, trackGains[i]);
+
+    engines[i].applyParams(state[targetType] as Record<string, any>);
+  };
+
+  const updateMixerGains = () => {
+    const anySoloed = trackStates.some(ts => ts.mixer?.soloed);
+    for (let i = 0; i < 4; i++) {
+      const state = trackStates[i];
+      let targetGain = 0;
+      if (anySoloed) {
+        targetGain = (state.mixer.soloed && !state.mixer.muted) ? state.mixer.volume : 0;
+      } else {
+        targetGain = !state.mixer.muted ? state.mixer.volume : 0;
+      }
+      trackGains[i].gain.setTargetAtTime(targetGain, ctx.currentTime, 0.015);
+    }
+  };
+
+  // Build engines + apply current trackStates (which may already carry pre-play knob edits).
+  for (let i = 0; i < 4; i++) {
+    syncTrackToEngine(i);
   }
+  updateMixerGains();
 
-  // Apply params polymorphically — each engine knows how to interpret its own params
-  engines[i].applyParams(state[targetType] as Record<string, any>);
-};
+  // Watchers live in a detached EffectScope so they can be stopped explicitly
+  // via disposeAudio() — without this the original code had no teardown path.
+  const scope = effectScope(true);
+  scope.run(() => {
+    for (let i = 0; i < 4; i++) {
+      watch(
+        () => [
+          trackStates[i].engineType,
+          trackStates[i].synth,
+          trackStates[i].kick,
+          trackStates[i].hat,
+          trackStates[i].snare,
+          trackStates[i].clap,
+        ],
+        () => syncTrackToEngine(i),
+        { deep: true }
+      );
+    }
+    for (let i = 0; i < 4; i++) {
+      watch(
+        () => trackStates[i].mixer,
+        () => updateMixerGains(),
+        { deep: true }
+      );
+    }
+  });
 
-// Initialize engines and mixer gains
-for (let i = 0; i < 4; i++) {
-  syncTrackToEngine(i);
-}
-updateMixerGains();
-
-// Watch engine type and specific parameters to trigger sync
-for (let i = 0; i < 4; i++) {
-  watch(
-    () => [
-      trackStates[i].engineType,
-      trackStates[i].synth,
-      trackStates[i].kick,
-      trackStates[i].hat,
-      trackStates[i].snare,
-      trackStates[i].clap
-    ],
-    () => {
-      syncTrackToEngine(i);
-    },
-    { deep: true }
-  );
-}
-
-// Watch mixer parameters separately to update gains
-for (let i = 0; i < 4; i++) {
-  watch(
-    () => trackStates[i].mixer,
-    () => {
-      updateMixerGains();
-    },
-    { deep: true }
-  );
+  return { ctx, analyser, trackGains, engines, scope };
 }
 
-let useSynthInvocationCount = 0;
+function ensureAudio(): AudioState {
+  if (!audioState) {
+    audioState = buildAudioState();
+  }
+  return audioState;
+}
+
+// Exposed primarily for tests; production code does not call this.
+export function disposeSynth() {
+  if (!audioState) return;
+  audioState.scope.stop();
+  for (const engine of audioState.engines) {
+    engine.dispose();
+  }
+  audioState.ctx.close().catch(() => { /* ctx may already be closed */ });
+  audioState = null;
+}
 
 export function useSynth() {
-  useSynthInvocationCount += 1;
-  if (useSynthInvocationCount > 1) {
-    // Audio context, engines, sequencer, and watchers are module-scoped singletons.
-    // A second call returns fresh local refs (currentStep, activeTrackIndex) but
-    // shares all audio/sequencer state — almost always a wiring bug.
-    console.warn(
-      `[useSynth] called ${useSynthInvocationCount} times — audio state is module-scoped and shared. ` +
-      `If this is intentional (e.g. multiple views), be aware that local UI refs are NOT shared.`
-    );
-  }
-
   const currentStep = ref(-1);
   const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
   const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
-  // --- Generic helper to create writable computed refs bound to the active track ---
   function trackParam<K extends keyof TrackState, P extends keyof TrackState[K]>(
     engine: K, param: P, fallback: TrackState[K][P]
   ): WritableComputedRef<TrackState[K][P]> {
@@ -207,7 +210,6 @@ export function useSynth() {
     });
   }
 
-  // Engine type selector (slightly different shape — lives on TrackState directly)
   const engineType = computed({
     get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].engineType : 'synth' as EngineType,
     set: (val: EngineType) => {
@@ -257,10 +259,6 @@ export function useSynth() {
     }
   });
 
-  // Duration (in seconds) of the shortest non-muted note on the active track.
-  // Used to warn the user when their envelope A+D exceeds the actual note length —
-  // i.e. when the envelope is being audibly truncated by the next step.
-  // Returns null when no notes are active (no warning needed).
   const shortestActiveNoteDuration = computed<number | null>(() => {
     if (activeTrackIndex.value === null) return null;
     const track = sequencer.tracks[activeTrackIndex.value];
@@ -272,38 +270,46 @@ export function useSynth() {
     return minTicks * tickDuration;
   });
 
+  // Audio-derived bindings. `analyser` returns null until first ensureAudio()
+  // so Visualizer renders a flat line during the pre-gesture window.
+  const analyser: ComputedRef<AnalyserNode | null> = computed(() => audioState?.analyser ?? null);
+  const trackGains: ComputedRef<GainNode[] | null> = computed(() => audioState?.trackGains ?? null);
+
   const togglePlay = () => {
-    if (sharedCtx.state === 'suspended') {
-      sharedCtx.resume();
+    // First user gesture: this is where the AudioContext + engines + watchers
+    // come alive. Doing it here (not at module load) eliminates Chrome's
+    // "AudioContext was not allowed to start" warning.
+    const state = ensureAudio();
+
+    if (state.ctx.state === 'suspended') {
+      state.ctx.resume();
     }
 
     if (sequencer.isPlaying) {
       sequencer.stop();
       currentStep.value = -1;
     } else {
-      sequencer.start(sharedCtx, (stepIndex, time) => {
+      sequencer.start(state.ctx, (stepIndex, time) => {
         currentStep.value = stepIndex;
-        
-        // Trigger all tracks in parallel
+
         for (let i = 0; i < 4; i++) {
           const step = sequencer.tracks[i].steps[stepIndex];
           if (step.note && !step.muted) {
-            const engineType = trackStates[i].engineType;
-            if (engineType === 'synth') {
+            const engineTypeI = trackStates[i].engineType;
+            if (engineTypeI === 'synth') {
               const currentPlayMode = trackStates[i].playMode || 'mono';
               const tickDuration = (60 / sequencer.bpm) / 4;
               const duration = step.length * tickDuration;
               if (currentPlayMode === 'chord') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engines[i].trigger(freqs, duration, time, step.velocity);
+                state.engines[i].trigger(freqs, duration, time, step.velocity);
               } else {
                 const freq = noteToFreq(step.note, step.octave);
-                engines[i].trigger(freq, duration, time, step.velocity);
+                state.engines[i].trigger(freq, duration, time, step.velocity);
               }
             } else {
-              // Drum engine: trigger with standard freq, duration 0.15s, and pass step.velocity
               const freq = noteToFreq(step.note, step.octave);
-              engines[i].trigger(freq, 0.15, time, step.velocity);
+              state.engines[i].trigger(freq, 0.15, time, step.velocity);
             }
           }
         }
@@ -315,7 +321,6 @@ export function useSynth() {
     activeTrackIndex.value = index;
   };
 
-  // Helper to check if a specific track is using a specific engine
   const getTrackEngineType = (index: number): EngineType => {
     return trackStates[index].engineType;
   };
@@ -323,6 +328,7 @@ export function useSynth() {
   return {
     trackStates,
     analyser,
+    trackGains,
     sequencer,
     activeTrackIndex,
     currentStep,
@@ -358,5 +364,8 @@ export function useSynth() {
     togglePlay,
     selectTrack,
     getTrackEngineType,
+    // Force audio init without playing — needed by tests and any consumer
+    // that needs the audio graph up before the first togglePlay.
+    ensureAudio,
   };
 }
