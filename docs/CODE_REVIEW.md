@@ -325,7 +325,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 |---|---|---|
 | **A1** | ~~Full singleton → composable refactor of `useSynth`~~ | ✅ **Done** — lazy `AudioContext`, watchers in `EffectScope`, explicit `ensureAudio()` / `disposeSynth()`. See ARCHITECTURE.md §6 + D8. |
 | **A2** | ~~Narrow watcher paths in `useSynth`~~ | ✅ **Done** — per-slice watchers + `diffParams` forward only changed keys. Regression tests in `useSynth.test.ts`. See ARCHITECTURE.md §6 reactivity flow. |
-| **A3** | Tagged-union `TrackState` | Each track currently stores config for all 5 engine types. Discriminated union by `engineType` instead. Naturally pairs with a preset system. |
+| **A3** | Tagged-union `TrackState` | **Deferred — bundled with F1.** Each track currently stores config for all 5 engine types so engine-swap preserves user edits. A standalone tagged union would either (a) lose that UX or (b) need a sidecar cache. F1 (presets) introduces exactly that cache, so A3 + F1 land together: track holds active engine config + reference to per-engine preset that captures the "last known" state. Decided 2026-05-23. |
 | **A4** | CSS scoping audit | `App.vue` uses unscoped `<style>`. Intentional for theme, but worth confirming what bleeds. |
 | **A5** | Sequencer reactivity audit | `reactive(new Sequencer())` proxies all 64 steps. Probably fine at this scale. |
 
@@ -333,7 +333,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 
 | # | Item |
 |---|---|
-| **F1** | `localStorage` persistence for `trackStates` + `sequencer` — would naturally pair with a named preset system (the "fat-saw" preset for track 0 demo-state, etc., per the architectural doc). |
+| **F1** | `localStorage` persistence for `trackStates` + `sequencer` — would naturally pair with a named preset system (the "fat-saw" preset for track 0 demo-state, etc., per the architectural doc). **Bundled with A3** — F1's preset cache is what makes the A3 tagged-union refactor preserve engine-swap UX. |
 
 ---
 
