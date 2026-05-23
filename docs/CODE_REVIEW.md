@@ -314,7 +314,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 | **U3** | ~~Velocity slider asymmetry (drum shows `%`, synth doesn't)~~ | ✅ Done (`4a8aecd`) — synth row now shows % too |
 | **U4** | Mixer Volume is linear gain shown as `%` (perception is log) | `TrackMixer.vue`, `useSynth.ts` gain math |
 | **U5** | ~~Knob double-click reset captures stale `modelValue` after track switch~~ | ✅ Done (`4a8aecd`) — every panel passes engine `DEFAULT_PARAMS` |
-| **U6** | Drum engines ignore `step.length`/`step.octave`/`step.note` value | `useSynth.ts:325`, drum engines |
+| **U6** | ~~Drum engines ignore `step.length`/`step.octave`/`step.note` value~~ | ✅ Closed by design — drums are fire-and-forget; pitch + decay come from per-engine knobs (Tune/Decay), not step data. Vestigial `noteToFreq()` call dropped in `useSynth.ts`; freq/duration now passed as 0 with a comment. |
 | **U7** | (resolved by `5881a6b` — Track 0 asymmetry removed) | — |
 
 The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `audioState` was a plain `let`, so the `analyser`/`trackGains` computeds in `useSynth.ts` cached their first evaluation (null) and never re-ran after `ensureAudio()` assigned. Converted to `shallowRef`. Tests passed because they call `ensureAudio()` before reading the computed; the browser caught it because the template reads first.

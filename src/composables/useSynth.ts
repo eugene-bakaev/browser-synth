@@ -362,8 +362,11 @@ export function useSynth() {
                 state.engines[i].trigger(freq, duration, time, step.velocity);
               }
             } else {
-              const freq = noteToFreq(step.note, step.octave);
-              state.engines[i].trigger(freq, 0.15, time, step.velocity);
+              // Drums are fire-and-forget: pitch + decay come from the engine's
+              // Tune/Decay knobs, not from step data. freq/duration are passed
+              // as 0 — every drum engine ignores them. step.note here is used
+              // only as a trigger flag (null = no trigger) by the outer if.
+              state.engines[i].trigger(0, 0, time, step.velocity);
             }
           }
         }
