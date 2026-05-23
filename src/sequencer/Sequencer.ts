@@ -14,13 +14,33 @@ export interface Track {
   steps: Step[];
 }
 
+// Scheduler bookkeeping that doesn't need Vue reactivity. Bundled into one
+// markRaw'd object so `reactive(new Sequencer())` skips proxying these fields.
+// Touched ~7x per setInterval tick — without markRaw that's ~120ms/min of
+// pointless proxy-trap overhead during playback. Vue would also wrap `timer`
+// (a setInterval return value), which is semantically meaningless.
+interface SchedulerInternals {
+  currentStep: number;
+  timer: any;
+  // Absolute count of steps scheduled since the last anchor (lets us compute
+  // step times without floating-point drift over thousands of steps).
+  nextStepIndex: number;
+  // Anchor: the audio-clock time at which scheduleStartTime + 0*stepTime = step 0.
+  scheduleStartTime: number;
+  // Last BPM observed; used to detect mid-playback tempo changes.
+  lastBpm: number;
+}
+
+import { markRaw } from 'vue';
+
 export class Sequencer {
+  // Public reactive surface — UI binds to these.
   tracks: Track[] = Array(4).fill(null).map((_, index) => ({
     id: index,
     name: `Track ${index + 1}`,
-    steps: Array(16).fill(null).map(() => ({ 
-      note: null, 
-      octave: 4, 
+    steps: Array(16).fill(null).map(() => ({
+      note: null,
+      octave: 4,
       length: 1,
       velocity: 0.8,
       muted: false,
@@ -29,16 +49,16 @@ export class Sequencer {
     }))
   }));
   bpm = 120;
-  private currentStep = 0;
-  private timer: any = null;
   isPlaying = false;
-  // Absolute count of steps scheduled since the last anchor (used to compute
-  // step times without floating-point drift over thousands of steps).
-  private nextStepIndex = 0;
-  // Anchor: the audio-clock time at which scheduleStartTime + 0*stepTime = step 0.
-  private scheduleStartTime = 0;
-  // Last BPM we observed; used to detect mid-playback tempo changes.
-  private lastBpm = 120;
+
+  // Scheduler internals — non-reactive. Access via `this.internals.X`.
+  private internals: SchedulerInternals = markRaw({
+    currentStep: 0,
+    timer: null,
+    nextStepIndex: 0,
+    scheduleStartTime: 0,
+    lastBpm: 120,
+  });
 
   clearTrack(trackId: number) {
     const track = this.tracks.find(t => t.id === trackId);
@@ -85,45 +105,47 @@ export class Sequencer {
     if (this.isPlaying) return;
     this.isPlaying = true;
 
-    this.currentStep = 0;
-    this.nextStepIndex = 0;
-    this.scheduleStartTime = ctx.currentTime + 0.1; // 0.1s lookahead absorbs JS jitter
-    this.lastBpm = this.bpm;
+    const s = this.internals;
+    s.currentStep = 0;
+    s.nextStepIndex = 0;
+    s.scheduleStartTime = ctx.currentTime + 0.1; // 0.1s lookahead absorbs JS jitter
+    s.lastBpm = this.bpm;
 
     // Check every 25ms to see if a note needs to be scheduled
-    this.timer = setInterval(() => {
+    s.timer = setInterval(() => {
       // If BPM changed mid-play, rebase the anchor to the last scheduled step's
       // time so the very next step uses the new stepTime forward — feels like
       // "tempo takes effect immediately" rather than a one-step delay.
-      if (this.bpm !== this.lastBpm) {
-        if (this.nextStepIndex > 0) {
-          const oldStepTime = (60 / this.lastBpm) / 4;
-          const lastScheduledTime = this.scheduleStartTime + (this.nextStepIndex - 1) * oldStepTime;
-          this.scheduleStartTime = lastScheduledTime;
-          this.nextStepIndex = 1;
+      if (this.bpm !== s.lastBpm) {
+        if (s.nextStepIndex > 0) {
+          const oldStepTime = (60 / s.lastBpm) / 4;
+          const lastScheduledTime = s.scheduleStartTime + (s.nextStepIndex - 1) * oldStepTime;
+          s.scheduleStartTime = lastScheduledTime;
+          s.nextStepIndex = 1;
         }
-        this.lastBpm = this.bpm;
+        s.lastBpm = this.bpm;
       }
 
       const stepTime = (60 / this.bpm) / 4;
       const lookaheadTime = ctx.currentTime + 0.1;
 
       // Compute next step time from the anchor + integer step count (no float drift)
-      let nextStepTime = this.scheduleStartTime + this.nextStepIndex * stepTime;
+      let nextStepTime = s.scheduleStartTime + s.nextStepIndex * stepTime;
       while (nextStepTime < lookaheadTime) {
-        callback(this.currentStep, nextStepTime);
-        this.currentStep = (this.currentStep + 1) % 16;
-        this.nextStepIndex += 1;
-        nextStepTime = this.scheduleStartTime + this.nextStepIndex * stepTime;
+        callback(s.currentStep, nextStepTime);
+        s.currentStep = (s.currentStep + 1) % 16;
+        s.nextStepIndex += 1;
+        nextStepTime = s.scheduleStartTime + s.nextStepIndex * stepTime;
       }
     }, 25);
   }
 
   stop() {
     this.isPlaying = false;
-    if (this.timer) {
-        clearInterval(this.timer);
-        this.timer = null;
+    const s = this.internals;
+    if (s.timer) {
+      clearInterval(s.timer);
+      s.timer = null;
     }
   }
 }
