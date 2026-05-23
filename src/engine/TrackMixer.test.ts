@@ -68,6 +68,10 @@ vi.stubGlobal('AudioNode', MockAudioNode);
 vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 
+// Mirrors useSynth.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
+// Same math, so the floating-point result matches bit-for-bit.
+const sliderGain = (s: number) => s <= 0 ? 0 : Math.pow(10, (-54 + s * 60) / 20);
+
 let useSynth: any;
 let trackGains: any[];
 
@@ -85,35 +89,36 @@ describe('TrackMixer Logic', () => {
     synthData.ensureAudio();
     trackGains = synthData.trackGains.value;
 
-    // Reset trackStates to defaults
-    synthData.trackStates.forEach((ts: any, i: number) => {
+    // Reset trackStates to defaults. Slider is 0..1 (perceptual); the gain
+    // node receives sliderGain(slider) after the U4 log-scale conversion.
+    synthData.trackStates.forEach((ts: any) => {
       ts.mixer.volume = 0.8;
       ts.mixer.muted = false;
       ts.mixer.soloed = false;
     });
-    // Reset spy call records
+    // Reset spy call records + mock gain.value to the new expected baseline.
     trackGains.forEach((g: any) => {
       g.gain.setTargetAtTime.mockClear();
-      g.gain.value = 0.8;
+      g.gain.value = sliderGain(0.8);
     });
   });
 
-  it('should initialize tracks with default 0.8 volume', () => {
+  it('should initialize tracks with default volume gain', () => {
     expect(trackGains.length).toBe(4);
     trackGains.forEach((g: any) => {
-      expect(g.gain.value).toBe(0.8);
+      expect(g.gain.value).toBe(sliderGain(0.8));
     });
   });
 
   it('should apply volume changes smoothly to gain nodes', async () => {
     // Modify volume on track 0
     synthData.trackStates[0].mixer.volume = 0.5;
-    
+
     // Wait for Vue's watch/reactive effect cycle
     await vi.waitFor(() => {
-      expect(trackGains[0].gain.setTargetAtTime).toHaveBeenCalledWith(0.5, expect.any(Number), 0.015);
+      expect(trackGains[0].gain.setTargetAtTime).toHaveBeenCalledWith(sliderGain(0.5), expect.any(Number), 0.015);
     });
-    expect(trackGains[0].gain.value).toBe(0.5);
+    expect(trackGains[0].gain.value).toBe(sliderGain(0.5));
   });
 
   it('should mute a track correctly by setting gain to 0', async () => {
@@ -125,7 +130,7 @@ describe('TrackMixer Logic', () => {
     });
     expect(trackGains[1].gain.value).toBe(0);
     // Track 0 should remain at its volume
-    expect(trackGains[0].gain.value).toBe(0.8);
+    expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
   });
 
   it('should solo a track and silence all other non-soloed tracks', async () => {
@@ -134,7 +139,7 @@ describe('TrackMixer Logic', () => {
 
     await vi.waitFor(() => {
       // Soloed track should remain at its volume
-      expect(trackGains[2].gain.value).toBe(0.8);
+      expect(trackGains[2].gain.value).toBe(sliderGain(0.8));
       // Others should be silenced
       expect(trackGains[0].gain.value).toBe(0);
       expect(trackGains[1].gain.value).toBe(0);
@@ -148,8 +153,8 @@ describe('TrackMixer Logic', () => {
     synthData.trackStates[2].mixer.soloed = true;
 
     await vi.waitFor(() => {
-      expect(trackGains[0].gain.value).toBe(0.8);
-      expect(trackGains[2].gain.value).toBe(0.8);
+      expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
+      expect(trackGains[2].gain.value).toBe(sliderGain(0.8));
       expect(trackGains[1].gain.value).toBe(0);
       expect(trackGains[3].gain.value).toBe(0);
     });
@@ -173,17 +178,17 @@ describe('TrackMixer Logic', () => {
     synthData.trackStates[3].mixer.soloed = true;
     await vi.waitFor(() => {
       expect(trackGains[0].gain.value).toBe(0);
-      expect(trackGains[3].gain.value).toBe(0.8);
+      expect(trackGains[3].gain.value).toBe(sliderGain(0.8));
     });
 
     // Unsolo track 3
     synthData.trackStates[3].mixer.soloed = false;
     await vi.waitFor(() => {
       // All tracks should return to their regular volume
-      expect(trackGains[0].gain.value).toBe(0.8);
-      expect(trackGains[1].gain.value).toBe(0.8);
-      expect(trackGains[2].gain.value).toBe(0.8);
-      expect(trackGains[3].gain.value).toBe(0.8);
+      expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
+      expect(trackGains[1].gain.value).toBe(sliderGain(0.8));
+      expect(trackGains[2].gain.value).toBe(sliderGain(0.8));
+      expect(trackGains[3].gain.value).toBe(sliderGain(0.8));
     });
   });
 });
