@@ -1,11 +1,32 @@
 # Code Review: Fiddle Synth
 
-**Date:** 2026-05-23
-**Reviewer:** Claude (Opus 4.7)
+**Original review:** 2026-05-23 — Claude (Opus 4.7)
+**Last updated:** 2026-05-23 (post-merge of `review/audio-engine-fixes`)
 **Scope:** Full architecture and code review of `src/` (engine, sequencer, composables, components, utils, tests).
-**Branch reviewed:** `main` at `9063585` (pre-fix baseline).
+**Baseline reviewed:** `main` at `9063585`.
 
-This document is the source-of-truth list of findings. Items implemented in branch `review/audio-engine-fixes` are marked with their corresponding fix number. The remainder are tracked as follow-up work.
+This document is the durable source-of-truth for findings from the review and their current resolution status. The original review identified 20 items; subsequent UI-correctness and architectural follow-up passes added more. See the [Current state](#current-state) section for what's landed vs what's open.
+
+---
+
+## Current state
+
+### Commits landed in `main` from `review/audio-engine-fixes`
+
+| Commit | Title | What it does |
+|---|---|---|
+| `469b3ef` | `fix: address top-10 issues from code review` | Velocity passthrough, lazy-init engines, voice-steal click ramp, engine-swap fade, dead code purge, envelope release semantics, ClapEngine source tracking, trigger signature, filter cutoff init, sequencer anchoring + BPM rebase. |
+| `8f3d8bf` | `feat: bipolar octave filter envelope + stable knob value layout` | Replaced linear `0..1 × 5000Hz` filter env with bipolar `±4 octaves` (log scale). Knob value cell width fixed; octave display uses `↑/↓` arrows. |
+| `f9d227f` | `fix: live cutoff knob, honest trigger LED, envelope-too-long warning` | Cutoff knob writes to live AudioParam (audible on sustaining notes). LED honors mute/solo state. Warning when A+D exceeds shortest active note. |
+| `5881a6b` | `refactor: engines own their defaults via DEFAULT_PARAMS` | Each engine exports `Params` interface + static `DEFAULT_PARAMS`. `useSynth` `TrackState` references those types and `structuredClone`s defaults. Track 0 detune asymmetry removed. |
+
+Tests: **59/59 passing**. `vue-tsc` + `vite build` clean.
+
+### Outstanding work (see [Outstanding](#outstanding) at bottom for full list)
+
+- **🟦 7 small UI/cosmetic items** (U1–U7) — knob format consistency, mixer dB scale, stale double-click reset, drum step field vestiges, etc.
+- **🟧 5 architectural items** (A1–A5) — full singleton→composable refactor, watcher path narrowing, tagged-union `TrackState`, CSS scoping audit, sequencer reactivity audit. **These are best tackled after the architectural reference doc is written.**
+- **🟩 1 feature gap** (F1) — `localStorage` persistence.
 
 ---
 
@@ -236,30 +257,94 @@ if (engine.engineType !== targetType) {
 
 ---
 
-## Priority summary
+## Original 20 findings — resolution map
 
-### Fixed in branch `review/audio-engine-fixes` (top 10 by impact)
+| # | Severity | Status | Commit |
+|---|----------|--------|--------|
+| #1 (minimal scope) | 🟥 | ✅ Fixed | `469b3ef` (lazy-init + double-call guard) |
+| #1 (full singleton→composable refactor) | 🟥 | ⏳ Deferred → A1 | — |
+| #2 | 🟧 | ✅ Fixed | `469b3ef` (envelope linearRamp release) |
+| #3 | 🟥 | ✅ Fixed | `469b3ef` (`STEAL_RAMP = 1ms`) |
+| #4 | 🟧 | ✅ Fixed | `469b3ef` + `f9d227f` (init + live writes) |
+| #5/#19 | 🟨 | ✅ Fixed | `469b3ef` (ClapEngine `activeSources`) |
+| #6 | 🟦 | ✅ Resolved by `5881a6b` (DEFAULT_PARAMS) |
+| #7 | 🟧 | ✅ Fixed | `469b3ef` (sequencer anchor + BPM rebase) |
+| #8 | 🟨 | ✅ Fixed | `469b3ef` (deleted `v-if="false"` + SignalFlow) |
+| #9 | 🟨 | ⏳ Deferred → A2 | — |
+| #10 | 🟨 | ⏳ Deferred → A3 | — |
+| #11 | 🟦 | ✅ Resolved by `469b3ef` + `5881a6b` |
+| #12 | 🟩 | ⏳ Deferred → F1 | — |
+| #13 | 🟦 | ⏳ Deferred → A4 | — |
+| #14 | 🟦 | ✅ Fixed | `469b3ef` (removed unused `engines` export) |
+| #15 | 🟥 | ✅ Fixed | `469b3ef` (velocity wired end-to-end) |
+| #16 | 🟦 | ⏳ Deferred → A5 | — |
+| #17 | 🟦 | ✅ Fixed | `469b3ef` (velocity slider in Tracker) |
+| #18 | 🟧 | ✅ Fixed | `469b3ef` (trigger signature) |
+| #20 | 🟧 | ✅ Fixed | `469b3ef` (engine-swap trackGain fade) |
 
-| # | Severity | Title |
-|---|----------|-------|
-| Fix 1 | 🟥 | Wire per-step velocity to synth tracks (#15, #17, #18) |
-| Fix 2 | 🟥 | Lazy-init engines + guard against double useSynth() (#1 minimal scope, #6, #11) |
-| Fix 3 | 🟥 | Smooth voice-stealing (#3) |
-| Fix 4 | 🟧 | Smooth engine-type swap (#20) |
-| Fix 5 | 🟨 | Delete dead code (#8, #14, unreferenced SignalFlow) |
-| Fix 6 | 🟧 | Envelope release time semantics (#2) |
-| Fix 7 | 🟨 | Track ClapEngine noise sources (#5/#19) |
-| Fix 8 | 🟧 | SynthEngine.trigger signature (#18) — folded into Fix 1 |
-| Fix 9 | 🟧 | Initialize filter cutoff to baseCutoff (#4) |
-| Fix 10 | 🟧 | Anchor sequencer time + handle BPM changes (#7) |
+---
 
-### Deferred to post-architectural-doc work
+## UI-correctness review (added after original 20)
 
-| # | Severity | Title |
-|---|----------|-------|
-| #1 (full) | 🟥 | Full singleton → composable refactor |
-| #9 | 🟨 | Narrow watcher paths in useSynth |
-| #10 | 🟨 | Tagged-union TrackState |
-| #12 | 🟩 | LocalStorage persistence |
-| #13 | 🟦 | CSS scoping audit |
-| #16 | 🟦 | Sequencer reactivity audit |
+Additional findings from the post-Fix-10 UI/audio behavior pass.
+
+| # | Severity | Status | Detail |
+|---|----------|--------|--------|
+| UI: Filter Env Amount = "60% of 5000Hz" | 🟥 | ✅ Fixed | `8f3d8bf` — now bipolar ±4 octaves (log) |
+| UI: Knob layout shift on drag | 🟧 | ✅ Fixed | `8f3d8bf` — fixed-width value cell |
+| UI: "oct" suffix opaque | 🟦 | ✅ Fixed | `8f3d8bf` — `↑2.4`/`↓1.5`/`0` |
+| UI: Live cutoff doesn't sweep on sustain | 🟧 | ✅ Fixed | `f9d227f` — `setTargetAtTime` in `applyParams` |
+| UI: Trigger LED ignores mute/solo | 🟧 | ✅ Fixed | `f9d227f` — honest check |
+| UI: Long ADSR vs short step silently truncated | 🟧 | ✅ Fixed | `f9d227f` — ⚠ warning in EnvelopePanel |
+| UI: Track 0 detune asymmetry | 🟦 | ✅ Fixed | `5881a6b` — DEFAULT_PARAMS refactor |
+
+---
+
+<a id="outstanding"></a>
+## Outstanding work
+
+### 🟦 UI / cosmetic polish (U-series)
+
+Single dedicated UI-pass branch when appetite strikes. Each item is small (5–30 min) and independent.
+
+| # | Item | Where |
+|---|---|---|
+| **U1** | Envelope A/D/R UI min=0 but engine clamps to 0.001 (cosmetic lie) | `EnvelopePanel.vue`, `SynthVoice.ts` |
+| **U2** | Knob `ms ↔ s` boundary display discontinuity at 1s | `Knob.vue` `format='ms'` |
+| **U3** | Velocity slider asymmetry (drum shows `%`, synth doesn't) | `Tracker.vue` |
+| **U4** | Mixer Volume is linear gain shown as `%` (perception is log) | `TrackMixer.vue`, `useSynth.ts` gain math |
+| **U5** | Knob double-click reset captures stale `modelValue` after track switch | `Knob.vue:84` |
+| **U6** | Drum engines ignore `step.length`/`step.octave`/`step.note` value | `useSynth.ts:325`, drum engines |
+| **U7** | (resolved by `5881a6b` — Track 0 asymmetry removed) | — |
+
+### 🟧 Architectural items (A-series)
+
+**Best tackled after the architectural reference doc lands on `main`** — the doc clarifies the contracts these refactors should respect.
+
+| # | Item | Notes |
+|---|---|---|
+| **A1** | Full singleton → composable refactor of `useSynth` | Module-scope AudioContext + engines + watchers should live inside a real composable with proper lifecycle. |
+| **A2** | Narrow watcher paths in `useSynth` | Current `deep: true` watcher fires every setter on every knob turn. Pass only changed keys. |
+| **A3** | Tagged-union `TrackState` | Each track currently stores config for all 5 engine types. Discriminated union by `engineType` instead. Naturally pairs with a preset system. |
+| **A4** | CSS scoping audit | `App.vue` uses unscoped `<style>`. Intentional for theme, but worth confirming what bleeds. |
+| **A5** | Sequencer reactivity audit | `reactive(new Sequencer())` proxies all 64 steps. Probably fine at this scale. |
+
+### 🟩 Feature gaps
+
+| # | Item |
+|---|---|
+| **F1** | `localStorage` persistence for `trackStates` + `sequencer` — would naturally pair with a named preset system (the "fat-saw" preset for track 0 demo-state, etc., per the architectural doc). |
+
+---
+
+## Key design decisions (for future-me / future-reader)
+
+These are non-obvious choices that future work should respect or knowingly revisit.
+
+- **Filter envelope amount is log-scale octaves, not linear Hz.** Bipolar `±4 octaves`. `peakCutoff = baseCutoff * 2^filterEnvAmount`, clamped to `[20, 20000]` Hz. The previous design (linear `× 5000Hz` factor) felt dramatic at low cutoffs and inaudible at high cutoffs.
+- **Envelope `R` is now a linearRamp duration, not a time constant.** `param.linearRampToValueAtTime(min, releaseTime + r)`. The original used `setTargetAtTime` with `τ = R/3`, which never actually reached `min`.
+- **1ms `STEAL_RAMP` in `EnvelopeModule.trigger`.** Smooth handoff from a previous voice's residual value to `min`. Shifts attack by 1ms (inaudible) but eliminates voice-steal clicks.
+- **Engine-type swap fades trackGain over 20ms before `dispose()`.** `setTimeout` defers the actual dispose. The new engine connects to the same trackGain; `updateMixerGains()` restores it after.
+- **Sequencer schedules step times from an anchor + integer step counter**, not by accumulating `nextNoteTime += stepTime`. Eliminates float drift. BPM changes mid-playback rebase the anchor at the last scheduled step so tempo takes effect immediately.
+- **Each engine class exposes `static readonly DEFAULT_PARAMS`** of its `*EngineParams` type — single source of truth for "what does a fresh engine sound like." `useSynth` builds `TrackState` via `structuredClone(EngineClass.DEFAULT_PARAMS)` (deep clone is required because nested ADSR objects would otherwise be shared by reference across tracks).
+- **`useSynth` warns on second invocation.** The composable shape is misleading — audio state is actually module-scope singleton. Calling `useSynth()` more than once gets fresh local refs but shared engine state, almost always a wiring bug.
