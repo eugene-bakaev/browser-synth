@@ -156,6 +156,17 @@ describe('SynthEngine', () => {
     expect(voiceSpy).toHaveBeenCalledWith(440, 0.5, expect.any(Number), 1.0);
   });
 
+  it('should write filterCutoff to the live AudioParam so the knob affects sustaining notes', () => {
+    const engine = new SynthEngine();
+    const voice = engine.voices[0];
+    const cutoffParam = voice.filter.inputs.cutoff as any;
+    cutoffParam.setTargetAtTime.mockClear();
+
+    engine.applyParams({ filterCutoff: 1234 });
+
+    expect(cutoffParam.setTargetAtTime).toHaveBeenCalledWith(1234, expect.any(Number), 0.01);
+  });
+
   it('should dispose without throwing', () => {
     const engine = new SynthEngine();
     expect(() => engine.dispose()).not.toThrow();

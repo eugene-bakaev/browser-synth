@@ -98,6 +98,13 @@ export class SynthVoice {
 
     if (params.filterCutoff !== undefined) {
       this.baseCutoff = Math.max(20, Math.min(20000, params.filterCutoff));
+      // Write the live AudioParam so the cutoff knob affects sustaining notes
+      // immediately, not only on next trigger. Active filter envelopes call
+      // cancelAndHold + linearRamp on each trigger, which preempts any
+      // setTargetAtTime in flight — so this never fights an active envelope.
+      if (this.filter.inputs.cutoff instanceof AudioParam) {
+        this.filter.inputs.cutoff.setTargetAtTime(this.baseCutoff, this.ctx.currentTime, 0.01);
+      }
     }
 
     if (params.filterEnvAmount !== undefined) {

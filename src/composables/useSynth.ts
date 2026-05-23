@@ -311,6 +311,21 @@ export function useSynth() {
     }
   });
 
+  // Duration (in seconds) of the shortest non-muted note on the active track.
+  // Used to warn the user when their envelope A+D exceeds the actual note length —
+  // i.e. when the envelope is being audibly truncated by the next step.
+  // Returns null when no notes are active (no warning needed).
+  const shortestActiveNoteDuration = computed<number | null>(() => {
+    if (activeTrackIndex.value === null) return null;
+    const track = sequencer.tracks[activeTrackIndex.value];
+    if (!track) return null;
+    const activeSteps = track.steps.filter(s => s.note !== null && !s.muted);
+    if (activeSteps.length === 0) return null;
+    const tickDuration = (60 / sequencer.bpm) / 4;
+    const minTicks = Math.min(...activeSteps.map(s => s.length));
+    return minTicks * tickDuration;
+  });
+
   const togglePlay = () => {
     if (sharedCtx.state === 'suspended') {
       sharedCtx.resume();
@@ -381,6 +396,7 @@ export function useSynth() {
     filterEnvAmount,
     filterEnv,
     ampEnv,
+    shortestActiveNoteDuration,
     kickTune,
     kickDecay,
     kickClick,

@@ -123,6 +123,7 @@
                 :waveforms="waveforms"
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
+                :shortestActiveNoteDuration="shortestActiveNoteDuration"
                 :analyser="analyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -214,6 +215,7 @@ const {
   filterEnvAmount,
   filterEnv,
   ampEnv,
+  shortestActiveNoteDuration,
   kickTune,
   kickDecay,
   kickClick,
