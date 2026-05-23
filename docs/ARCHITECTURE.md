@@ -293,7 +293,24 @@ App.vue
 
 **State direction:** unidirectional via `v-model` on `useSynth()`-returned computeds. Panels never reach into `trackStates` directly.
 
-**CSS scoping:** `App.vue` uses unscoped `<style>` for theme classes (`.module-group`, `.knob-row`, etc.). Intentional for the design system. Audit tracked as A4.
+### CSS scoping convention (post-A4)
+
+`App.vue` has **two style blocks**:
+
+1. **Unscoped `<style>`** — the design system. Selectors here are global because child components render elements with these classes:
+   - `.module-group` — every engine/drum/mixer/envelope panel uses it
+   - `.module-group h3` — section header style
+   - `.knob-row` — knob layout in panel components
+   - `.rack-columns` / `.rack-column` — multi-column rack inside SynthPanel + drum panels
+   - `.engine-section .module-group` (+ `:hover`) — cross-component hover effect: the focused engine section's panels light up in the active track's color
+   - `body`, `header`, `h1` — element-level theme rules
+
+2. **Scoped `<style scoped>`** — App.vue's own layout: `.synth-container`, `.transport`, `.bpm`, `.focused-*`, `.engine-selector`, `.back-btn`, `.mixer-section`, etc. Vue's scoped CSS adds `data-v-*` attributes so these don't leak.
+
+**Adding new selectors:**
+- If a *child component renders* the element with this class → put the rule in the unscoped block.
+- If only *App.vue's template* uses it → put it in the scoped block.
+- All other components use `<style scoped>` exclusively.
 
 ---
 
