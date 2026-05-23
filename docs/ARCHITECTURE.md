@@ -251,6 +251,14 @@ this.timer = setInterval(() => {
 ### Callback contract
 The callback `(stepIndex, time) => void` is invoked **for the audio time at which the step should sound**. Engines must schedule sound-emitting calls against `time`, not `ctx.currentTime`. Violating this defeats the lookahead and produces jitter.
 
+### Reactivity boundary (post-A5)
+
+`useSynth` wraps the sequencer with `reactive(new Sequencer())`. That makes `tracks`, `bpm`, and `isPlaying` (the UI-facing surface) Vue-reactive — Tracker components and the PLAY button watch them.
+
+The five scheduler internals (`currentStep`, `timer`, `nextStepIndex`, `scheduleStartTime`, `lastBpm`) live inside a `markRaw`'d `internals` object so Vue skips them during proxy setup. They're touched ~7× per setInterval tick during playback; without `markRaw` that's ~120ms/min of pointless proxy-trap overhead (not user-visible, but conceptually wrong: scheduler bookkeeping is not UI state, and `timer` is a `setInterval` return value that has no business being a Proxy).
+
+**When adding new Sequencer fields:** ask "does the UI need to react to this?" UI-facing → add as a public field (reactive). Internal bookkeeping → add to `SchedulerInternals` and `this.internals`.
+
 ---
 
 ## 8. Master signal chain
