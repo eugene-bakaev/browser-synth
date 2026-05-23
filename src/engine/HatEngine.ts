@@ -1,10 +1,16 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
 
+export interface HatEngineParams {
+  decay: number;     // seconds (0.02 - 0.6)
+  tone: number;      // bandpass filter cutoff Hz (3000 - 14000)
+  metallic: number;  // blend ratio: 0 = noise only, 1 = metal only
+}
+
 export class HatEngine implements SoundEngine {
   readonly engineType = 'hat';
   readonly ctx: AudioContext;
-  
+
   // Metallic components
   private activeOscs: Set<OscillatorNode> = new Set();
   private activeSources: Set<AudioBufferSourceNode> = new Set();
@@ -19,10 +25,16 @@ export class HatEngine implements SoundEngine {
   private bandpassFilter: BiquadFilterNode;
   private ampGain: GainNode;
 
+  static readonly DEFAULT_PARAMS: HatEngineParams = {
+    decay: 0.15,
+    tone: 8000,
+    metallic: 0.5,
+  };
+
   // Parameters
-  private decay: number = 0.15;    // Decay time in seconds (0.02 - 0.6)
-  private tone: number = 8000;     // Bandpass filter cutoff frequency (3000 - 14000)
-  private metallic: number = 0.5;  // Blend between noise (0) and metal (1)
+  private decay: number = HatEngine.DEFAULT_PARAMS.decay;
+  private tone: number = HatEngine.DEFAULT_PARAMS.tone;
+  private metallic: number = HatEngine.DEFAULT_PARAMS.metallic;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

@@ -1,10 +1,10 @@
 import { ref, reactive, watch, computed, type WritableComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
-import { SynthEngine } from '../engine/SynthEngine';
-import { KickEngine } from '../engine/KickEngine';
-import { HatEngine } from '../engine/HatEngine';
-import { SnareEngine } from '../engine/SnareEngine';
-import { ClapEngine } from '../engine/ClapEngine';
+import { SynthEngine, type SynthEngineParams } from '../engine/SynthEngine';
+import { KickEngine, type KickEngineParams } from '../engine/KickEngine';
+import { HatEngine, type HatEngineParams } from '../engine/HatEngine';
+import { SnareEngine, type SnareEngineParams } from '../engine/SnareEngine';
+import { ClapEngine, type ClapEngineParams } from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
@@ -54,96 +54,42 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
   clap: (ctx, dest) => new ClapEngine(ctx, dest),
 };
 
+export interface MixerState {
+  volume: number;
+  muted: boolean;
+  soloed: boolean;
+}
+
 export interface TrackState {
   engineType: EngineType;
   playMode: 'mono' | 'chord';
-  synth: {
-    osc1Type: OscillatorType;
-    osc2Type: OscillatorType;
-    osc1Coarse: number;
-    osc1Fine: number;
-    osc2Coarse: number;
-    osc2Fine: number;
-    osc1Level: number;
-    osc2Level: number;
-    filterCutoff: number;
-    filterRes: number;
-    filterEnvAmount: number;
-    filterEnv: { a: number; d: number; s: number; r: number };
-    ampEnv: { a: number; d: number; s: number; r: number };
-  };
-  kick: {
-    tune: number;  // Hz (40 - 120)
-    decay: number; // seconds (0.05 - 1.5)
-    click: number; // ratio (0.0 - 1.0)
-  };
-  hat: {
-    decay: number;    // seconds (0.02 - 0.6)
-    tone: number;     // Hz (3000 - 14000)
-    metallic: number; // ratio (0.0 - 1.0)
-  };
-  snare: {
-    tune: number;   // Hz (100 - 250)
-    decay: number;  // seconds (0.05 - 0.8)
-    snappy: number; // ratio (0.0 - 1.0)
-  };
-  clap: {
-    decay: number;   // seconds (0.05 - 0.8)
-    tone: number;    // Hz (500 - 3000)
-    sloppy: number;  // seconds (0.005 - 0.03)
-  };
-  mixer: {
-    volume: number;
-    muted: boolean;
-    soloed: boolean;
-  };
+  synth: SynthEngineParams;
+  kick: KickEngineParams;
+  hat: HatEngineParams;
+  snare: SnareEngineParams;
+  clap: ClapEngineParams;
+  mixer: MixerState;
 }
 
-// Persist the reactive states at module scope so they survive HMR/reload
-const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) => ({
+const DEFAULT_MIXER_STATE: MixerState = {
+  volume: 0.8,
+  muted: false,
+  soloed: false,
+};
+
+// Persist the reactive states at module scope so they survive HMR/reload.
+// Each per-engine slice deep-clones the engine's DEFAULT_PARAMS so the tracks
+// don't share nested objects (e.g. mutating track 0's filterEnv must not bleed
+// into track 1).
+const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
   engineType: 'synth' as EngineType,
   playMode: 'mono' as const,
-  synth: {
-    osc1Type: 'sawtooth' as OscillatorType,
-    osc2Type: 'sawtooth' as OscillatorType,
-    osc1Coarse: 0,
-    osc1Fine: 0,
-    osc2Coarse: 0,
-    osc2Fine: index === 0 ? 10 : 0, // default detune on first track
-    osc1Level: 0.5,
-    osc2Level: 0.5,
-    filterCutoff: 2000,
-    filterRes: 1,
-    // Bipolar in octaves: +2.4 = upward sweep ~2.4 octaves above baseCutoff.
-    filterEnvAmount: 2.4,
-    filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-    ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-  },
-  kick: {
-    tune: 55,
-    decay: 0.3,
-    click: 0.5,
-  },
-  hat: {
-    decay: 0.15,
-    tone: 8000,
-    metallic: 0.5,
-  },
-  snare: {
-    tune: 180,
-    decay: 0.25,
-    snappy: 0.5,
-  },
-  clap: {
-    decay: 0.25,
-    tone: 1000,
-    sloppy: 0.015,
-  },
-  mixer: {
-    volume: 0.8,
-    muted: false,
-    soloed: false,
-  }
+  synth: structuredClone(SynthEngine.DEFAULT_PARAMS),
+  kick:  structuredClone(KickEngine.DEFAULT_PARAMS),
+  hat:   structuredClone(HatEngine.DEFAULT_PARAMS),
+  snare: structuredClone(SnareEngine.DEFAULT_PARAMS),
+  clap:  structuredClone(ClapEngine.DEFAULT_PARAMS),
+  mixer: { ...DEFAULT_MIXER_STATE },
 })));
 
 // Engines are lazily built on first sync via the factory map so we don't

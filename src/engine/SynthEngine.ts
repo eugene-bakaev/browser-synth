@@ -1,6 +1,29 @@
 import { SoundEngine } from './types';
 import { SynthVoice } from './SynthVoice';
 
+export interface ADSR {
+  a: number;
+  d: number;
+  s: number;
+  r: number;
+}
+
+export interface SynthEngineParams {
+  osc1Type: OscillatorType;
+  osc2Type: OscillatorType;
+  osc1Coarse: number;
+  osc1Fine: number;
+  osc2Coarse: number;
+  osc2Fine: number;
+  osc1Level: number;
+  osc2Level: number;
+  filterCutoff: number;
+  filterRes: number;
+  filterEnvAmount: number;
+  filterEnv: ADSR;
+  ampEnv: ADSR;
+}
+
 export class SynthEngine implements SoundEngine {
   readonly engineType = 'synth';
   readonly ctx: AudioContext;
@@ -9,21 +32,40 @@ export class SynthEngine implements SoundEngine {
   private readonly numVoices = 6;
   private readonly masterVCA: GainNode;
 
-  // Parameter Cache for Voice Initialization and Verification
-  private osc1Type: OscillatorType = 'sawtooth';
-  private osc2Type: OscillatorType = 'sawtooth';
-  private osc1Coarse: number = 0;
-  private osc1Fine: number = 0;
-  private osc2Coarse: number = 0;
-  private osc2Fine: number = 0;
-  private osc1Level: number = 0.5;
-  private osc2Level: number = 0.5;
-  private baseCutoff: number = 2000;
-  // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
-  private filterEnvAmount: number = 2.4;
-  private filterRes: number = 1;
-  private filterEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
-  private ampEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
+  // Single source of truth for what a "fresh" synth sounds like. Track defaults
+  // in useSynth.ts spread this rather than redeclaring values inline.
+  static readonly DEFAULT_PARAMS: SynthEngineParams = {
+    osc1Type: 'sawtooth',
+    osc2Type: 'sawtooth',
+    osc1Coarse: 0,
+    osc1Fine: 0,
+    osc2Coarse: 0,
+    osc2Fine: 0,
+    osc1Level: 0.5,
+    osc2Level: 0.5,
+    filterCutoff: 2000,
+    filterRes: 1,
+    // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
+    filterEnvAmount: 2.4,
+    filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+    ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+  };
+
+  // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
+  // so all the "what is the default synth sound" knowledge lives in one place.
+  private osc1Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc1Type;
+  private osc2Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc2Type;
+  private osc1Coarse: number = SynthEngine.DEFAULT_PARAMS.osc1Coarse;
+  private osc1Fine: number = SynthEngine.DEFAULT_PARAMS.osc1Fine;
+  private osc2Coarse: number = SynthEngine.DEFAULT_PARAMS.osc2Coarse;
+  private osc2Fine: number = SynthEngine.DEFAULT_PARAMS.osc2Fine;
+  private osc1Level: number = SynthEngine.DEFAULT_PARAMS.osc1Level;
+  private osc2Level: number = SynthEngine.DEFAULT_PARAMS.osc2Level;
+  private baseCutoff: number = SynthEngine.DEFAULT_PARAMS.filterCutoff;
+  private filterEnvAmount: number = SynthEngine.DEFAULT_PARAMS.filterEnvAmount;
+  private filterRes: number = SynthEngine.DEFAULT_PARAMS.filterRes;
+  private filterEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.filterEnv };
+  private ampEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.ampEnv };
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
