@@ -33,10 +33,23 @@ export interface TrackState {
 }
 
 export const DEFAULT_MIXER_STATE: MixerState = {
-  volume: 0.8,
+  // Slider position 0..1. Mapped to -54..+6 dB via sliderToLinearGain at write
+  // time. Default 0.9 lands on exactly 0 dB (unity) and leaves 6 dB of boost
+  // headroom above — same shape as a hardware mixer fader.
+  volume: 0.9,
   muted: false,
   soloed: false,
 };
+
+// Mixer volume is stored as slider position 0..1 (perceptual). The actual
+// AudioParam.gain needs a linear multiplier — convert via -54..+6 dB then
+// 10^(dB/20). Slider at 0 is hard silence (matches muted semantics). The
+// matching display formula lives in Knob.vue case 'db' — keep them in sync.
+function sliderToLinearGain(slider: number): number {
+  if (slider <= 0) return 0;
+  const db = -54 + slider * 60;
+  return Math.pow(10, db / 20);
+}
 
 const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
   engineType: 'synth' as EngineType,
@@ -164,12 +177,10 @@ function buildAudioState(): AudioState {
     const anySoloed = trackStates.some(ts => ts.mixer?.soloed);
     for (let i = 0; i < 4; i++) {
       const state = trackStates[i];
-      let targetGain = 0;
-      if (anySoloed) {
-        targetGain = (state.mixer.soloed && !state.mixer.muted) ? state.mixer.volume : 0;
-      } else {
-        targetGain = !state.mixer.muted ? state.mixer.volume : 0;
-      }
+      const audible = anySoloed
+        ? (state.mixer.soloed && !state.mixer.muted)
+        : !state.mixer.muted;
+      const targetGain = audible ? sliderToLinearGain(state.mixer.volume) : 0;
       trackGains[i].gain.setTargetAtTime(targetGain, ctx.currentTime, 0.015);
     }
   };

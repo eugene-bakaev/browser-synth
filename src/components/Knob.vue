@@ -67,7 +67,7 @@ const props = withDefaults(defineProps<{
   step: number;
   modelValue: number;
   defaultValue?: number;
-  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio';
+  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
 }>(), {
   defaultValue: undefined,
   format: undefined
@@ -111,6 +111,16 @@ const formattedValue = computed(() => {
     }
     case 'ratio':
       return val.toFixed(1);
+    case 'db': {
+      // Knob value is the slider position 0..1; we render the perceptual dB
+      // it represents. -54..+6 dB throw with unity at slider 0.9. The audio-
+      // side linear gain conversion lives in useSynth.sliderToLinearGain —
+      // keep them in sync if the range changes.
+      if (val <= 0) return '-∞ dB';
+      const db = -54 + val * 60;
+      const prefix = db > 0 ? '+' : '';
+      return prefix + db.toFixed(1) + ' dB';
+    }
     default:
       return val.toString();
   }

@@ -37,7 +37,7 @@
             :max="1"
             :step="0.01"
             :defaultValue="DEFAULT_MIXER_STATE.volume"
-            format="percent"
+            format="db"
             v-model="track.mixer.volume"
           />
         </div>
