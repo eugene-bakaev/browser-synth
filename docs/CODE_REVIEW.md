@@ -312,7 +312,7 @@ Single dedicated UI-pass branch when appetite strikes. Each item is small (5–3
 | **U1** | ~~Envelope A/D/R UI min=0 but engine clamps to 0.001~~ | ✅ Done (`4a8aecd`) — min=0.001, step=0.001 |
 | **U2** | ~~Knob `ms ↔ s` boundary display discontinuity at 1s~~ | ✅ Done (`4a8aecd`) — always renders ms |
 | **U3** | ~~Velocity slider asymmetry (drum shows `%`, synth doesn't)~~ | ✅ Done (`4a8aecd`) — synth row now shows % too |
-| **U4** | Mixer Volume is linear gain shown as `%` (perception is log) | `TrackMixer.vue`, `useSynth.ts` gain math |
+| **U4** | ~~Mixer Volume is linear gain shown as `%` (perception is log)~~ | ✅ Done (`4046ec2`) — slider 0..1 → -54..+6 dB → linear gain via 10^(dB/20). Knob reads in dB. Default slider 0.9 = 0 dB (unity), +6 dB headroom at top. |
 | **U5** | ~~Knob double-click reset captures stale `modelValue` after track switch~~ | ✅ Done (`4a8aecd`) — every panel passes engine `DEFAULT_PARAMS` |
 | **U6** | ~~Drum engines ignore `step.length`/`step.octave`/`step.note` value~~ | ✅ Closed by design — drums are fire-and-forget; pitch + decay come from per-engine knobs (Tune/Decay), not step data. Vestigial `noteToFreq()` call dropped in `useSynth.ts`; freq/duration now passed as 0 with a comment. |
 | **U7** | (resolved by `5881a6b` — Track 0 asymmetry removed) | — |
