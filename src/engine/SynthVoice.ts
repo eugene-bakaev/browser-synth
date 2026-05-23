@@ -17,13 +17,16 @@ export class SynthVoice {
   voiceGain: GainNode;
 
   baseCutoff: number = 2000;
-  filterEnvAmount: number = 0.6;
-  useHzOffsetMode: boolean = false;
+  // Bipolar filter envelope amount, in OCTAVES from baseCutoff.
+  // +4 = sweep four octaves up; -4 = sweep four octaves down; 0 = no sweep.
+  // Logarithmic so the perceived sweep depth is consistent across all base cutoffs.
+  static readonly FILTER_ENV_MAX_OCTAVES = 4;
+  filterEnvAmount: number = 2.4;
 
   constructor(ctx: AudioContext, destination: AudioNode) {
     this.ctx = ctx;
     this.patchBay = new PatchBay();
-    
+
     this.osc1 = new OscillatorModule(ctx);
     this.osc2 = new OscillatorModule(ctx);
     this.mixer = new MixerModule(ctx);
@@ -33,6 +36,12 @@ export class SynthVoice {
     this.voiceGain = ctx.createGain();
     this.voiceGain.gain.value = 0;
 
+    // Initialize the filter cutoff to baseCutoff so it isn't sitting at the
+    // BiquadFilterNode default (~350Hz) until the first trigger.
+    if (this.filter.inputs.cutoff instanceof AudioParam) {
+      this.filter.inputs.cutoff.setValueAtTime(this.baseCutoff, ctx.currentTime);
+    }
+
     // Route: osc1 & osc2 -> mixer -> filter -> voiceGain -> destination
     this.patchBay.connect(this.osc1.outputs.main, this.mixer.inputs.ch1);
     this.patchBay.connect(this.osc2.outputs.main, this.mixer.inputs.ch2);
@@ -41,25 +50,29 @@ export class SynthVoice {
     this.voiceGain.connect(destination);
   }
 
-  trigger(freq: number, duration: number, time: number) {
+  trigger(freq: number, duration: number, time: number, velocity: number = 1.0) {
     // Set oscillator frequencies at targeted time
     this.osc1.setFrequencyAtTime(freq, time);
-    this.osc2.setFrequencyAtTime(freq, time); 
+    this.osc2.setFrequencyAtTime(freq, time);
 
-    // Trigger Amplitude Envelope on the local voice VCA
-    this.ampEnv.trigger(this.voiceGain.gain, time, duration, 0, 1);
+    // Trigger Amplitude Envelope on the local voice VCA, scaled by velocity
+    const v = Math.max(0, Math.min(1, velocity));
+    this.ampEnv.trigger(this.voiceGain.gain, time, duration, 0, v);
 
-    // Trigger Filter Envelope (Modulating Cutoff)
+    // Trigger Filter Envelope (modulates cutoff up OR down by N octaves)
     if (this.filter.inputs.cutoff instanceof AudioParam) {
-      const sweepRange = this.useHzOffsetMode 
-        ? this.filterEnvAmount 
-        : (this.filterEnvAmount * 5000);
+      // Log scale: same perceived sweep depth regardless of base cutoff.
+      // Clamp peak to the audible range so we don't waste sweep above Nyquist
+      // or below the BiquadFilter's effective floor.
+      const peakCutoff = Math.max(20, Math.min(20000,
+        this.baseCutoff * Math.pow(2, this.filterEnvAmount)
+      ));
       this.filterEnv.trigger(
-        this.filter.inputs.cutoff, 
-        time, 
-        duration, 
-        this.baseCutoff, 
-        this.baseCutoff + sweepRange
+        this.filter.inputs.cutoff,
+        time,
+        duration,
+        this.baseCutoff,
+        peakCutoff
       );
     }
   }
@@ -83,20 +96,20 @@ export class SynthVoice {
       }
     }
 
-    if (params.useHzOffsetMode !== undefined) {
-      this.useHzOffsetMode = params.useHzOffsetMode;
-    }
-    
     if (params.filterCutoff !== undefined) {
       this.baseCutoff = Math.max(20, Math.min(20000, params.filterCutoff));
-    }
-    
-    if (params.filterEnvAmount !== undefined) {
-      if (this.useHzOffsetMode) {
-        this.filterEnvAmount = Math.max(0, Math.min(5000, params.filterEnvAmount));
-      } else {
-        this.filterEnvAmount = Math.max(0, Math.min(1, params.filterEnvAmount));
+      // Write the live AudioParam so the cutoff knob affects sustaining notes
+      // immediately, not only on next trigger. Active filter envelopes call
+      // cancelAndHold + linearRamp on each trigger, which preempts any
+      // setTargetAtTime in flight — so this never fights an active envelope.
+      if (this.filter.inputs.cutoff instanceof AudioParam) {
+        this.filter.inputs.cutoff.setTargetAtTime(this.baseCutoff, this.ctx.currentTime, 0.01);
       }
+    }
+
+    if (params.filterEnvAmount !== undefined) {
+      const max = SynthVoice.FILTER_ENV_MAX_OCTAVES;
+      this.filterEnvAmount = Math.max(-max, Math.min(max, params.filterEnvAmount));
     }
 
     if (params.filterEnv !== undefined) {

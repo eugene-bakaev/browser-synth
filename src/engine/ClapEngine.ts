@@ -1,6 +1,12 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
 
+export interface ClapEngineParams {
+  decay: number;   // Clap tail decay in seconds (0.05 - 0.8)
+  tone: number;    // Bandpass filter cutoff frequency Hz (500 - 3000)
+  sloppy: number;  // Spacing between initial impulses (0.005 - 0.03)
+}
+
 export class ClapEngine implements SoundEngine {
   readonly engineType = 'clap';
   readonly ctx: AudioContext;
@@ -9,11 +15,18 @@ export class ClapEngine implements SoundEngine {
   private noiseGain: GainNode;
   private noiseFilter: BiquadFilterNode;
   private ampGain: GainNode;
+  private activeSources: Set<AudioBufferSourceNode> = new Set();
+
+  static readonly DEFAULT_PARAMS: ClapEngineParams = {
+    decay: 0.25,
+    tone: 1000,
+    sloppy: 0.015,
+  };
 
   // Parameters
-  private decay: number = 0.25;    // Clap tail decay in seconds (0.05 - 0.8)
-  private tone: number = 1000;     // Bandpass filter cutoff frequency (500 - 3000)
-  private sloppy: number = 0.015;  // Spacing between initial impulses (0.005 - 0.03)
+  private decay: number = ClapEngine.DEFAULT_PARAMS.decay;
+  private tone: number = ClapEngine.DEFAULT_PARAMS.tone;
+  private sloppy: number = ClapEngine.DEFAULT_PARAMS.sloppy;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -68,8 +81,9 @@ export class ClapEngine implements SoundEngine {
     noiseSource.buffer = getNoiseBuffer(this.ctx);
     noiseSource.loop = true;
     noiseSource.connect(this.noiseFilter);
-    
+
     const totalDuration = s * 3 + d;
+    this.activeSources.add(noiseSource);
     noiseSource.start(scheduleTime);
     noiseSource.stop(scheduleTime + totalDuration + 0.1);
 
@@ -77,6 +91,7 @@ export class ClapEngine implements SoundEngine {
       try {
         noiseSource.disconnect();
       } catch (e) {}
+      this.activeSources.delete(noiseSource);
     };
 
     // 2. Schedule multi-trigger envelope for the clap
@@ -107,6 +122,16 @@ export class ClapEngine implements SoundEngine {
   }
 
   dispose() {
+    this.activeSources.forEach((src) => {
+      try {
+        src.stop();
+      } catch (e) {}
+      try {
+        src.disconnect();
+      } catch (e) {}
+    });
+    this.activeSources.clear();
+
     this.noiseFilter.disconnect();
     this.noiseGain.disconnect();
     this.ampGain.disconnect();

@@ -27,6 +27,7 @@
       <EnvelopePanel
         type="filter"
         :filterEnv="filterEnv"
+        :shortestActiveNoteDuration="shortestActiveNoteDuration"
       />
     </div>
 
@@ -35,6 +36,7 @@
       <EnvelopePanel
         type="amp"
         :ampEnv="ampEnv"
+        :shortestActiveNoteDuration="shortestActiveNoteDuration"
       />
       <Visualizer
         :analyser="analyser"
@@ -55,6 +57,7 @@ defineProps<{
   waveforms: OscillatorType[];
   filterEnv: { a: number; d: number; s: number; r: number };
   ampEnv: { a: number; d: number; s: number; r: number };
+  shortestActiveNoteDuration: number | null;
   analyser: AnalyserNode | null;
   color: string;
 }>();

@@ -1,10 +1,10 @@
 import { ref, reactive, watch, computed, type WritableComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
-import { SynthEngine } from '../engine/SynthEngine';
-import { KickEngine } from '../engine/KickEngine';
-import { HatEngine } from '../engine/HatEngine';
-import { SnareEngine } from '../engine/SnareEngine';
-import { ClapEngine } from '../engine/ClapEngine';
+import { SynthEngine, type SynthEngineParams } from '../engine/SynthEngine';
+import { KickEngine, type KickEngineParams } from '../engine/KickEngine';
+import { HatEngine, type HatEngineParams } from '../engine/HatEngine';
+import { SnareEngine, type SnareEngineParams } from '../engine/SnareEngine';
+import { ClapEngine, type ClapEngineParams } from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
@@ -41,12 +41,6 @@ export const trackGains: GainNode[] = Array(4).fill(null).map(() => {
   return g;
 });
 
-const engines: SoundEngine[] = [
-  new SynthEngine(sharedCtx, trackGains[0]),
-  new SynthEngine(sharedCtx, trackGains[1]),
-  new SynthEngine(sharedCtx, trackGains[2]),
-  new SynthEngine(sharedCtx, trackGains[3]),
-];
 const sequencer = reactive(new Sequencer());
 
 export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
@@ -60,113 +54,47 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
   clap: (ctx, dest) => new ClapEngine(ctx, dest),
 };
 
+export interface MixerState {
+  volume: number;
+  muted: boolean;
+  soloed: boolean;
+}
+
 export interface TrackState {
   engineType: EngineType;
   playMode: 'mono' | 'chord';
-  synth: {
-    osc1Type: OscillatorType;
-    osc2Type: OscillatorType;
-    osc1Coarse: number;
-    osc1Fine: number;
-    osc2Coarse: number;
-    osc2Fine: number;
-    osc1Level: number;
-    osc2Level: number;
-    filterCutoff: number;
-    filterRes: number;
-    filterEnvAmount: number;
-    filterEnv: { a: number; d: number; s: number; r: number };
-    ampEnv: { a: number; d: number; s: number; r: number };
-  };
-  kick: {
-    tune: number;  // Hz (40 - 120)
-    decay: number; // seconds (0.05 - 1.5)
-    click: number; // ratio (0.0 - 1.0)
-  };
-  hat: {
-    decay: number;    // seconds (0.02 - 0.6)
-    tone: number;     // Hz (3000 - 14000)
-    metallic: number; // ratio (0.0 - 1.0)
-  };
-  snare: {
-    tune: number;   // Hz (100 - 250)
-    decay: number;  // seconds (0.05 - 0.8)
-    snappy: number; // ratio (0.0 - 1.0)
-  };
-  clap: {
-    decay: number;   // seconds (0.05 - 0.8)
-    tone: number;    // Hz (500 - 3000)
-    sloppy: number;  // seconds (0.005 - 0.03)
-  };
-  mixer: {
-    volume: number;
-    muted: boolean;
-    soloed: boolean;
-  };
+  synth: SynthEngineParams;
+  kick: KickEngineParams;
+  hat: HatEngineParams;
+  snare: SnareEngineParams;
+  clap: ClapEngineParams;
+  mixer: MixerState;
 }
 
-// Persist the reactive states at module scope so they survive HMR/reload
-const trackStates = reactive<TrackState[]>(Array(4).fill(null).map((_, index) => ({
+const DEFAULT_MIXER_STATE: MixerState = {
+  volume: 0.8,
+  muted: false,
+  soloed: false,
+};
+
+// Persist the reactive states at module scope so they survive HMR/reload.
+// Each per-engine slice deep-clones the engine's DEFAULT_PARAMS so the tracks
+// don't share nested objects (e.g. mutating track 0's filterEnv must not bleed
+// into track 1).
+const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
   engineType: 'synth' as EngineType,
   playMode: 'mono' as const,
-  synth: {
-    osc1Type: 'sawtooth' as OscillatorType,
-    osc2Type: 'sawtooth' as OscillatorType,
-    osc1Coarse: 0,
-    osc1Fine: 0,
-    osc2Coarse: 0,
-    osc2Fine: index === 0 ? 10 : 0, // default detune on first track
-    osc1Level: 0.5,
-    osc2Level: 0.5,
-    filterCutoff: 2000,
-    filterRes: 1,
-    filterEnvAmount: 0.6,
-    filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-    ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-  },
-  kick: {
-    tune: 55,
-    decay: 0.3,
-    click: 0.5,
-  },
-  hat: {
-    decay: 0.15,
-    tone: 8000,
-    metallic: 0.5,
-  },
-  snare: {
-    tune: 180,
-    decay: 0.25,
-    snappy: 0.5,
-  },
-  clap: {
-    decay: 0.25,
-    tone: 1000,
-    sloppy: 0.015,
-  },
-  mixer: {
-    volume: 0.8,
-    muted: false,
-    soloed: false,
-  }
+  synth: structuredClone(SynthEngine.DEFAULT_PARAMS),
+  kick:  structuredClone(KickEngine.DEFAULT_PARAMS),
+  hat:   structuredClone(HatEngine.DEFAULT_PARAMS),
+  snare: structuredClone(SnareEngine.DEFAULT_PARAMS),
+  clap:  structuredClone(ClapEngine.DEFAULT_PARAMS),
+  mixer: { ...DEFAULT_MIXER_STATE },
 })));
 
-// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
-const syncTrackToEngine = (i: number) => {
-  const state = trackStates[i];
-  let engine = engines[i];
-  const targetType = state.engineType;
-
-  // Swap engine if type changed
-  if (engine.engineType !== targetType) {
-    engine.dispose();
-    engine = engineFactories[targetType](sharedCtx, trackGains[i]);
-    engines[i] = engine;
-  }
-
-  // Apply params polymorphically — each engine knows how to interpret its own params
-  engine.applyParams(state[targetType] as Record<string, any>);
-};
+// Engines are lazily built on first sync via the factory map so we don't
+// instantiate engine types the user may immediately swap away from.
+const engines: SoundEngine[] = [];
 
 // Calculate and apply target gains smoothly to prevent clicks/pops
 const updateMixerGains = () => {
@@ -182,6 +110,31 @@ const updateMixerGains = () => {
     // Smooth transitions using setTargetAtTime
     trackGains[i].gain.setTargetAtTime(targetGain, sharedCtx.currentTime, 0.015);
   }
+};
+
+// Synchronize state to engine — uses engineType discriminator + applyParams(), no instanceof.
+const ENGINE_SWAP_FADE_SECONDS = 0.02;
+const syncTrackToEngine = (i: number) => {
+  const state = trackStates[i];
+  const targetType = state.engineType;
+  const existing = engines[i];
+
+  if (!existing || existing.engineType !== targetType) {
+    if (existing) {
+      // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop() doesn't click.
+      // The new engine connects to the same trackGain; updateMixerGains restores it after.
+      trackGains[i].gain.setTargetAtTime(0, sharedCtx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
+      const oldEngine = existing;
+      setTimeout(() => {
+        oldEngine.dispose();
+        updateMixerGains();
+      }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+    }
+    engines[i] = engineFactories[targetType](sharedCtx, trackGains[i]);
+  }
+
+  // Apply params polymorphically — each engine knows how to interpret its own params
+  engines[i].applyParams(state[targetType] as Record<string, any>);
 };
 
 // Initialize engines and mixer gains
@@ -219,7 +172,20 @@ for (let i = 0; i < 4; i++) {
   );
 }
 
+let useSynthInvocationCount = 0;
+
 export function useSynth() {
+  useSynthInvocationCount += 1;
+  if (useSynthInvocationCount > 1) {
+    // Audio context, engines, sequencer, and watchers are module-scoped singletons.
+    // A second call returns fresh local refs (currentStep, activeTrackIndex) but
+    // shares all audio/sequencer state — almost always a wiring bug.
+    console.warn(
+      `[useSynth] called ${useSynthInvocationCount} times — audio state is module-scoped and shared. ` +
+      `If this is intentional (e.g. multiple views), be aware that local UI refs are NOT shared.`
+    );
+  }
+
   const currentStep = ref(-1);
   const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
@@ -260,7 +226,7 @@ export function useSynth() {
   const osc2Level = trackParam('synth', 'osc2Level', 0.5);
   const filterCutoff = trackParam('synth', 'filterCutoff', 2000);
   const filterRes = trackParam('synth', 'filterRes', 1);
-  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 0.6);
+  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 2.4);
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
@@ -291,6 +257,21 @@ export function useSynth() {
     }
   });
 
+  // Duration (in seconds) of the shortest non-muted note on the active track.
+  // Used to warn the user when their envelope A+D exceeds the actual note length —
+  // i.e. when the envelope is being audibly truncated by the next step.
+  // Returns null when no notes are active (no warning needed).
+  const shortestActiveNoteDuration = computed<number | null>(() => {
+    if (activeTrackIndex.value === null) return null;
+    const track = sequencer.tracks[activeTrackIndex.value];
+    if (!track) return null;
+    const activeSteps = track.steps.filter(s => s.note !== null && !s.muted);
+    if (activeSteps.length === 0) return null;
+    const tickDuration = (60 / sequencer.bpm) / 4;
+    const minTicks = Math.min(...activeSteps.map(s => s.length));
+    return minTicks * tickDuration;
+  });
+
   const togglePlay = () => {
     if (sharedCtx.state === 'suspended') {
       sharedCtx.resume();
@@ -314,10 +295,10 @@ export function useSynth() {
               const duration = step.length * tickDuration;
               if (currentPlayMode === 'chord') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engines[i].trigger(freqs, duration, time, 1.0);
+                engines[i].trigger(freqs, duration, time, step.velocity);
               } else {
                 const freq = noteToFreq(step.note, step.octave);
-                engines[i].trigger(freq, duration, time, 1.0);
+                engines[i].trigger(freq, duration, time, step.velocity);
               }
             } else {
               // Drum engine: trigger with standard freq, duration 0.15s, and pass step.velocity
@@ -342,7 +323,6 @@ export function useSynth() {
   return {
     trackStates,
     analyser,
-    engines,
     sequencer,
     activeTrackIndex,
     currentStep,
@@ -362,6 +342,7 @@ export function useSynth() {
     filterEnvAmount,
     filterEnv,
     ampEnv,
+    shortestActiveNoteDuration,
     kickTune,
     kickDecay,
     kickClick,

@@ -1,6 +1,29 @@
 import { SoundEngine } from './types';
 import { SynthVoice } from './SynthVoice';
 
+export interface ADSR {
+  a: number;
+  d: number;
+  s: number;
+  r: number;
+}
+
+export interface SynthEngineParams {
+  osc1Type: OscillatorType;
+  osc2Type: OscillatorType;
+  osc1Coarse: number;
+  osc1Fine: number;
+  osc2Coarse: number;
+  osc2Fine: number;
+  osc1Level: number;
+  osc2Level: number;
+  filterCutoff: number;
+  filterRes: number;
+  filterEnvAmount: number;
+  filterEnv: ADSR;
+  ampEnv: ADSR;
+}
+
 export class SynthEngine implements SoundEngine {
   readonly engineType = 'synth';
   readonly ctx: AudioContext;
@@ -9,21 +32,40 @@ export class SynthEngine implements SoundEngine {
   private readonly numVoices = 6;
   private readonly masterVCA: GainNode;
 
-  // Parameter Cache for Voice Initialization and Verification
-  private osc1Type: OscillatorType = 'sawtooth';
-  private osc2Type: OscillatorType = 'sawtooth';
-  private osc1Coarse: number = 0;
-  private osc1Fine: number = 0;
-  private osc2Coarse: number = 0;
-  private osc2Fine: number = 0;
-  private osc1Level: number = 0.5;
-  private osc2Level: number = 0.5;
-  private baseCutoff: number = 2000;
-  private filterEnvAmount: number = 0.6;
-  private useHzOffsetMode: boolean = false;
-  private filterRes: number = 1;
-  private filterEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
-  private ampEnv = { a: 0.01, d: 0.2, s: 0.5, r: 0.5 };
+  // Single source of truth for what a "fresh" synth sounds like. Track defaults
+  // in useSynth.ts spread this rather than redeclaring values inline.
+  static readonly DEFAULT_PARAMS: SynthEngineParams = {
+    osc1Type: 'sawtooth',
+    osc2Type: 'sawtooth',
+    osc1Coarse: 0,
+    osc1Fine: 0,
+    osc2Coarse: 0,
+    osc2Fine: 0,
+    osc1Level: 0.5,
+    osc2Level: 0.5,
+    filterCutoff: 2000,
+    filterRes: 1,
+    // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
+    filterEnvAmount: 2.4,
+    filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+    ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+  };
+
+  // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
+  // so all the "what is the default synth sound" knowledge lives in one place.
+  private osc1Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc1Type;
+  private osc2Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc2Type;
+  private osc1Coarse: number = SynthEngine.DEFAULT_PARAMS.osc1Coarse;
+  private osc1Fine: number = SynthEngine.DEFAULT_PARAMS.osc1Fine;
+  private osc2Coarse: number = SynthEngine.DEFAULT_PARAMS.osc2Coarse;
+  private osc2Fine: number = SynthEngine.DEFAULT_PARAMS.osc2Fine;
+  private osc1Level: number = SynthEngine.DEFAULT_PARAMS.osc1Level;
+  private osc2Level: number = SynthEngine.DEFAULT_PARAMS.osc2Level;
+  private baseCutoff: number = SynthEngine.DEFAULT_PARAMS.filterCutoff;
+  private filterEnvAmount: number = SynthEngine.DEFAULT_PARAMS.filterEnvAmount;
+  private filterRes: number = SynthEngine.DEFAULT_PARAMS.filterRes;
+  private filterEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.filterEnv };
+  private ampEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.ampEnv };
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -44,7 +86,6 @@ export class SynthEngine implements SoundEngine {
         osc1Level: this.osc1Level,
         osc2Level: this.osc2Level,
         filterRes: this.filterRes,
-        useHzOffsetMode: this.useHzOffsetMode,
         filterCutoff: this.baseCutoff,
         filterEnvAmount: this.filterEnvAmount,
         filterEnv: this.filterEnv,
@@ -101,18 +142,9 @@ export class SynthEngine implements SoundEngine {
     this.voices.forEach(voice => voice.applyParams({ filterCutoff: this.baseCutoff }));
   }
 
-  setUseHzOffsetMode(enabled: boolean) {
-    this.useHzOffsetMode = enabled;
-    // Set HzOffsetMode on voices first, so filterEnvAmount clamps correctly on them
-    this.voices.forEach(voice => voice.applyParams({ useHzOffsetMode: this.useHzOffsetMode }));
-  }
-
   setFilterEnvAmount(val: number) {
-    if (this.useHzOffsetMode) {
-      this.filterEnvAmount = Math.max(0, Math.min(5000, val));
-    } else {
-      this.filterEnvAmount = Math.max(0, Math.min(1, val));
-    }
+    const max = SynthVoice.FILTER_ENV_MAX_OCTAVES;
+    this.filterEnvAmount = Math.max(-max, Math.min(max, val));
     this.voices.forEach(voice => voice.applyParams({ filterEnvAmount: this.filterEnvAmount }));
   }
 
@@ -153,14 +185,13 @@ export class SynthEngine implements SoundEngine {
     if (params.osc1Level !== undefined) this.setOsc1Level(params.osc1Level);
     if (params.osc2Level !== undefined) this.setOsc2Level(params.osc2Level);
     if (params.filterRes !== undefined) this.setFilterRes(params.filterRes);
-    if (params.useHzOffsetMode !== undefined) this.setUseHzOffsetMode(params.useHzOffsetMode);
     if (params.filterCutoff !== undefined) this.setFilterCutoff(params.filterCutoff);
     if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);
     if (params.filterEnv !== undefined) this.setFilterEnv(params.filterEnv);
     if (params.ampEnv !== undefined) this.setAmpEnv(params.ampEnv);
   }
 
-  trigger(freq: number | number[], duration: number, time?: number) {
+  trigger(freq: number | number[], duration: number, time?: number, velocity: number = 1.0) {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
@@ -169,7 +200,7 @@ export class SynthEngine implements SoundEngine {
 
     freqs.forEach(f => {
       const voice = this.voices[this.activeVoiceIndex];
-      voice.trigger(f, duration, scheduleTime);
+      voice.trigger(f, duration, scheduleTime, velocity);
       this.activeVoiceIndex = (this.activeVoiceIndex + 1) % this.numVoices;
     });
   }

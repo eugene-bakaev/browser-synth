@@ -105,8 +105,12 @@ const formattedValue = computed(() => {
       return `${prefix}${val}c`;
     }
     case 'octave': {
-      const prefix = val > 0 ? '+' : '';
-      return `${prefix}${val} oct`;
+      const rounded = Number(val.toFixed(1));
+      if (rounded === 0) return '0';
+      // Arrow shows sweep direction at a glance — ↑ filter opens, ↓ filter closes.
+      // Magnitude is in octaves, but the label already implies it; unit text omitted
+      // to keep the value cell narrow and stop layout shifts on knob turn.
+      return rounded > 0 ? `↑${rounded}` : `↓${Math.abs(rounded)}`;
     }
     case 'ratio':
       return val.toFixed(1);
@@ -251,7 +255,10 @@ const resetToDefault = () => {
   border: 1px solid #222;
   padding: 1px 4px;
   border-radius: 3px;
-  min-width: 32px;
+  /* Fixed width fits every formatter's widest output (~6 chars) so the cell
+     doesn't grow as the user drags and shift the surrounding row. */
+  width: 48px;
+  box-sizing: border-box;
   text-align: center;
 }
 </style>

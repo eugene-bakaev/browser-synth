@@ -1,15 +1,27 @@
 import { SoundEngine } from './types';
 
+export interface KickEngineParams {
+  tune: number;   // Base pitch in Hz (40 - 120)
+  decay: number;  // Decay time in seconds (0.05 - 1.5)
+  click: number;  // Click depth (0.0 - 1.0)
+}
+
 export class KickEngine implements SoundEngine {
   readonly engineType = 'kick';
   readonly ctx: AudioContext;
   private ampGain: GainNode;
   private activeOscs: Set<OscillatorNode> = new Set();
 
+  static readonly DEFAULT_PARAMS: KickEngineParams = {
+    tune: 55,
+    decay: 0.3,
+    click: 0.5,
+  };
+
   // Parameters
-  private tune: number = 55;   // Base pitch in Hz (40 - 120)
-  private decay: number = 0.3; // Decay time in seconds (0.05 - 1.5)
-  private click: number = 0.5; // Click depth (0.0 - 1.0)
+  private tune: number = KickEngine.DEFAULT_PARAMS.tune;
+  private decay: number = KickEngine.DEFAULT_PARAMS.decay;
+  private click: number = KickEngine.DEFAULT_PARAMS.click;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

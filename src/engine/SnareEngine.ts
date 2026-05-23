@@ -1,6 +1,12 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
 
+export interface SnareEngineParams {
+  tune: number;    // Base pitch in Hz (100 - 250)
+  decay: number;   // Snare wires decay in seconds (0.05 - 0.8)
+  snappy: number;  // Noise level ratio vs body (0.0 - 1.0)
+}
+
 export class SnareEngine implements SoundEngine {
   readonly engineType = 'snare';
   readonly ctx: AudioContext;
@@ -17,10 +23,16 @@ export class SnareEngine implements SoundEngine {
   // Master output
   private masterGain: GainNode;
 
+  static readonly DEFAULT_PARAMS: SnareEngineParams = {
+    tune: 180,
+    decay: 0.25,
+    snappy: 0.5,
+  };
+
   // Parameters
-  private tune: number = 180;      // Base pitch in Hz (100 - 250)
-  private decay: number = 0.25;    // Snare wires decay in seconds (0.05 - 0.8)
-  private snappy: number = 0.5;    // Noise level ratio vs body (0.0 - 1.0)
+  private tune: number = SnareEngine.DEFAULT_PARAMS.tune;
+  private decay: number = SnareEngine.DEFAULT_PARAMS.decay;
+  private snappy: number = SnareEngine.DEFAULT_PARAMS.snappy;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

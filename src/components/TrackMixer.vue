@@ -68,29 +68,36 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import type { TrackState } from '../composables/useSynth';
+import type { Track } from '../sequencer/Sequencer';
 
 const props = defineProps<{
   trackStates: TrackState[];
   sequencer: {
     isPlaying: boolean;
-    tracks: Array<{
-      steps: Array<{
-        note: string | null;
-      }>;
-    }>;
+    tracks: Track[];
   };
   currentStep: number;
 }>();
 
 const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80'];
 
-// Detect note trigger on current step for active visualization pulse
+// Detect note trigger on current step for active visualization pulse.
+// The LED must reflect what's actually audible — a muted step, a muted track,
+// or a non-soloed track during solo mode should NOT pulse.
 const isTrackTriggered = (index: number) => {
   if (!props.sequencer.isPlaying || props.currentStep < 0) return false;
   const track = props.sequencer.tracks[index];
   if (!track) return false;
   const step = track.steps[props.currentStep];
-  return step && step.note !== null;
+  if (!step || step.note === null || step.muted) return false;
+
+  const mixer = props.trackStates[index]?.mixer;
+  if (!mixer || mixer.muted) return false;
+
+  const anySoloed = props.trackStates.some(ts => ts.mixer?.soloed);
+  if (anySoloed && !mixer.soloed) return false;
+
+  return true;
 };
 </script>
 

@@ -88,11 +88,6 @@
       </div>
 
       <div class="focused-layout">
-        <!-- Signal Flow Section -->
-        <div v-if="false" class="focused-flow-section">
-          <SignalFlow :engineType="engineType" :color="TRACK_COLORS[activeTrackIndex ?? 0]" />
-        </div>
-
         <!-- Main Sequencer & Controls Layout -->
         <div class="focused-main-section">
           <section class="sequencer-section">
@@ -128,6 +123,7 @@
                 :waveforms="waveforms"
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
+                :shortestActiveNoteDuration="shortestActiveNoteDuration"
                 :analyser="analyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -196,7 +192,6 @@ import KickPanel from './components/KickPanel.vue';
 import HatPanel from './components/HatPanel.vue';
 import SnarePanel from './components/SnarePanel.vue';
 import ClapPanel from './components/ClapPanel.vue';
-import SignalFlow from './components/SignalFlow.vue';
 import TrackMixer from './components/TrackMixer.vue';
 
 const {
@@ -220,6 +215,7 @@ const {
   filterEnvAmount,
   filterEnv,
   ampEnv,
+  shortestActiveNoteDuration,
   kickTune,
   kickDecay,
   kickClick,
@@ -406,9 +402,6 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  width: 100%;
-}
-.focused-flow-section {
   width: 100%;
 }
 .focused-main-section {

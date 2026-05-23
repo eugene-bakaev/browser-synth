@@ -99,4 +99,16 @@ describe('ClapEngine', () => {
     const engine = new ClapEngine();
     expect(() => engine.dispose()).not.toThrow();
   });
+
+  it('should track active noise sources and clean them up on dispose', () => {
+    const engine = new ClapEngine();
+    engine.trigger(440, 0.25);
+    const activeSources = (engine as any).activeSources;
+    expect(activeSources.size).toBe(1);
+    const src = Array.from(activeSources)[0] as any;
+    engine.dispose();
+    expect(src.stop).toHaveBeenCalled();
+    expect(src.disconnect).toHaveBeenCalled();
+    expect(activeSources.size).toBe(0);
+  });
 });

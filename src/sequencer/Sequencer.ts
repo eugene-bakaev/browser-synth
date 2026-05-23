@@ -32,7 +32,13 @@ export class Sequencer {
   private currentStep = 0;
   private timer: any = null;
   isPlaying = false;
-  private nextNoteTime = 0;
+  // Absolute count of steps scheduled since the last anchor (used to compute
+  // step times without floating-point drift over thousands of steps).
+  private nextStepIndex = 0;
+  // Anchor: the audio-clock time at which scheduleStartTime + 0*stepTime = step 0.
+  private scheduleStartTime = 0;
+  // Last BPM we observed; used to detect mid-playback tempo changes.
+  private lastBpm = 120;
 
   clearTrack(trackId: number) {
     const track = this.tracks.find(t => t.id === trackId);
@@ -78,19 +84,37 @@ export class Sequencer {
   start(ctx: AudioContext, callback: (stepIndex: number, time: number) => void) {
     if (this.isPlaying) return;
     this.isPlaying = true;
-    
+
     this.currentStep = 0;
-    this.nextNoteTime = ctx.currentTime + 0.1; // Start slightly in the future to absorb JS jitter
-    
+    this.nextStepIndex = 0;
+    this.scheduleStartTime = ctx.currentTime + 0.1; // 0.1s lookahead absorbs JS jitter
+    this.lastBpm = this.bpm;
+
     // Check every 25ms to see if a note needs to be scheduled
     this.timer = setInterval(() => {
+      // If BPM changed mid-play, rebase the anchor to the last scheduled step's
+      // time so the very next step uses the new stepTime forward — feels like
+      // "tempo takes effect immediately" rather than a one-step delay.
+      if (this.bpm !== this.lastBpm) {
+        if (this.nextStepIndex > 0) {
+          const oldStepTime = (60 / this.lastBpm) / 4;
+          const lastScheduledTime = this.scheduleStartTime + (this.nextStepIndex - 1) * oldStepTime;
+          this.scheduleStartTime = lastScheduledTime;
+          this.nextStepIndex = 1;
+        }
+        this.lastBpm = this.bpm;
+      }
+
       const stepTime = (60 / this.bpm) / 4;
-      
-      // Lookahead window of 0.1 seconds
-      while (this.nextNoteTime < ctx.currentTime + 0.1) {
-        callback(this.currentStep, this.nextNoteTime);
+      const lookaheadTime = ctx.currentTime + 0.1;
+
+      // Compute next step time from the anchor + integer step count (no float drift)
+      let nextStepTime = this.scheduleStartTime + this.nextStepIndex * stepTime;
+      while (nextStepTime < lookaheadTime) {
+        callback(this.currentStep, nextStepTime);
         this.currentStep = (this.currentStep + 1) % 16;
-        this.nextNoteTime += stepTime;
+        this.nextStepIndex += 1;
+        nextStepTime = this.scheduleStartTime + this.nextStepIndex * stepTime;
       }
     }, 25);
   }
