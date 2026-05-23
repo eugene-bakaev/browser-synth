@@ -58,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 
 const props = withDefaults(defineProps<{
   label: string;
@@ -80,9 +80,6 @@ const instanceId = Math.random().toString(36).substring(2, 9);
 const gradientId = `knob-gradient-${instanceId}`;
 const filterId = `knob-filter-${instanceId}`;
 
-// Store initial value on mount to use for reset
-const initialValue = ref(props.modelValue);
-
 const formattedValue = computed(() => {
   const val = props.modelValue;
   if (!props.format) return val.toString();
@@ -94,10 +91,10 @@ const formattedValue = computed(() => {
       }
       return Math.round(val) + 'Hz';
     case 'ms':
-      if (val < 1.0) {
-        return Math.round(val * 1000) + 'ms';
-      }
-      return val.toFixed(2) + 's';
+      // Always render ms — switching to "s" past 1.0 looked like the value
+      // dropped ("990ms" → "1.00s") even though it went up. Max range here
+      // is 5s = "5000ms" (6 chars), still fits the 48px value cell.
+      return Math.round(val * 1000) + 'ms';
     case 'percent':
       return Math.round(val * 100) + '%';
     case 'cents': {
@@ -206,8 +203,11 @@ const onPointerUp = () => {
 };
 
 const resetToDefault = () => {
-  const resetVal = props.defaultValue !== undefined ? props.defaultValue : initialValue.value;
-  emit('update:modelValue', resetVal);
+  // No-op without a defaultValue. The old "snapshot modelValue at mount" fallback
+  // captured stale values when the same Knob instance got re-bound to a different
+  // track via v-model. Every panel now passes the engine's DEFAULT_PARAMS through.
+  if (props.defaultValue === undefined) return;
+  emit('update:modelValue', props.defaultValue);
 };
 </script>
 

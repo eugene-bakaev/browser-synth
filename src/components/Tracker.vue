@@ -149,6 +149,7 @@
               title="Velocity"
               class="vel-slider"
             >
+            <span class="vel-text">{{ Math.round((step.velocity || 0) * 100) }}%</span>
           </div>
         </template>
 

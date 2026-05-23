@@ -9,10 +9,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0" :max="2" :step="0.01" format="ms" v-model="filterEnv.a" />
-      <Knob label="D" :min="0" :max="2" :step="0.01" format="ms" v-model="filterEnv.d" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" v-model="filterEnv.s" />
-      <Knob label="R" :min="0" :max="5" :step="0.01" format="ms" v-model="filterEnv.r" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.a" format="ms" v-model="filterEnv.a" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.d" format="ms" v-model="filterEnv.d" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.filterEnv.s" format="percent" v-model="filterEnv.s" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.filterEnv.r" format="ms" v-model="filterEnv.r" />
     </div>
   </div>
 
@@ -26,10 +26,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0" :max="2" :step="0.01" format="ms" v-model="ampEnv.a" />
-      <Knob label="D" :min="0" :max="2" :step="0.01" format="ms" v-model="ampEnv.d" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" v-model="ampEnv.s" />
-      <Knob label="R" :min="0" :max="5" :step="0.01" format="ms" v-model="ampEnv.r" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.a" format="ms" v-model="ampEnv.a" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.d" format="ms" v-model="ampEnv.d" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.ampEnv.s" format="percent" v-model="ampEnv.s" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.ampEnv.r" format="ms" v-model="ampEnv.r" />
     </div>
   </div>
 </template>
@@ -37,6 +37,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import Knob from './Knob.vue';
+import { SynthEngine } from '../engine/SynthEngine';
+
+const DEFAULTS = SynthEngine.DEFAULT_PARAMS;
 
 const props = withDefaults(
   defineProps<{
@@ -65,7 +68,7 @@ const filterEnvExceedsNote = computed(() => {
   return props.filterEnv.a + props.filterEnv.d > props.shortestActiveNoteDuration;
 });
 
-const formatSeconds = (s: number) => s < 1 ? `${Math.round(s * 1000)}ms` : `${s.toFixed(2)}s`;
+const formatSeconds = (s: number) => `${Math.round(s * 1000)}ms`;
 
 const warningTitle = (kind: 'filter' | 'amp') => {
   const env = kind === 'amp' ? props.ampEnv : props.filterEnv;
