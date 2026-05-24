@@ -1,3 +1,4 @@
+import { toRaw } from 'vue';
 import { deepMerge } from '../utils/deepMerge';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine }  from '../engine/KickEngine';
@@ -20,6 +21,9 @@ export interface Preset {
 
 // Build a Preset from a known (engineType, params) pair. Clones the params
 // so subsequent edits to the caller's object don't bleed into the preset.
+// toRaw strips Vue's reactive proxies — structuredClone trips on them when
+// called from a live track.engines[...] read (same reason serializeProject
+// uses toRaw before JSON.stringify).
 export function makePreset<T extends EngineType>(
   engineType: T,
   params: EngineParamsMap[T],
@@ -27,7 +31,7 @@ export function makePreset<T extends EngineType>(
   return {
     schemaVersion: PRESET_SCHEMA_VERSION,
     engineType,
-    params: structuredClone(params) as EngineParamsMap[EngineType],
+    params: structuredClone(toRaw(params)) as EngineParamsMap[EngineType],
   };
 }
 
