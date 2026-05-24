@@ -346,10 +346,10 @@ export function useSynth() {
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
             if (engineTypeI === 'synth') {
-              const currentPlayMode = track.engines.synth.mode;
+              const currentMode = track.engines.synth.mode;
               const tickDuration = (60 / project.bpm) / 4;
               const duration = step.length * tickDuration;
-              if (currentPlayMode === 'poly') {
+              if (currentMode === 'poly') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
                 state.engines[i].trigger(freqs, duration, time, step.velocity);
               } else {

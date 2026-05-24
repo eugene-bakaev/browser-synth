@@ -436,7 +436,7 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 `src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md).
 
-**What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, `playMode`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`.
+**What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
 
 **Dense engine map.** Every `ProjectTrack` stores a full `EngineParamsMap` — all five engine param sets at once, regardless of which engine is active. This means an engine-type swap is a single-field write (`engineType` only); the new engine's params are already in place. It also means per-engine edits survive a round-trip through any other engine type. See the spec §2 for the rejected alternatives (sparse map, discriminated union) and why the dense shape was chosen.
 
