@@ -68,7 +68,8 @@
 
 <script setup lang="ts">
 import Knob from './Knob.vue';
-import { DEFAULT_MIXER_STATE, type TrackState } from '../composables/useSynth';
+import { DEFAULT_MIXER_STATE } from '../project/types';
+import type { TrackState } from '../composables/useSynth';
 import type { Track } from '../sequencer/Sequencer';
 
 const props = defineProps<{

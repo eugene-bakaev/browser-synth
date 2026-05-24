@@ -9,17 +9,18 @@ import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
 
+import {
+  type EngineType,
+  type MixerState,
+  DEFAULT_MIXER_STATE,
+} from '../project/types';
+
+export { DEFAULT_MIXER_STATE };
+export type { EngineType, MixerState };
+
 // === Pure data state — safe to live at module scope (no audio nodes here) ===
 
 const sequencer = reactive(new Sequencer());
-
-export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
-
-export interface MixerState {
-  volume: number;
-  muted: boolean;
-  soloed: boolean;
-}
 
 export interface TrackState {
   engineType: EngineType;
@@ -31,15 +32,6 @@ export interface TrackState {
   clap: ClapEngineParams;
   mixer: MixerState;
 }
-
-export const DEFAULT_MIXER_STATE: MixerState = {
-  // Slider position 0..1. Mapped to -54..+6 dB via sliderToLinearGain at write
-  // time. Default 0.9 lands on exactly 0 dB (unity) and leaves 6 dB of boost
-  // headroom above — same shape as a hardware mixer fader.
-  volume: 0.9,
-  muted: false,
-  soloed: false,
-};
 
 // Mixer volume is stored as slider position 0..1 (perceptual). The actual
 // AudioParam.gain needs a linear multiplier — convert via -54..+6 dB then
