@@ -13,6 +13,7 @@
           <label>BPM</label>
           <input type="number" v-model.number="bpm" min="40" max="240">
         </div>
+        <button @click="onNew" title="Discard current project and start fresh">NEW</button>
         <button @click="onSave" title="Save project to a file">SAVE</button>
         <button @click="onOpen" title="Open a project from a file">OPEN</button>
       </div>
@@ -196,6 +197,7 @@ import {
   saveProjectToFile,
   openProjectFromFile,
   replaceProject,
+  freshProject,
 } from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
@@ -251,6 +253,12 @@ const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 
   shiftProjectTrack(project.tracks[trackId], direction);
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
   fillProjectTrack(project.tracks[trackId], interval);
+
+const onNew = () => {
+  if (confirm('Discard current project and start fresh?')) {
+    replaceProject(project, freshProject());
+  }
+};
 
 const onSave = () => {
   saveProjectToFile(project);
