@@ -44,7 +44,6 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
       clap:  deepMerge(ClapEngine.DEFAULT_PARAMS,  loadedEngines.clap),
     },
     mixer: deepMerge(DEFAULT_MIXER_STATE, t.mixer),
-    playMode: (t.playMode as ProjectTrack['playMode']) ?? fresh.playMode,
     steps: reconcileSteps(t.steps, fresh.steps),
   };
 
@@ -154,7 +153,6 @@ export function replaceProject(target: Project, source: Project): void {
     const s = source.tracks[i];
 
     t.engineType = s.engineType;
-    t.playMode = s.playMode;
 
     for (const engine of ENGINE_KEYS) {
       Object.assign(t.engines[engine], s.engines[engine]);

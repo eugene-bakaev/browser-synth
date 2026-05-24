@@ -21,10 +21,9 @@ describe('freshStep', () => {
 });
 
 describe('freshTrack', () => {
-  it('defaults to synth engineType in mono mode', () => {
+  it('defaults to synth engineType', () => {
     const t = freshTrack();
     expect(t.engineType).toBe('synth');
-    expect(t.playMode).toBe('mono');
   });
 
   it('populates all 5 engine slots from each engine\'s DEFAULT_PARAMS', () => {

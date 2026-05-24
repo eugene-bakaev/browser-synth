@@ -31,7 +31,7 @@
           :isFocused="false"
           :trackId="index"
           :engineType="getTrackEngineType(index)"
-          v-model:playMode="project.tracks[index].playMode"
+          :mode="project.tracks[index].engines.synth.mode"
           @select-track="selectTrack(index)"
           @clear="onClear"
           @shift="onShift"
@@ -101,7 +101,7 @@
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="engineType"
-              v-model:playMode="project.tracks[activeTrackIndex].playMode"
+              :mode="synthMode"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
@@ -122,6 +122,7 @@
                 v-model:filterCutoff="filterCutoff"
                 v-model:filterRes="filterRes"
                 v-model:filterEnvAmount="filterEnvAmount"
+                v-model:mode="synthMode"
                 :waveforms="waveforms"
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
@@ -213,6 +214,7 @@ const {
   currentStep,
   waveforms,
   engineType,
+  synthMode,
   osc1Type,
   osc2Type,
   osc1Coarse,

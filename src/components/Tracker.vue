@@ -21,35 +21,12 @@
       </div>
     </div>
 
-    <!-- Play Mode Selector -->
-    <div 
-      class="playmode-selector" 
-      :style="{ visibility: engineType === 'synth' ? 'visible' : 'hidden' }"
-    >
-      <button 
-        class="mode-btn" 
-        :class="{ active: playMode === 'mono' }" 
-        @click="$emit('update:playMode', 'mono')"
-        :disabled="engineType !== 'synth'"
-      >
-        MONO
-      </button>
-      <button 
-        class="mode-btn" 
-        :class="{ active: playMode === 'chord' }" 
-        @click="$emit('update:playMode', 'chord')"
-        :disabled="engineType !== 'synth'"
-      >
-        CHORD
-      </button>
-    </div>
-
     <!-- Grid Header -->
     <div
       class="tracker-row tracker-header"
       :class="[
         engineType === 'synth'
-          ? (playMode === 'chord' ? 'chord-row' : 'synth-row')
+          ? (mode === 'poly' ? 'chord-row' : 'synth-row')
           : 'drum-row',
         { 'with-vel': isFocused && engineType === 'synth' }
       ]"
@@ -57,7 +34,7 @@
       <div class="col-mute"></div>
       <div class="col-step">STEP</div>
       <template v-if="engineType === 'synth'">
-        <template v-if="playMode === 'chord'">
+        <template v-if="mode === 'poly'">
           <div class="col-note">ROOT</div>
           <div class="col-chord-type">CHORD</div>
           <div class="col-oct">OCT</div>
@@ -84,7 +61,7 @@
         class="tracker-row step-row"
         :class="[
           engineType === 'synth'
-            ? (playMode === 'chord' ? 'chord-row' : 'synth-row')
+            ? (mode === 'poly' ? 'chord-row' : 'synth-row')
             : 'drum-row',
           { active: currentStep === i, 'step-muted': step.muted, 'with-vel': isFocused && engineType === 'synth' }
         ]"
@@ -105,7 +82,7 @@
 
         <!-- Synth Layout -->
         <template v-if="engineType === 'synth'">
-          <template v-if="playMode === 'chord'">
+          <template v-if="mode === 'poly'">
             <div class="col-note">
               <select v-model="step.note" title="Root Note">
                 <option :value="null">---</option>
@@ -196,9 +173,9 @@ const props = withDefaults(defineProps<{
   isFocused?: boolean;
   trackId: number;
   engineType: string;
-  playMode?: 'mono' | 'chord';
+  mode?: 'mono' | 'poly';
 }>(), {
-  playMode: 'mono'
+  mode: 'mono'
 });
 
 const emit = defineEmits<{
@@ -206,7 +183,6 @@ const emit = defineEmits<{
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
   (e: 'fill', payload: { trackId: number; interval: number }): void;
-  (e: 'update:playMode', playMode: 'mono' | 'chord'): void;
 }>();
 
 const fillSelectRef = ref<HTMLSelectElement | null>(null);
@@ -374,39 +350,6 @@ const toggleDrumTrigger = (step: Step) => {
 
 .tracker-row.drum-row {
   grid-template-columns: 24px 26px 55px minmax(0, 1fr);
-}
-
-/* Play Mode Selector */
-.playmode-selector {
-  display: flex;
-  background: #181818;
-  border: 1px solid #2a2a2a;
-  border-radius: 3px;
-  margin-bottom: 8px;
-  padding: 2px;
-}
-
-.mode-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #888;
-  font-family: monospace;
-  font-size: 0.75rem;
-  font-weight: bold;
-  height: 20px;
-  cursor: pointer;
-  border-radius: 2px;
-  transition: background-color 0.2s, color 0.2s;
-}
-
-.mode-btn:hover {
-  color: #fff;
-}
-
-.mode-btn.active {
-  background: var(--track-color);
-  color: #000;
 }
 
 .tracker-header {
