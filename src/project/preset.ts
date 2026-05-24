@@ -94,3 +94,14 @@ export function applyPreset(track: ProjectTrack, preset: Preset): void {
     preset.params as unknown as Record<string, unknown>,
   );
 }
+
+// Mutate `track` in place: reset the active engine's params to its
+// DEFAULT_PARAMS. Leaves engineType, the other engines, mixer, and
+// steps untouched. structuredClone is safe here — DEFAULTS values are
+// the engine classes' static plain objects, not Vue reactive proxies.
+export function resetEnginePatch(track: ProjectTrack): void {
+  Object.assign(
+    track.engines[track.engineType] as unknown as Record<string, unknown>,
+    structuredClone(DEFAULTS[track.engineType]) as unknown as Record<string, unknown>,
+  );
+}

@@ -4,6 +4,7 @@ import {
   serializePreset,
   deserializePreset,
   applyPreset,
+  resetEnginePatch,
   PRESET_SCHEMA_VERSION,
   type Preset,
 } from './preset';
@@ -97,5 +98,52 @@ describe('preset — applyPreset', () => {
     applyPreset(track, makePreset('hat', { decay: 0.99, tone: 5000, metallic: 0.1 } as any));
     expect(track.mixer.volume).toBe(0.42);
     expect(track.steps[0].note).toBe('C');
+  });
+});
+
+describe('preset — resetEnginePatch', () => {
+  it('restores active engine params to DEFAULT_PARAMS', () => {
+    const track = freshTrack();
+    track.engines.synth.filterCutoff = 1234;
+    track.engines.synth.mode = 'poly';
+    resetEnginePatch(track);
+    expect(track.engines.synth.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
+    expect(track.engines.synth.mode).toBe(SynthEngine.DEFAULT_PARAMS.mode);
+  });
+
+  it('leaves engineType unchanged', () => {
+    const track = freshTrack();
+    track.engineType = 'kick';
+    track.engines.kick.tune = 99;
+    resetEnginePatch(track);
+    expect(track.engineType).toBe('kick');
+    expect(track.engines.kick.tune).toBe(KickEngine.DEFAULT_PARAMS.tune);
+  });
+
+  it('leaves other engines on the track untouched (dense-model preservation)', () => {
+    const track = freshTrack();
+    track.engineType = 'synth';
+    track.engines.synth.filterCutoff = 1234;
+    track.engines.kick.tune = 88;
+    resetEnginePatch(track);
+    expect(track.engines.synth.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
+    expect(track.engines.kick.tune).toBe(88);
+  });
+
+  it('leaves mixer + steps untouched', () => {
+    const track = freshTrack();
+    track.mixer.volume = 0.42;
+    track.steps[0].note = 'C';
+    track.engines.synth.filterCutoff = 1234;
+    resetEnginePatch(track);
+    expect(track.mixer.volume).toBe(0.42);
+    expect(track.steps[0].note).toBe('C');
+  });
+
+  it('preserves track reference identity', () => {
+    const track = freshTrack();
+    const before = track;
+    resetEnginePatch(track);
+    expect(track).toBe(before);
   });
 });
