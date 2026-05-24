@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick } from 'vue';
 
 // Same minimal Web Audio mock as TrackMixer.test — useSynth touches AudioContext
@@ -60,13 +60,13 @@ let useSynth: any;
 let disposeSynth: any;
 
 describe('useSynth narrow watchers (A2)', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
+    // Clear persisted project so each test gets a fresh module-scope project.
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
     const mod = await import('./useSynth');
     useSynth = mod.useSynth;
     disposeSynth = mod.disposeSynth;
-  });
-
-  beforeEach(() => {
     // Reset audio state between tests so each gets a fresh engine to spy on.
     disposeSynth();
   });
@@ -78,7 +78,7 @@ describe('useSynth narrow watchers (A2)', () => {
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.trackStates[0].synth.filterCutoff = 1234;
+    synth.project.tracks[0].engines.synth.filterCutoff = 1234;
     await nextTick();
 
     expect(applySpy).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe('useSynth narrow watchers (A2)', () => {
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.trackStates[0].synth.filterEnv.a = 0.123;
+    synth.project.tracks[0].engines.synth.filterEnv.a = 0.123;
     await nextTick();
 
     // ADSR objects are passed whole to applyParams (engine setter takes a/d/s/r
@@ -111,9 +111,61 @@ describe('useSynth narrow watchers (A2)', () => {
     applySpy.mockClear();
 
     // Mutate the kick slice on track 0 while engineType is still 'synth'.
-    synth.trackStates[0].kick.tune = 80;
+    synth.project.tracks[0].engines.kick.tune = 80;
     await nextTick();
 
     expect(applySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('Project boot integration', () => {
+  // The vitest environment (node/jsdom-less) has no real localStorage — stub one.
+  let lsStore: Map<string, string>;
+  const lsImpl = {
+    getItem: (k: string) => lsStore.has(k) ? lsStore.get(k)! : null,
+    setItem: (k: string, v: string) => { lsStore.set(k, v); },
+    removeItem: (k: string) => { lsStore.delete(k); },
+    clear: () => { lsStore.clear(); },
+  };
+
+  beforeEach(() => {
+    lsStore = new Map();
+    vi.stubGlobal('localStorage', lsImpl);
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+  });
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('loads a seeded V1 project from localStorage on first useSynth call', async () => {
+    const seed = {
+      schemaVersion: 1 as const,
+      bpm: 144,
+      tracks: [/* 4 partial tracks — reconciler fills in defaults */
+        { engineType: 'synth', engines: { synth: { filterCutoff: 1234 } } },
+        {}, {}, {},
+      ],
+    };
+    localStorage.setItem('fiddle:project', JSON.stringify(seed));
+
+    const { useSynth: useSynthFresh } = await import('../composables/useSynth');
+    const synth = useSynthFresh();
+    expect(synth.project.bpm).toBe(144);
+    expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(1234);
+  });
+
+  it('persists a knob mutation to localStorage after debounce', async () => {
+    vi.useFakeTimers();
+    const { useSynth: useSynthFresh } = await import('../composables/useSynth');
+    const synth = useSynthFresh();
+    synth.project.tracks[0].engines.synth.filterCutoff = 5678;
+    await Promise.resolve();
+    vi.advanceTimersByTime(500);
+    vi.useRealTimers();
+
+    const raw = localStorage.getItem('fiddle:project');
+    expect(raw).not.toBeNull();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.tracks[0].engines.synth.filterCutoff).toBe(5678);
   });
 });

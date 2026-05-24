@@ -11,29 +11,31 @@
         </button>
         <div class="bpm">
           <label>BPM</label>
-          <input type="number" v-model.number="sequencer.bpm" min="40" max="240">
+          <input type="number" v-model.number="bpm" min="40" max="240">
         </div>
+        <button @click="onSave" title="Save project to a file">SAVE</button>
+        <button @click="onOpen" title="Open a project from a file">OPEN</button>
       </div>
     </header>
 
     <!-- 4-Track Overview Screen -->
     <div v-if="activeTrackIndex === null" class="overview-container">
       <div class="tracks-grid">
-        <Tracker 
-          v-for="(track, index) in sequencer.tracks"
-          :key="track.id"
+        <Tracker
+          v-for="(track, index) in project.tracks"
+          :key="index"
           :steps="track.steps"
           :currentStep="currentStep"
-          :title="`${track.name} [${getTrackEngineType(index).toUpperCase()}]`"
+          :title="`Track ${index + 1} [${getTrackEngineType(index).toUpperCase()}]`"
           :color="TRACK_COLORS[index]"
           :isFocused="false"
-          :trackId="track.id"
+          :trackId="index"
           :engineType="getTrackEngineType(index)"
-          v-model:playMode="trackStates[index].playMode"
+          v-model:playMode="project.tracks[index].playMode"
           @select-track="selectTrack(index)"
-          @clear="id => sequencer.clearTrack(id)"
-          @shift="payload => sequencer.shiftTrack(payload.trackId, payload.direction)"
-          @fill="payload => sequencer.fillTrack(payload.trackId, payload.interval)"
+          @clear="onClear"
+          @shift="onShift"
+          @fill="onFill"
         />
       </div>
     </div>
@@ -45,7 +47,7 @@
           ← BACK TO OVERVIEW
         </button>
         <h2 :style="{ color: TRACK_COLORS[activeTrackIndex] }">
-          Editing: {{ sequencer.tracks[activeTrackIndex].name }} ({{ engineType.toUpperCase() }})
+          Editing: Track {{ activeTrackIndex + 1 }} ({{ engineType.toUpperCase() }})
         </h2>
         
         <div class="engine-selector">
@@ -91,18 +93,18 @@
         <!-- Main Sequencer & Controls Layout -->
         <div class="focused-main-section">
           <section class="sequencer-section">
-            <Tracker 
-              :steps="sequencer.tracks[activeTrackIndex].steps"
+            <Tracker
+              :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
-              :title="sequencer.tracks[activeTrackIndex].name"
+              :title="`Track ${activeTrackIndex + 1}`"
               :color="TRACK_COLORS[activeTrackIndex]"
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="engineType"
-              v-model:playMode="trackStates[activeTrackIndex].playMode"
-              @clear="id => sequencer.clearTrack(id)"
-              @shift="payload => sequencer.shiftTrack(payload.trackId, payload.direction)"
-              @fill="payload => sequencer.fillTrack(payload.trackId, payload.interval)"
+              v-model:playMode="project.tracks[activeTrackIndex].playMode"
+              @clear="onClear"
+              @shift="onShift"
+              @fill="onFill"
             />
           </section>
 
@@ -175,10 +177,10 @@
 
     <!-- Track Mixer (Globally visible at the bottom) -->
     <div class="mixer-section">
-      <TrackMixer 
-        :trackStates="trackStates" 
-        :sequencer="sequencer" 
-        :currentStep="currentStep" 
+      <TrackMixer
+        :trackStates="project.tracks"
+        :sequencer="sequencer"
+        :currentStep="currentStep"
       />
     </div>
   </div>
@@ -186,6 +188,14 @@
 
 <script setup lang="ts">
 import { useSynth } from './composables/useSynth';
+import {
+  clearTrack as clearProjectTrack,
+  shiftTrack as shiftProjectTrack,
+  fillTrack  as fillProjectTrack,
+  saveProjectToFile,
+  openProjectFromFile,
+  replaceProject,
+} from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
 import KickPanel from './components/KickPanel.vue';
@@ -195,9 +205,10 @@ import ClapPanel from './components/ClapPanel.vue';
 import TrackMixer from './components/TrackMixer.vue';
 
 const {
-  trackStates,
+  project,
   analyser,
   sequencer,
+  bpm,
   activeTrackIndex,
   currentStep,
   waveforms,
@@ -232,6 +243,26 @@ const {
   selectTrack,
   getTrackEngineType,
 } = useSynth();
+
+const onClear = (trackId: number) => clearProjectTrack(project.tracks[trackId]);
+const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) =>
+  shiftProjectTrack(project.tracks[trackId], direction);
+const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
+  fillProjectTrack(project.tracks[trackId], interval);
+
+const onSave = () => {
+  saveProjectToFile(project);
+};
+
+const onOpen = async () => {
+  try {
+    const loaded = await openProjectFromFile();
+    if (loaded) replaceProject(project, loaded);
+  } catch (e) {
+    console.warn('Open failed:', e);
+    alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
 
 const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purple, Orange, Green
 </script>

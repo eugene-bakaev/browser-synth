@@ -1,7 +1,7 @@
 # Code Review: Fiddle Synth
 
 **Original review:** 2026-05-23 — Claude (Opus 4.7)
-**Last updated:** 2026-05-23 (post-merge of `review/audio-engine-fixes`)
+**Last updated:** 2026-05-24 (post-merge of `feature/project-model` — A3 + F1 persistence done)
 **Scope:** Full architecture and code review of `src/` (engine, sequencer, composables, components, utils, tests).
 **Baseline reviewed:** `main` at `9063585`.
 
@@ -25,8 +25,8 @@ Tests: **59/59 passing**. `vue-tsc` + `vite build` clean.
 ### Outstanding work (see [Outstanding](#outstanding) at bottom for full list)
 
 - **🟦 7 small UI/cosmetic items** (U1–U7) — knob format consistency, mixer dB scale, stale double-click reset, drum step field vestiges, etc.
-- **🟧 5 architectural items** (A1–A5) — full singleton→composable refactor, watcher path narrowing, tagged-union `TrackState`, CSS scoping audit, sequencer reactivity audit. **These are best tackled after the architectural reference doc is written.**
-- **🟩 1 feature gap** (F1) — `localStorage` persistence.
+- **🟧 0 architectural items remaining** — A1–A5 all resolved. See A-series table below.
+- **🟩 1 feature gap partially done** (F1) — persistence shipped; named presets still open.
 
 ---
 
@@ -271,9 +271,9 @@ if (engine.engineType !== targetType) {
 | #7 | 🟧 | ✅ Fixed | `469b3ef` (sequencer anchor + BPM rebase) |
 | #8 | 🟨 | ✅ Fixed | `469b3ef` (deleted `v-if="false"` + SignalFlow) |
 | #9 | 🟨 | ⏳ Deferred → A2 | — |
-| #10 | 🟨 | ⏳ Deferred → A3 | — |
+| #10 | 🟨 | ✅ Done → A3 (`3c95126`) | Dense `EngineParamsMap` in `ProjectTrack` |
 | #11 | 🟦 | ✅ Resolved by `469b3ef` + `5881a6b` |
-| #12 | 🟩 | ⏳ Deferred → F1 | — |
+| #12 | 🟩 | ✅ Persistence done → F1 (`3c95126`); named presets open | `src/project/storage.ts` |
 | #13 | 🟦 | ⏳ Deferred → A4 | — |
 | #14 | 🟦 | ✅ Fixed | `469b3ef` (removed unused `engines` export) |
 | #15 | 🟥 | ✅ Fixed | `469b3ef` (velocity wired end-to-end) |
@@ -327,7 +327,7 @@ The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `aud
 |---|---|---|
 | **A1** | ~~Full singleton → composable refactor of `useSynth`~~ | ✅ **Done** — lazy `AudioContext`, watchers in `EffectScope`, explicit `ensureAudio()` / `disposeSynth()`. See ARCHITECTURE.md §6 + D8. |
 | **A2** | ~~Narrow watcher paths in `useSynth`~~ | ✅ **Done** — per-slice watchers + `diffParams` forward only changed keys. Regression tests in `useSynth.test.ts`. See ARCHITECTURE.md §6 reactivity flow. |
-| **A3** | Tagged-union `TrackState` | **Deferred — bundled with F1.** Each track currently stores config for all 5 engine types so engine-swap preserves user edits. A standalone tagged union would either (a) lose that UX or (b) need a sidecar cache. F1 (presets) introduces exactly that cache, so A3 + F1 land together: track holds active engine config + reference to per-engine preset that captures the "last known" state. Decided 2026-05-23. |
+| **A3** | ~~Tagged-union `TrackState`~~ | ✅ **Done** (`3c95126`) — replaced by dense `ProjectTrack` with `engines: EngineParamsMap` (all 5 engine slots always populated). Active engine narrowed via `activeParams` helper. Engine-swap is a single-field write; per-engine state persists across swaps. See `src/project/types.ts` and `docs/superpowers/specs/2026-05-23-project-model-design.md`. |
 | **A4** | ~~CSS scoping audit~~ | ✅ **Done** — App.vue split into unscoped (design system: `module-group`, `knob-row`, `rack-column*`, element theme) + scoped (App.vue-only layout). Convention documented in ARCHITECTURE.md §9. |
 | **A5** | ~~Sequencer reactivity audit~~ | ✅ **Done** — audit found 5 scheduler internals (`currentStep`, `timer`, `nextStepIndex`, `scheduleStartTime`, `lastBpm`) being proxied unnecessarily. Moved into a `markRaw`'d `internals` object. UI surface (`tracks`, `bpm`, `isPlaying`) stays reactive. See ARCHITECTURE.md §7 "Reactivity boundary". |
 
@@ -335,7 +335,7 @@ The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `aud
 
 | # | Item |
 |---|---|
-| **F1** | `localStorage` persistence for `trackStates` + `sequencer` — would naturally pair with a named preset system (the "fat-saw" preset for track 0 demo-state, etc., per the architectural doc). **Bundled with A3** — F1's preset cache is what makes the A3 tagged-union refactor preserve engine-swap UX. |
+| **F1** | `localStorage` persistence — ✅ **persistence DONE** (`3c95126`); **named presets still open** | Persistence shipped: `loadProject()` restores on page load, `installAutoSave()` debounce-writes on every change, schema versioning + migration registry in place. Named presets (save/load/rename per-engine snapshots) are a separate future branch. |
 
 ---
 

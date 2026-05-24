@@ -68,14 +68,12 @@
 
 <script setup lang="ts">
 import Knob from './Knob.vue';
-import { DEFAULT_MIXER_STATE, type TrackState } from '../composables/useSynth';
-import type { Track } from '../sequencer/Sequencer';
+import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
 
 const props = defineProps<{
-  trackStates: TrackState[];
+  trackStates: ProjectTrack[];
   sequencer: {
     isPlaying: boolean;
-    tracks: Track[];
   };
   currentStep: number;
 }>();
@@ -87,12 +85,12 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80'];
 // or a non-soloed track during solo mode should NOT pulse.
 const isTrackTriggered = (index: number) => {
   if (!props.sequencer.isPlaying || props.currentStep < 0) return false;
-  const track = props.sequencer.tracks[index];
+  const track = props.trackStates[index];
   if (!track) return false;
   const step = track.steps[props.currentStep];
   if (!step || step.note === null || step.muted) return false;
 
-  const mixer = props.trackStates[index]?.mixer;
+  const mixer = track.mixer;
   if (!mixer || mixer.muted) return false;
 
   const anySoloed = props.trackStates.some(ts => ts.mixer?.soloed);

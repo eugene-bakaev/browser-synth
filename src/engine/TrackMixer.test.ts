@@ -89,12 +89,12 @@ describe('TrackMixer Logic', () => {
     synthData.ensureAudio();
     trackGains = synthData.trackGains.value;
 
-    // Reset trackStates to defaults. Slider is 0..1 (perceptual); the gain
+    // Reset project.tracks to defaults. Slider is 0..1 (perceptual); the gain
     // node receives sliderGain(slider) after the U4 log-scale conversion.
-    synthData.trackStates.forEach((ts: any) => {
-      ts.mixer.volume = 0.8;
-      ts.mixer.muted = false;
-      ts.mixer.soloed = false;
+    synthData.project.tracks.forEach((track: any) => {
+      track.mixer.volume = 0.8;
+      track.mixer.muted = false;
+      track.mixer.soloed = false;
     });
     // Reset spy call records + mock gain.value to the new expected baseline.
     trackGains.forEach((g: any) => {
@@ -112,7 +112,7 @@ describe('TrackMixer Logic', () => {
 
   it('should apply volume changes smoothly to gain nodes', async () => {
     // Modify volume on track 0
-    synthData.trackStates[0].mixer.volume = 0.5;
+    synthData.project.tracks[0].mixer.volume = 0.5;
 
     // Wait for Vue's watch/reactive effect cycle
     await vi.waitFor(() => {
@@ -123,7 +123,7 @@ describe('TrackMixer Logic', () => {
 
   it('should mute a track correctly by setting gain to 0', async () => {
     // Mute track 1
-    synthData.trackStates[1].mixer.muted = true;
+    synthData.project.tracks[1].mixer.muted = true;
 
     await vi.waitFor(() => {
       expect(trackGains[1].gain.setTargetAtTime).toHaveBeenCalledWith(0, expect.any(Number), 0.015);
@@ -135,7 +135,7 @@ describe('TrackMixer Logic', () => {
 
   it('should solo a track and silence all other non-soloed tracks', async () => {
     // Solo track 2
-    synthData.trackStates[2].mixer.soloed = true;
+    synthData.project.tracks[2].mixer.soloed = true;
 
     await vi.waitFor(() => {
       // Soloed track should remain at its volume
@@ -149,8 +149,8 @@ describe('TrackMixer Logic', () => {
 
   it('should support multiple soloed tracks simultaneously', async () => {
     // Solo track 0 and 2
-    synthData.trackStates[0].mixer.soloed = true;
-    synthData.trackStates[2].mixer.soloed = true;
+    synthData.project.tracks[0].mixer.soloed = true;
+    synthData.project.tracks[2].mixer.soloed = true;
 
     await vi.waitFor(() => {
       expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
@@ -162,8 +162,8 @@ describe('TrackMixer Logic', () => {
 
   it('should respect mute on a soloed track', async () => {
     // Solo track 0, but also mute it
-    synthData.trackStates[0].mixer.soloed = true;
-    synthData.trackStates[0].mixer.muted = true;
+    synthData.project.tracks[0].mixer.soloed = true;
+    synthData.project.tracks[0].mixer.muted = true;
 
     await vi.waitFor(() => {
       // Even though track 0 is soloed, it is muted so gain should be 0
@@ -175,14 +175,14 @@ describe('TrackMixer Logic', () => {
 
   it('should restore all track volumes when solo is turned off', async () => {
     // First solo track 3
-    synthData.trackStates[3].mixer.soloed = true;
+    synthData.project.tracks[3].mixer.soloed = true;
     await vi.waitFor(() => {
       expect(trackGains[0].gain.value).toBe(0);
       expect(trackGains[3].gain.value).toBe(sliderGain(0.8));
     });
 
     // Unsolo track 3
-    synthData.trackStates[3].mixer.soloed = false;
+    synthData.project.tracks[3].mixer.soloed = false;
     await vi.waitFor(() => {
       // All tracks should return to their regular volume
       expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
