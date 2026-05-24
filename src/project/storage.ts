@@ -124,3 +124,37 @@ export function deserializeProject(text: string): Project {
   const migrated = migrateToLatest(parsed);
   return reconcileWithDefaults(migrated);
 }
+
+// Mutate `target` in place to match `source`, preserving the reactive proxy
+// identity of every nested object. Vue watchers installed on `target` (e.g.
+// the per-slice watchers in useSynth's buildAudioState) keep firing because
+// the underlying proxy objects are the same — only their fields change.
+//
+// This is the right semantics for "Open": load a project from disk without
+// tearing down the audio graph. The watcher cascade applies params,
+// updates mixer gains, and swaps engines exactly as a sequence of manual
+// knob turns would.
+export function replaceProject(target: Project, source: Project): void {
+  target.schemaVersion = source.schemaVersion;
+  target.bpm = source.bpm;
+
+  for (let i = 0; i < 4; i++) {
+    const t = target.tracks[i];
+    const s = source.tracks[i];
+
+    t.engineType = s.engineType;
+    t.playMode = s.playMode;
+
+    for (const engine of ENGINE_KEYS) {
+      Object.assign(t.engines[engine], s.engines[engine]);
+    }
+
+    Object.assign(t.mixer, s.mixer);
+
+    for (let j = 0; j < 16; j++) {
+      Object.assign(t.steps[j], s.steps[j]);
+    }
+  }
+}
+
+const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap'] as const;
