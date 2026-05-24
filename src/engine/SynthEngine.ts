@@ -200,9 +200,21 @@ export class SynthEngine implements SoundEngine {
       this.ctx.resume();
     }
     const scheduleTime = time ?? this.ctx.currentTime;
-    const freqs = Array.isArray(freq) ? freq : [freq];
 
-    freqs.forEach(f => {
+    // Mono path: a single freq always reuses voice[0]. Envelope.trigger calls
+    // cancelAndHoldAtTime + a 1ms ramp to min on each retrigger, so the previous
+    // note's tail is cleanly stolen instead of overlapping. Round-robining
+    // across N voices in mono mode (the pre-fix behavior) left each prior voice
+    // ringing out its full release, audible as overlapping tails.
+    if (!Array.isArray(freq)) {
+      this.voices[0].trigger(freq, duration, scheduleTime, velocity);
+      // Next poly chord starts from voice[1] so it doesn't steal voice[0].
+      this.activeVoiceIndex = 1 % this.numVoices;
+      return;
+    }
+
+    // Poly: round-robin across voices, one per chord note.
+    freq.forEach(f => {
       const voice = this.voices[this.activeVoiceIndex];
       voice.trigger(f, duration, scheduleTime, velocity);
       this.activeVoiceIndex = (this.activeVoiceIndex + 1) % this.numVoices;
