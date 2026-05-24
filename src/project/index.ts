@@ -30,6 +30,7 @@ export {
   serializePreset,
   deserializePreset,
   applyPreset,
+  resetEnginePatch,
   type Preset,
 } from './preset';
 export {

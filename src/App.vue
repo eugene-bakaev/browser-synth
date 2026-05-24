@@ -92,6 +92,7 @@
         <div class="preset-controls">
           <button @click="onSavePreset" title="Save the current engine + its params as a preset">SAVE PRESET</button>
           <button @click="onLoadPreset" title="Load a preset onto this track">LOAD PRESET</button>
+          <button @click="onInitPatch" title="Reset this track's patch to defaults">INIT PATCH</button>
         </div>
       </div>
 
@@ -208,6 +209,7 @@ import {
   savePresetToFile,
   openPresetFromFile,
   applyPreset,
+  resetEnginePatch,
 } from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
@@ -303,6 +305,13 @@ const onLoadPreset = async () => {
   } catch (e) {
     console.warn('Load preset failed:', e);
     alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
+
+const onInitPatch = () => {
+  if (activeTrackIndex.value === null) return;
+  if (confirm("Reset this track's patch to defaults?")) {
+    resetEnginePatch(project.tracks[activeTrackIndex.value]);
   }
 };
 
