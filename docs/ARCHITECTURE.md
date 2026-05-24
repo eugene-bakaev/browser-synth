@@ -446,6 +446,19 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **File I/O.** `src/project/file-io.ts` adds explicit Save / Open support on top of the same serialization pipeline. `serializeProject(project)` and `deserializeProject(text)` (both in `storage.ts`) are the round-trip helpers: `serializeProject` calls `toRaw` before `JSON.stringify` so Vue proxy metadata never reaches the file; `deserializeProject` runs the full `migrateToLatest` + `reconcileWithDefaults` pass, so a partial or older-schema file is upgraded and filled to current defaults exactly as a localStorage restore would be. `replaceProject(target, source)` mutates `target` in place to match `source` — preserving the reactive proxy identity — so the `buildAudioState` watchers that hold references to `project.tracks[i]` don't need teardown on Open. `saveProjectToFile` / `openProjectFromFile` (the two public helpers in `file-io.ts`) feature-detect the File System Access API and fall back to a download-anchor / `<input type="file">` pair for browsers that don't support it. Both functions return `null` / resolve silently on user cancellation. `ProjectFileError` is the typed error for unreadable JSON, failed migrations, and future `schemaVersion` values the current code doesn't understand. The file format is plain JSON with a `.json` extension — identical content to the localStorage payload; files and localStorage are interchangeable snapshots. All three helpers (`serializeProject`, `deserializeProject`, `replaceProject`) are re-exported from `src/project/index.ts` alongside the `file-io.ts` exports. Long-form design rationale lives in [`docs/superpowers/specs/2026-05-24-project-file-io-design.md`](./superpowers/specs/2026-05-24-project-file-io-design.md).
 
+**Engine presets.** A preset is a single engine's choice + its full param
+set, serialized as a `.chnl.json` file. Distinct from `.prj.json` project
+files (which capture the whole 4-track project + BPM + steps).
+`src/project/preset.ts` defines the `Preset` type, `makePreset` factory,
+`serializePreset` / `deserializePreset`, and `applyPreset(track, preset)`
+which mutates a track in place — sets `engineType`, `Object.assign`s
+`params` into the matching engine slice, and leaves the other engines on
+that track, the mixer, and the steps untouched (so toggling back to a
+previously-active engine restores its prior params). File I/O lives in
+`src/project/preset-file-io.ts` and follows the same picker + fallback
+pattern as project save/open. Presets carry their own
+`PRESET_SCHEMA_VERSION` (currently `1`), independent from `PROJECT_SCHEMA_VERSION`.
+
 ---
 
 *Last updated: 2026-05-24 (post-project-model: A3 + F1 persistence). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*
