@@ -12,7 +12,7 @@
 
 A browser-based **4-track step sequencer + synthesizer** built on Vue 3 + Web Audio. Each track runs one of five sound engines (Synth, Kick, Hat, Snare, Clap). 16 steps per track, BPM 40–240, with per-step note/octave/length/velocity/mute/chord-type.
 
-There is **no backend**. All state is in-memory. There is no persistence yet (see [`CODE_REVIEW.md`](./CODE_REVIEW.md) F1).
+There is **no backend**. All user-editable state lives in a `Project` object that is auto-saved to `localStorage` on every change and restored on page load. See §13 for the project module and [`CODE_REVIEW.md`](./CODE_REVIEW.md) F1 for status.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -21,9 +21,9 @@ There is **no backend**. All state is in-memory. There is no persistence yet (se
 │       │   v-model:knob bindings                               │
 │       ▼                                                       │
 │  useSynth.ts  (module-scope singleton)                        │
-│    ├─ trackStates: reactive 4× TrackState                     │
-│    ├─ engines:     SoundEngine[4]  (lazy-built, hot-swappable)│
-│    └─ sequencer:   Sequencer (lookahead scheduler)            │
+│    ├─ project:   reactive Project (loaded from localStorage)  │
+│    ├─ engines:   SoundEngine[4]  (lazy-built, hot-swappable)  │
+│    └─ sequencer: Sequencer (lookahead ticker)                 │
 │       │                                                       │
 │       │   applyParams(params)         trigger(freq,dur,t,vel) │
 │       ▼                                                       │
@@ -63,11 +63,18 @@ src/
 │       ├── Filter.ts           # Lowpass BiquadFilterNode wrapper
 │       ├── Envelope.ts         # Shared ADSR; drives amp env AND filter env
 │       └── Noise.ts            # Per-context cached 2s white-noise buffer
+├── project/
+│   ├── types.ts        # Project, ProjectTrack, EngineParamsMap, PROJECT_SCHEMA_VERSION, activeParams
+│   ├── factory.ts      # freshProject(), freshTrack(), freshStep()
+│   ├── mutations.ts    # clearTrack(), shiftTrack(), fillTrack() — pure ops over ProjectTrack
+│   ├── migrations.ts   # migrateToLatest(raw) — versioned schema entry point
+│   ├── storage.ts      # loadProject(), installAutoSave() — localStorage + debounced observer
+│   └── index.ts        # public barrel
 ├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer, Visualizer
-└── utils/                      # noteToFreq, chord resolution
+└── utils/                      # noteToFreq, chord resolution, debounce, deepMerge
 ```
 
-**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. 59 tests at time of writing.
+**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. 119 tests at time of writing.
 
 ---
 
@@ -171,8 +178,9 @@ The drum engines do **not** use `EnvelopeModule` — each implements its own bes
 
 ```ts
 // Module scope — pure data, no audio nodes
-const sequencer  = reactive(new Sequencer());
-const trackStates = reactive<TrackState[]>([...]);
+const project: Project = reactive(loadProject());   // restored from localStorage
+installAutoSave(project);                           // debounced writes on every change
+const sequencer = markRaw(new Sequencer());         // pure ticker; no tracks/bpm of its own
 
 // Audio state — lazy. null until first ensureAudio() / togglePlay() call.
 let audioState: AudioState | null = null;
@@ -189,38 +197,30 @@ interface AudioState {
 `useSynth()` is **idempotent** — call it from as many components as you like. Each call returns fresh local refs (`currentStep`, `activeTrackIndex`) but shares the module-scope data + audio state.
 
 ### Lifecycle
-1. **App boot.** Module loads. Only `sequencer` and `trackStates` exist. No `AudioContext`, no engines, no watchers, no Chrome warning.
-2. **First user gesture** (`togglePlay`) calls `ensureAudio()` which builds the full audio graph: `AudioContext`, master chain, `trackGains`, engines from current `trackStates`, and watchers inside an `effectScope(true)`.
+1. **App boot.** Module loads. `loadProject()` runs synchronously — reads `localStorage`, runs `migrateToLatest`, fills any missing fields via `reconcileWithDefaults`, and returns a plain `Project` object. `installAutoSave(project)` registers a deep Vue watcher that debounce-writes `project` to `localStorage` on every change; it returns a `stop()` fn (used by `disposeSynth()`). Only `project` and `sequencer` exist at this point. No `AudioContext`, no engines, no watchers, no Chrome warning.
+2. **First user gesture** (`togglePlay`) calls `ensureAudio()` which builds the full audio graph: `AudioContext`, master chain, `trackGains`, engines from current `project.tracks`, and per-slice watchers inside an `effectScope(true)`.
 3. **Subsequent gestures.** `ensureAudio()` is a no-op (audio is up).
-4. **Teardown.** `disposeSynth()` stops the effect scope, disposes engines, closes the AudioContext, and resets `audioState = null`. Exposed mainly for tests; production has no teardown trigger (the page just unloads).
+4. **Teardown.** `disposeSynth()` stops the effect scope, disposes engines, closes the AudioContext, stops the auto-save watcher, and resets `audioState = null`. Exposed mainly for tests; production has no teardown trigger (the page just unloads).
 
 ### `useSynth()` return shape
-- **Reactive data**: `trackStates`, `sequencer`, `activeTrackIndex`, `currentStep`
+- **Reactive data**: `project` (the full Project object), `sequencer`, `activeTrackIndex`, `currentStep`
 - **Knob bindings**: per-engine writable computeds (e.g. `osc1Type`, `filterCutoff`, `kickTune` — see `trackParam` helper)
 - **Audio handles** (computed, null before init): `analyser`, `trackGains`
 - **Methods**: `togglePlay`, `selectTrack`, `getTrackEngineType`, `ensureAudio`
 
 ### Reactivity flow per knob turn (post-init)
 1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
-2. Setter writes into `trackStates[activeTrackIndex][engineType][param]`.
-3. The **narrow per-slice watcher** for `trackStates[i][engineType]` (registered inside the `EffectScope`) fires. Its getter is `snapshot(slice)` (JSON-clone) — Vue tracks all nested fields as deps and the snapshot gives the watcher distinct old/new plain objects.
+2. Setter writes into `project.tracks[activeTrackIndex].engines[engineType][param]`.
+3. The **narrow per-slice watcher** for `project.tracks[i].engines[slice]` (registered inside the `EffectScope`) fires. Its getter is `snapshot(slice)` (JSON-clone) — Vue tracks all nested fields as deps and the snapshot gives the watcher distinct old/new plain objects.
 4. The watcher diffs old vs new via `diffParams()`, identifies the changed key(s), and calls `engines[i].applyParams(changed)` — typically just one key.
 5. The engine's setter writes to its AudioParam using `setTargetAtTime` (smooth) where possible.
+6. The auto-save watcher (installed at module init) picks up the same mutation and debounce-writes `project` to `localStorage`.
 
-**Engine-type swap** is a separate watcher on `trackStates[i].engineType` → calls `syncTrackToEngine(i)` which fades trackGain to 0, disposes the old engine, builds the new one, and applies the new engine's full slice.
+**Engine-type swap** is a separate watcher on `project.tracks[i].engineType` → calls `syncTrackToEngine(i)` which fades trackGain to 0, disposes the old engine, builds the new one, and applies the new engine's full slice.
 
-**Knob turns *before* first play** mutate `trackStates` but trigger no watchers (none exist yet). When `ensureAudio()` runs, it builds engines from `trackStates`'s current values — so pre-play edits are honored on first play.
+**Knob turns *before* first play** mutate `project.tracks` but trigger no audio watchers (none exist yet). When `ensureAudio()` runs, it builds engines from `project.tracks`'s current values — so pre-play edits are honored on first play. Auto-save is still active, so those edits are persisted immediately.
 
-**Inactive-slice edits are no-ops.** Each per-slice watcher checks `trackStates[i].engineType === slice` before applying — so editing the kick slice while synth is active doesn't write to the synth engine. The kick state is buffered and applied if/when the user swaps to kick (via the engineType watcher's full sync).
-
-### Reactivity flow per knob turn
-1. User turns `Knob` → `v-model` writes to a `trackParam`-bound computed.
-2. Setter writes into `trackStates[activeTrackIndex][engineType][param]`.
-3. The deep-watcher on `trackStates[i].synth` (etc.) fires `syncTrackToEngine(i)`.
-4. `syncTrackToEngine` calls `engines[i].applyParams(state[targetType])`.
-5. The engine's setters write to AudioParams using `setTargetAtTime` (smooth) where possible.
-
-**Known inefficiency (A2):** the deep watcher fires every setter on every knob turn — 13 `applyParams` writes per turn for the synth. Smooth-ramped params absorb it; non-ramped ones (`osc1Type`, `osc1Coarse`) can stutter on fast drags. Acceptable today, refactor when it matters.
+**Inactive-slice edits are no-ops (audio-wise).** Each per-slice watcher checks `project.tracks[i].engineType === slice` before applying — so editing the kick slice while synth is active doesn't write to the synth engine. The kick state is buffered in `project.tracks[i].engines.kick` and applied if/when the user swaps to kick (via the engineType watcher's full sync).
 
 ---
 
@@ -354,7 +354,8 @@ App.vue
 | Add a new knob to the synth | `components/SynthPanel.vue` (template/v-model), `composables/useSynth.ts` (`trackParam` line), `engine/SynthEngine.ts` (setter + `applyParams` line), `engine/SynthVoice.ts` (param application) |
 | Change envelope behavior | `engine/modules/Envelope.ts` (+ Decision D2/D3 in appendix) |
 | Change sequencer timing | `sequencer/Sequencer.ts` (+ Decision D6) |
-| Add persistence | F1 in `CODE_REVIEW.md`; serialize `trackStates` + `sequencer.tracks` to localStorage, restore on mount |
+| Add a named preset | F1 (presets still open) in `CODE_REVIEW.md`; persistence itself is done — see §13 and `src/project/storage.ts` |
+| Change project schema | `src/project/types.ts` (bump `PROJECT_SCHEMA_VERSION`), `src/project/migrations.ts` (add handler), `src/project/storage.ts` (`reconcileWithDefaults` if new optional fields) |
 | Refactor `useSynth` | A1 in `CODE_REVIEW.md`; preserve the "one AudioContext, watchers survive HMR" property |
 
 ---
@@ -421,14 +422,28 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 ### D8 — `useSynth` is an explicit lazy singleton, not a true composable
 
-**Decision.** Data state (`trackStates`, `sequencer`) lives at module scope. **Audio state** (`AudioContext`, master chain, `trackGains`, engines, watchers) is held in a module-scope `audioState: AudioState | null` and built lazily on first `togglePlay()` / `ensureAudio()`. Watchers live inside an `effectScope(true)` so they can be stopped via `disposeSynth()`. `useSynth()` is idempotent — multiple calls return fresh local refs but share all module-scope state.
+**Decision.** Data state (`project`, `sequencer`) lives at module scope. **Audio state** (`AudioContext`, master chain, `trackGains`, engines, watchers) is held in a module-scope `audioState: AudioState | null` and built lazily on first `togglePlay()` / `ensureAudio()`. Watchers live inside an `effectScope(true)` so they can be stopped via `disposeSynth()`. `useSynth()` is idempotent — multiple calls return fresh local refs but share all module-scope state.
 
 **Rejected alternative A (the original code).** All audio created at module load. `new AudioContext()` ran on import, before any user gesture — Chrome printed "AudioContext was not allowed to start". Watchers had no teardown path. `useSynth()` warned on second invocation because re-running the body would have leaked watchers.
 
 **Rejected alternative B (true composable).** Instantiate `AudioContext` + engines inside `useSynth()`, tear down on unmount. Re-creates the AudioContext on every call (browsers limit concurrent contexts), duplicates watchers (doubling work per knob turn), and loses HMR state.
 
-**Why this shape.** The lazy singleton is the middle ground that wins on every axis: no pre-gesture `AudioContext` creation, idempotent `useSynth()`, explicit teardown via `EffectScope` + `disposeSynth()`, single AudioContext for the page, and `trackStates` survives HMR re-mounts of components (the module is cached). Knob turns before first play still mutate `trackStates`; `ensureAudio()` builds engines from current state, so pre-play edits are honored on first play.
+**Why this shape.** The lazy singleton is the middle ground that wins on every axis: no pre-gesture `AudioContext` creation, idempotent `useSynth()`, explicit teardown via `EffectScope` + `disposeSynth()`, single AudioContext for the page, and `project` survives HMR re-mounts of components (the module is cached). Knob turns before first play still mutate `project.tracks`; `ensureAudio()` builds engines from current state, so pre-play edits are honored on first play.
 
 ---
 
-*Last updated: 2026-05-23 (post-A1 lazy-singleton refactor). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*
+## 13. The Project module
+
+`src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md).
+
+**What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, `playMode`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`.
+
+**Dense engine map.** Every `ProjectTrack` stores a full `EngineParamsMap` — all five engine param sets at once, regardless of which engine is active. This means an engine-type swap is a single-field write (`engineType` only); the new engine's params are already in place. It also means per-engine edits survive a round-trip through any other engine type. See the spec §2 for the rejected alternatives (sparse map, discriminated union) and why the dense shape was chosen.
+
+**Schema versioning.** `Project.schemaVersion` is a literal integer (`1` today). When a breaking field change is required, increment `PROJECT_SCHEMA_VERSION` in `types.ts` and add a handler to the `migrations` registry in `migrations.ts`. `loadProject()` always calls `migrateToLatest(raw)` before returning, so old saves stored in `localStorage` are silently upgraded on next page load. The migration registry is a plain `Record<number, (old) => newer>` dispatch table — add entries, never remove them. Additive changes (new optional fields with defaults) can use `reconcileWithDefaults` in `storage.ts` without a version bump.
+
+**Auto-save.** `installAutoSave(project)` sets up a deep Vue watcher that serializes `project` to `localStorage` on a 500 ms debounce. It returns a `stop()` fn used by `disposeSynth()`. The key is `fiddle:project`. Any component or composable that holds a reference to `project` (via `useSynth().project`) writes through to auto-save automatically — no explicit save calls anywhere.
+
+---
+
+*Last updated: 2026-05-24 (post-project-model: A3 + F1 persistence). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*
