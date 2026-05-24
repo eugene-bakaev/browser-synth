@@ -52,7 +52,8 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
   // playMode on the track. No schema bump (zero users) — silently absorb
   // the old field into synth.mode here. The old playMode field itself
   // gets dropped at T3 when ProjectTrack drops the type.
-  if ((t as any).playMode === 'chord') {
+  const legacy = t as { playMode?: 'mono' | 'chord' };
+  if (legacy.playMode === 'chord') {
     reconciled.engines.synth.mode = 'poly';
   }
 
