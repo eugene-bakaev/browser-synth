@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive, watch, nextTick } from 'vue';
-import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject } from './storage';
+import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject, reconcileWithDefaults } from './storage';
 import { freshProject } from './factory';
 import { PROJECT_SCHEMA_VERSION } from './types';
 
@@ -262,5 +262,25 @@ describe('replaceProject', () => {
 
     await nextTick();
     expect(fired).toHaveBeenCalled();
+  });
+});
+
+describe('reconcileWithDefaults — legacy playMode compat', () => {
+  it('translates track.playMode === "chord" into track.engines.synth.mode === "poly"', () => {
+    const legacy = {
+      schemaVersion: 1,
+      bpm: 120,
+      tracks: [
+        { playMode: 'chord' },
+        { playMode: 'mono' },
+        { playMode: 'chord' },
+        {},  // no playMode at all
+      ],
+    };
+    const out = reconcileWithDefaults(legacy);
+    expect(out.tracks[0].engines.synth.mode).toBe('poly');
+    expect(out.tracks[1].engines.synth.mode).toBe('mono');
+    expect(out.tracks[2].engines.synth.mode).toBe('poly');
+    expect(out.tracks[3].engines.synth.mode).toBe('mono');
   });
 });
