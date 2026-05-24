@@ -22,6 +22,8 @@ export interface SynthEngineParams {
   filterEnvAmount: number;
   filterEnv: ADSR;
   ampEnv: ADSR;
+  // Sequencer-level concern: read by useSynth's step trigger, not by SynthEngine
+  // or SynthVoice. Lives here so engine presets carry their intended play mode.
   mode: 'mono' | 'poly';
 }
 
