@@ -57,6 +57,11 @@ describe('freshTrack', () => {
     expect(t.mixer.muted).toBe(false);
     expect(t.mixer.soloed).toBe(false);
   });
+
+  it('freshTrack synth defaults include mode = mono', () => {
+    const t = freshTrack();
+    expect(t.engines.synth.mode).toBe('mono');
+  });
 });
 
 describe('freshProject', () => {

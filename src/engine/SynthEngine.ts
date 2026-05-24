@@ -22,6 +22,7 @@ export interface SynthEngineParams {
   filterEnvAmount: number;
   filterEnv: ADSR;
   ampEnv: ADSR;
+  mode: 'mono' | 'poly';
 }
 
 export class SynthEngine implements SoundEngine {
@@ -49,6 +50,7 @@ export class SynthEngine implements SoundEngine {
     filterEnvAmount: 2.4,
     filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
     ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+    mode: 'mono',
   };
 
   // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
