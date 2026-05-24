@@ -17,7 +17,7 @@ function isAbortError(e: unknown): boolean {
 // anchor. User cancellation of the native picker is silent (no error).
 export async function saveProjectToFile(
   project: Project,
-  suggestedName: string = 'fiddle-project.json',
+  suggestedName: string = 'fiddle-project.prj.json',
 ): Promise<void> {
   const json = serializeProject(project);
 
@@ -28,7 +28,7 @@ export async function saveProjectToFile(
         suggestedName,
         types: [{
           description: 'Fiddle project',
-          accept: { 'application/json': ['.json'] },
+          accept: { 'application/json': ['.json', '.prj.json'] },
         }],
       });
       const writable = await handle.createWritable();
@@ -68,7 +68,7 @@ export async function openProjectFromFile(): Promise<Project | null> {
       handles = await picker({
         types: [{
           description: 'Fiddle project',
-          accept: { 'application/json': ['.json'] },
+          accept: { 'application/json': ['.json', '.prj.json'] },
         }],
         multiple: false,
       });
@@ -105,7 +105,7 @@ function pickFileViaInput(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/json,.json';
+    input.accept = 'application/json,.json,.prj.json';
     input.style.display = 'none';
 
     const cleanup = () => {
