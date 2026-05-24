@@ -133,7 +133,7 @@
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
                 :shortestActiveNoteDuration="shortestActiveNoteDuration"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -143,7 +143,7 @@
                 v-model:tune="kickTune"
                 v-model:decay="kickDecay"
                 v-model:click="kickClick"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -153,7 +153,7 @@
                 v-model:decay="hatDecay"
                 v-model:tone="hatTone"
                 v-model:metallic="hatMetallic"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -163,7 +163,7 @@
                 v-model:tune="snareTune"
                 v-model:decay="snareDecay"
                 v-model:snappy="snareSnappy"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -173,7 +173,7 @@
                 v-model:decay="clapDecay"
                 v-model:tone="clapTone"
                 v-model:sloppy="clapSloppy"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -194,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useSynth } from './composables/useSynth';
 import {
   clearTrack as clearProjectTrack,
@@ -218,7 +219,7 @@ import TrackMixer from './components/TrackMixer.vue';
 
 const {
   project,
-  analyser,
+  trackAnalysers,
   sequencer,
   bpm,
   activeTrackIndex,
@@ -256,6 +257,10 @@ const {
   selectTrack,
   getTrackEngineType,
 } = useSynth();
+
+const activeAnalyser = computed(() =>
+  trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
+);
 
 const onClear = (trackId: number) => clearProjectTrack(project.tracks[trackId]);
 const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) =>
