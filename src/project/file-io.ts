@@ -1,5 +1,5 @@
 import type { Project } from './types';
-import { serializeProject } from './storage';
+import { serializeProject, deserializeProject } from './storage';
 
 export class ProjectFileError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -54,4 +54,78 @@ export async function saveProjectToFile(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Open a project from disk. On Chrome/Edge uses the native File System
+// Access API. On Safari/Firefox falls back to a hidden <input type="file">.
+// Returns null if the user cancels. Throws ProjectFileError for unreadable
+// or future-schemaVersion files.
+export async function openProjectFromFile(): Promise<Project | null> {
+  const picker = (globalThis as any).showOpenFilePicker;
+  if (typeof picker === 'function') {
+    let handles: any[];
+    try {
+      handles = await picker({
+        types: [{
+          description: 'Fiddle project',
+          accept: { 'application/json': ['.json'] },
+        }],
+        multiple: false,
+      });
+    } catch (e) {
+      if (isAbortError(e)) return null;
+      throw new ProjectFileError(
+        `Failed to open project: ${e instanceof Error ? e.message : 'unknown error'}`,
+        e,
+      );
+    }
+    const file = await handles[0].getFile();
+    const text = await file.text();
+    return parseOrWrap(text);
+  }
+
+  const file = await pickFileViaInput();
+  if (file === null) return null;
+  const text = await file.text();
+  return parseOrWrap(text);
+}
+
+function parseOrWrap(text: string): Project {
+  try {
+    return deserializeProject(text);
+  } catch (e) {
+    throw new ProjectFileError(
+      `Could not load project: ${e instanceof Error ? e.message : 'unknown error'}`,
+      e,
+    );
+  }
+}
+
+function pickFileViaInput(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.style.display = 'none';
+
+    const cleanup = () => {
+      input.removeEventListener('change', onChange);
+      input.removeEventListener('cancel', onCancel);
+      input.remove();
+    };
+    const onChange = () => {
+      const file = input.files && input.files.length > 0 ? input.files[0] : null;
+      cleanup();
+      resolve(file);
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    input.addEventListener('change', onChange);
+    input.addEventListener('cancel', onCancel);
+    document.body.appendChild(input);
+    input.click();
+  });
 }
