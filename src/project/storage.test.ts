@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive, watch, nextTick } from 'vue';
-import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject } from './storage';
+import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject, reconcileWithDefaults } from './storage';
 import { freshProject } from './factory';
 import { PROJECT_SCHEMA_VERSION } from './types';
 
@@ -227,15 +227,13 @@ describe('replaceProject', () => {
     expect(target.tracks[0].engines.synth.filterCutoff).toBe(1234);
   });
 
-  it('mutates mixer + playMode + engineType per track', () => {
+  it('mutates mixer + engineType per track', () => {
     const target = reactive(freshProject());
     const source = freshProject();
     source.tracks[2].engineType = 'kick';
-    source.tracks[2].playMode = 'chord';
     source.tracks[2].mixer.volume = 0.25;
     replaceProject(target, source);
     expect(target.tracks[2].engineType).toBe('kick');
-    expect(target.tracks[2].playMode).toBe('chord');
     expect(target.tracks[2].mixer.volume).toBe(0.25);
   });
 
@@ -262,5 +260,34 @@ describe('replaceProject', () => {
 
     await nextTick();
     expect(fired).toHaveBeenCalled();
+  });
+});
+
+describe('reconcileWithDefaults — legacy playMode compat', () => {
+  it('translates track.playMode === "chord" into track.engines.synth.mode === "poly"', () => {
+    const legacy = {
+      schemaVersion: 1,
+      bpm: 120,
+      tracks: [
+        { playMode: 'chord' },
+        { playMode: 'mono' },
+        { playMode: 'chord' },
+        {},  // no playMode at all
+      ],
+    };
+    const out = reconcileWithDefaults(legacy);
+    expect(out.tracks[0].engines.synth.mode).toBe('poly');
+    expect(out.tracks[1].engines.synth.mode).toBe('mono');
+    expect(out.tracks[2].engines.synth.mode).toBe('poly');
+    expect(out.tracks[3].engines.synth.mode).toBe('mono');
+  });
+
+  it('drops the legacy playMode field from the reconciled track', () => {
+    const legacy = {
+      schemaVersion: 1,
+      tracks: [{ playMode: 'chord' }, {}, {}, {}],
+    };
+    const out = reconcileWithDefaults(legacy) as unknown as { tracks: any[] };
+    expect('playMode' in out.tracks[0]).toBe(false);
   });
 });

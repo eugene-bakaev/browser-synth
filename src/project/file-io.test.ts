@@ -36,7 +36,7 @@ describe('saveProjectToFile — native (showSaveFilePicker)', () => {
     expect(picker).toHaveBeenCalledTimes(1);
     expect(picker.mock.calls[0][0].suggestedName).toBe('my-song.json');
     expect(picker.mock.calls[0][0].types[0].accept).toEqual({
-      'application/json': ['.json'],
+      'application/json': ['.json', '.prj.json'],
     });
     expect(writable.write).toHaveBeenCalledTimes(1);
     const written = writable.write.mock.calls[0][0];
@@ -52,7 +52,7 @@ describe('saveProjectToFile — native (showSaveFilePicker)', () => {
     vi.stubGlobal('showSaveFilePicker', picker);
 
     await saveProjectToFile(freshProject());
-    expect(picker.mock.calls[0][0].suggestedName).toBe('fiddle-project.json');
+    expect(picker.mock.calls[0][0].suggestedName).toBe('fiddle-project.prj.json');
   });
 
   it('swallows AbortError (user cancellation)', async () => {

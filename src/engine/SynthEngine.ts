@@ -22,6 +22,9 @@ export interface SynthEngineParams {
   filterEnvAmount: number;
   filterEnv: ADSR;
   ampEnv: ADSR;
+  // Sequencer-level concern: read by useSynth's step trigger, not by SynthEngine
+  // or SynthVoice. Lives here so engine presets carry their intended play mode.
+  mode: 'mono' | 'poly';
 }
 
 export class SynthEngine implements SoundEngine {
@@ -49,6 +52,7 @@ export class SynthEngine implements SoundEngine {
     filterEnvAmount: 2.4,
     filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
     ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
+    mode: 'mono',
   };
 
   // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
@@ -196,9 +200,21 @@ export class SynthEngine implements SoundEngine {
       this.ctx.resume();
     }
     const scheduleTime = time ?? this.ctx.currentTime;
-    const freqs = Array.isArray(freq) ? freq : [freq];
 
-    freqs.forEach(f => {
+    // Mono path: a single freq always reuses voice[0]. Envelope.trigger calls
+    // cancelAndHoldAtTime + a 1ms ramp to min on each retrigger, so the previous
+    // note's tail is cleanly stolen instead of overlapping. Round-robining
+    // across N voices in mono mode (the pre-fix behavior) left each prior voice
+    // ringing out its full release, audible as overlapping tails.
+    if (!Array.isArray(freq)) {
+      this.voices[0].trigger(freq, duration, scheduleTime, velocity);
+      // Next poly chord starts from voice[1] so it doesn't steal voice[0].
+      this.activeVoiceIndex = 1 % this.numVoices;
+      return;
+    }
+
+    // Poly: round-robin across voices, one per chord note.
+    freq.forEach(f => {
       const voice = this.voices[this.activeVoiceIndex];
       voice.trigger(f, duration, scheduleTime, velocity);
       this.activeVoiceIndex = (this.activeVoiceIndex + 1) % this.numVoices;

@@ -69,12 +69,15 @@ src/
 │   ├── mutations.ts    # clearTrack(), shiftTrack(), fillTrack() — pure ops over ProjectTrack
 │   ├── migrations.ts   # migrateToLatest(raw) — versioned schema entry point
 │   ├── storage.ts      # loadProject(), installAutoSave() — localStorage + debounced observer
+│   ├── file-io.ts      # saveProjectToFile(), openProjectFromFile(), ProjectFileError
+│   ├── preset.ts       # Preset type, makePreset, serializePreset/deserializePreset, applyPreset
+│   ├── preset-file-io.ts # savePresetToFile(), openPresetFromFile()
 │   └── index.ts        # public barrel
 ├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer, Visualizer
 └── utils/                      # noteToFreq, chord resolution, debounce, deepMerge
 ```
 
-**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. 119 tests at time of writing.
+**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. 165 tests at time of writing.
 
 ---
 
@@ -436,7 +439,7 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 `src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md).
 
-**What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, `playMode`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`.
+**What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
 
 **Dense engine map.** Every `ProjectTrack` stores a full `EngineParamsMap` — all five engine param sets at once, regardless of which engine is active. This means an engine-type swap is a single-field write (`engineType` only); the new engine's params are already in place. It also means per-engine edits survive a round-trip through any other engine type. See the spec §2 for the rejected alternatives (sparse map, discriminated union) and why the dense shape was chosen.
 
@@ -444,7 +447,20 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **Auto-save.** `installAutoSave(project)` sets up a deep Vue watcher that serializes `project` to `localStorage` on a 500 ms debounce. It returns a `stop()` fn used by `disposeSynth()`. The key is `fiddle:project`. Any component or composable that holds a reference to `project` (via `useSynth().project`) writes through to auto-save automatically — no explicit save calls anywhere.
 
-**File I/O.** `src/project/file-io.ts` adds explicit Save / Open support on top of the same serialization pipeline. `serializeProject(project)` and `deserializeProject(text)` (both in `storage.ts`) are the round-trip helpers: `serializeProject` calls `toRaw` before `JSON.stringify` so Vue proxy metadata never reaches the file; `deserializeProject` runs the full `migrateToLatest` + `reconcileWithDefaults` pass, so a partial or older-schema file is upgraded and filled to current defaults exactly as a localStorage restore would be. `replaceProject(target, source)` mutates `target` in place to match `source` — preserving the reactive proxy identity — so the `buildAudioState` watchers that hold references to `project.tracks[i]` don't need teardown on Open. `saveProjectToFile` / `openProjectFromFile` (the two public helpers in `file-io.ts`) feature-detect the File System Access API and fall back to a download-anchor / `<input type="file">` pair for browsers that don't support it. Both functions return `null` / resolve silently on user cancellation. `ProjectFileError` is the typed error for unreadable JSON, failed migrations, and future `schemaVersion` values the current code doesn't understand. The file format is plain JSON with a `.json` extension — identical content to the localStorage payload; files and localStorage are interchangeable snapshots. All three helpers (`serializeProject`, `deserializeProject`, `replaceProject`) are re-exported from `src/project/index.ts` alongside the `file-io.ts` exports. Long-form design rationale lives in [`docs/superpowers/specs/2026-05-24-project-file-io-design.md`](./superpowers/specs/2026-05-24-project-file-io-design.md).
+**File I/O.** `src/project/file-io.ts` adds explicit Save / Open support on top of the same serialization pipeline. `serializeProject(project)` and `deserializeProject(text)` (both in `storage.ts`) are the round-trip helpers: `serializeProject` calls `toRaw` before `JSON.stringify` so Vue proxy metadata never reaches the file; `deserializeProject` runs the full `migrateToLatest` + `reconcileWithDefaults` pass, so a partial or older-schema file is upgraded and filled to current defaults exactly as a localStorage restore would be. `replaceProject(target, source)` mutates `target` in place to match `source` — preserving the reactive proxy identity — so the `buildAudioState` watchers that hold references to `project.tracks[i]` don't need teardown on Open. `saveProjectToFile` / `openProjectFromFile` (the two public helpers in `file-io.ts`) feature-detect the File System Access API and fall back to a download-anchor / `<input type="file">` pair for browsers that don't support it. Both functions return `null` / resolve silently on user cancellation. `ProjectFileError` is the typed error for unreadable JSON, failed migrations, and future `schemaVersion` values the current code doesn't understand. The canonical extension for new project saves is `.prj.json`; the open picker also accepts plain `.json` for legacy files saved before the extension was introduced. Both are identical in content to the localStorage payload; files and localStorage are interchangeable snapshots. All three helpers (`serializeProject`, `deserializeProject`, `replaceProject`) are re-exported from `src/project/index.ts` alongside the `file-io.ts` exports. Long-form design rationale lives in [`docs/superpowers/specs/2026-05-24-project-file-io-design.md`](./superpowers/specs/2026-05-24-project-file-io-design.md).
+
+**Engine presets.** A preset is a single engine's choice + its full param
+set, serialized as a `.chnl.json` file. Distinct from `.prj.json` project
+files (which capture the whole 4-track project + BPM + steps).
+`src/project/preset.ts` defines the `Preset` type, `makePreset` factory,
+`serializePreset` / `deserializePreset`, and `applyPreset(track, preset)`
+which mutates a track in place — sets `engineType`, `Object.assign`s
+`params` into the matching engine slice, and leaves the other engines on
+that track, the mixer, and the steps untouched (so toggling back to a
+previously-active engine restores its prior params). File I/O lives in
+`src/project/preset-file-io.ts` and follows the same picker + fallback
+pattern as project save/open. Presets carry their own
+`PRESET_SCHEMA_VERSION` (currently `1`), independent from `PROJECT_SCHEMA_VERSION`.
 
 ---
 

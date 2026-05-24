@@ -156,6 +156,32 @@ describe('SynthEngine', () => {
     expect(voiceSpy).toHaveBeenCalledWith(440, 0.5, expect.any(Number), 1.0);
   });
 
+  it('mono triggers (single freq) always reuse voice[0] so cancelAndHold steals the prior note', () => {
+    const engine = new SynthEngine();
+    const v0Spy = vi.spyOn(engine.voices[0], 'trigger');
+    const v1Spy = vi.spyOn(engine.voices[1], 'trigger');
+
+    engine.trigger(440, 0.5, 0);
+    engine.trigger(523.25, 0.5, 0.25);
+    engine.trigger(659.25, 0.5, 0.5);
+
+    expect(v0Spy).toHaveBeenCalledTimes(3);
+    expect(v1Spy).not.toHaveBeenCalled();
+  });
+
+  it('poly triggers (array of freqs) round-robin across voices', () => {
+    const engine = new SynthEngine();
+    const v0Spy = vi.spyOn(engine.voices[0], 'trigger');
+    const v1Spy = vi.spyOn(engine.voices[1], 'trigger');
+    const v2Spy = vi.spyOn(engine.voices[2], 'trigger');
+
+    engine.trigger([261.63, 329.63, 392.00], 0.5, 0);
+
+    expect(v0Spy).toHaveBeenCalledTimes(1);
+    expect(v1Spy).toHaveBeenCalledTimes(1);
+    expect(v2Spy).toHaveBeenCalledTimes(1);
+  });
+
   it('should write filterCutoff to the live AudioParam so the knob affects sustaining notes', () => {
     const engine = new SynthEngine();
     const voice = engine.voices[0];

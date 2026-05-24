@@ -13,6 +13,7 @@
           <label>BPM</label>
           <input type="number" v-model.number="bpm" min="40" max="240">
         </div>
+        <button @click="onNew" title="Discard current project and start fresh">NEW</button>
         <button @click="onSave" title="Save project to a file">SAVE</button>
         <button @click="onOpen" title="Open a project from a file">OPEN</button>
       </div>
@@ -31,7 +32,7 @@
           :isFocused="false"
           :trackId="index"
           :engineType="getTrackEngineType(index)"
-          v-model:playMode="project.tracks[index].playMode"
+          :mode="project.tracks[index].engines.synth.mode"
           @select-track="selectTrack(index)"
           @clear="onClear"
           @shift="onShift"
@@ -87,6 +88,12 @@
             CLAP
           </button>
         </div>
+
+        <div class="preset-controls">
+          <button @click="onSavePreset" title="Save the current engine + its params as a preset">SAVE PRESET</button>
+          <button @click="onLoadPreset" title="Load a preset onto this track">LOAD PRESET</button>
+          <button @click="onInitPatch" title="Reset this track's patch to defaults">INIT PATCH</button>
+        </div>
       </div>
 
       <div class="focused-layout">
@@ -101,7 +108,7 @@
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="engineType"
-              v-model:playMode="project.tracks[activeTrackIndex].playMode"
+              :mode="synthMode"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
@@ -122,11 +129,12 @@
                 v-model:filterCutoff="filterCutoff"
                 v-model:filterRes="filterRes"
                 v-model:filterEnvAmount="filterEnvAmount"
+                v-model:mode="synthMode"
                 :waveforms="waveforms"
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
                 :shortestActiveNoteDuration="shortestActiveNoteDuration"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -136,7 +144,7 @@
                 v-model:tune="kickTune"
                 v-model:decay="kickDecay"
                 v-model:click="kickClick"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -146,7 +154,7 @@
                 v-model:decay="hatDecay"
                 v-model:tone="hatTone"
                 v-model:metallic="hatMetallic"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -156,7 +164,7 @@
                 v-model:tune="snareTune"
                 v-model:decay="snareDecay"
                 v-model:snappy="snareSnappy"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -166,7 +174,7 @@
                 v-model:decay="clapDecay"
                 v-model:tone="clapTone"
                 v-model:sloppy="clapSloppy"
-                :analyser="analyser"
+                :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
             </template>
@@ -187,6 +195,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useSynth } from './composables/useSynth';
 import {
   clearTrack as clearProjectTrack,
@@ -195,6 +204,12 @@ import {
   saveProjectToFile,
   openProjectFromFile,
   replaceProject,
+  freshProject,
+  makePreset,
+  savePresetToFile,
+  openPresetFromFile,
+  applyPreset,
+  resetEnginePatch,
 } from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
@@ -206,13 +221,14 @@ import TrackMixer from './components/TrackMixer.vue';
 
 const {
   project,
-  analyser,
+  trackAnalysers,
   sequencer,
   bpm,
   activeTrackIndex,
   currentStep,
   waveforms,
   engineType,
+  synthMode,
   osc1Type,
   osc2Type,
   osc1Coarse,
@@ -244,11 +260,21 @@ const {
   getTrackEngineType,
 } = useSynth();
 
+const activeAnalyser = computed(() =>
+  trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
+);
+
 const onClear = (trackId: number) => clearProjectTrack(project.tracks[trackId]);
 const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) =>
   shiftProjectTrack(project.tracks[trackId], direction);
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
   fillProjectTrack(project.tracks[trackId], interval);
+
+const onNew = () => {
+  if (confirm('Discard current project and start fresh?')) {
+    replaceProject(project, freshProject());
+  }
+};
 
 const onSave = () => {
   saveProjectToFile(project);
@@ -261,6 +287,31 @@ const onOpen = async () => {
   } catch (e) {
     console.warn('Open failed:', e);
     alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
+
+const onSavePreset = () => {
+  if (activeTrackIndex.value === null) return;
+  const track = project.tracks[activeTrackIndex.value];
+  const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
+  savePresetToFile(preset);
+};
+
+const onLoadPreset = async () => {
+  if (activeTrackIndex.value === null) return;
+  try {
+    const preset = await openPresetFromFile();
+    if (preset) applyPreset(project.tracks[activeTrackIndex.value], preset);
+  } catch (e) {
+    console.warn('Load preset failed:', e);
+    alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
+
+const onInitPatch = () => {
+  if (activeTrackIndex.value === null) return;
+  if (confirm("Reset this track's patch to defaults?")) {
+    resetEnginePatch(project.tracks[activeTrackIndex.value]);
   }
 };
 
@@ -553,6 +604,29 @@ header {
 .engine-selector button.active {
   background: #222;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.preset-controls {
+  display: flex;
+  gap: 10px;
+}
+.preset-controls button {
+  background: #181818;
+  color: #888;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.preset-controls button:hover {
+  background: #252525;
+  color: #fff;
+  border-color: #555;
 }
 
 .mixer-section {

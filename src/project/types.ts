@@ -35,7 +35,6 @@ export interface ProjectTrack {
   engineType: EngineType;
   engines: EngineParamsMap;     // dense — all 5 engines always present
   mixer: MixerState;
-  playMode: 'mono' | 'chord';
   steps: Step[];                // length 16
 }
 

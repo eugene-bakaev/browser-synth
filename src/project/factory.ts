@@ -34,7 +34,6 @@ export function freshTrack(): ProjectTrack {
       clap:  structuredClone(ClapEngine.DEFAULT_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
-    playMode: 'mono',
     steps: Array.from({ length: 16 }, () => freshStep()),
   };
 }

@@ -85,13 +85,13 @@ function diffParams<T extends Record<string, unknown>>(
 
 interface AudioState {
   ctx: AudioContext;
-  analyser: AnalyserNode;
+  trackAnalysers: AnalyserNode[];
   trackGains: GainNode[];
   engines: SoundEngine[];
   scope: EffectScope;
 }
 
-// shallowRef so the computed bindings below (analyser, trackGains) actually
+// shallowRef so the computed bindings below (trackAnalysers, trackGains) actually
 // re-evaluate when ensureAudio() flips this from null → AudioState. A plain
 // `let` looks identical here but Vue can't observe the assignment, so the
 // computeds would cache the initial null forever (oscilloscope stays flat).
@@ -110,19 +110,23 @@ function buildAudioState(): AudioState {
   const masterGain = ctx.createGain();
   masterGain.gain.setValueAtTime(0.6, ctx.currentTime);
 
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 1024;
-
   compressor.connect(masterGain);
-  masterGain.connect(analyser);
-  analyser.connect(ctx.destination);
+  masterGain.connect(ctx.destination);
 
-  const trackGains: GainNode[] = Array(4).fill(null).map(() => {
+  // Per-track analysers tee off each trackGain so the focused panel's
+  // oscilloscope shows only that channel, not the summed mix.
+  const trackGains: GainNode[] = [];
+  const trackAnalysers: AnalyserNode[] = [];
+  for (let i = 0; i < 4; i++) {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.8, ctx.currentTime);
     g.connect(compressor);
-    return g;
-  });
+    const a = ctx.createAnalyser();
+    a.fftSize = 1024;
+    g.connect(a);
+    trackGains.push(g);
+    trackAnalysers.push(a);
+  }
 
   const engines: SoundEngine[] = [];
 
@@ -206,7 +210,7 @@ function buildAudioState(): AudioState {
     }
   });
 
-  return { ctx, analyser, trackGains, engines, scope };
+  return { ctx, trackAnalysers, trackGains, engines, scope };
 }
 
 function ensureAudio(): AudioState {
@@ -256,10 +260,14 @@ export function useSynth() {
     }
   });
 
-  const playMode = computed({
-    get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].playMode : 'mono' as const,
-    set: (val: 'mono' | 'chord') => {
-      if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].playMode = val;
+  const synthMode = computed({
+    get: () => activeTrackIndex.value !== null
+      ? project.tracks[activeTrackIndex.value].engines.synth.mode
+      : 'mono' as const,
+    set: (val: 'mono' | 'poly') => {
+      if (activeTrackIndex.value !== null) {
+        project.tracks[activeTrackIndex.value].engines.synth.mode = val;
+      }
     }
   });
 
@@ -314,9 +322,9 @@ export function useSynth() {
     return minTicks * tickDuration;
   });
 
-  // Audio-derived bindings. `analyser` returns null until first ensureAudio()
-  // so Visualizer renders a flat line during the pre-gesture window.
-  const analyser: ComputedRef<AnalyserNode | null> = computed(() => audioState.value?.analyser ?? null);
+  // Audio-derived bindings. `trackAnalysers` returns null until first
+  // ensureAudio() so Visualizer renders a flat line during the pre-gesture window.
+  const trackAnalysers: ComputedRef<AnalyserNode[] | null> = computed(() => audioState.value?.trackAnalysers ?? null);
   const trackGains: ComputedRef<GainNode[] | null> = computed(() => audioState.value?.trackGains ?? null);
 
   const togglePlay = () => {
@@ -342,10 +350,10 @@ export function useSynth() {
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
             if (engineTypeI === 'synth') {
-              const currentPlayMode = track.playMode || 'mono';
+              const currentMode = track.engines.synth.mode;
               const tickDuration = (60 / project.bpm) / 4;
               const duration = step.length * tickDuration;
-              if (currentPlayMode === 'chord') {
+              if (currentMode === 'poly') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
                 state.engines[i].trigger(freqs, duration, time, step.velocity);
               } else {
@@ -377,13 +385,13 @@ export function useSynth() {
     project,                                       // NEW: single source of truth
     sequencer,
     bpm,                                           // NEW: writable computed against project.bpm
-    analyser,
+    trackAnalysers,
     trackGains,
     activeTrackIndex,
     currentStep,
     waveforms,
     engineType,
-    playMode,
+    synthMode,
     osc1Type,
     osc2Type,
     osc1Coarse,

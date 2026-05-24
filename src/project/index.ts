@@ -24,3 +24,17 @@ export {
   openProjectFromFile,
   ProjectFileError,
 } from './file-io';
+export {
+  PRESET_SCHEMA_VERSION,
+  makePreset,
+  serializePreset,
+  deserializePreset,
+  applyPreset,
+  resetEnginePatch,
+  type Preset,
+} from './preset';
+export {
+  savePresetToFile,
+  openPresetFromFile,
+  PresetFileError,
+} from './preset-file-io';
