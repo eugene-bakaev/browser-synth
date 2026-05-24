@@ -1,37 +1,42 @@
 import { ref, reactive, watch, computed, effectScope, shallowRef, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
 import { SoundEngine } from '../engine/types';
-import { SynthEngine, type SynthEngineParams } from '../engine/SynthEngine';
-import { KickEngine, type KickEngineParams } from '../engine/KickEngine';
-import { HatEngine, type HatEngineParams } from '../engine/HatEngine';
-import { SnareEngine, type SnareEngineParams } from '../engine/SnareEngine';
-import { ClapEngine, type ClapEngineParams } from '../engine/ClapEngine';
+import { SynthEngine } from '../engine/SynthEngine';
+import { KickEngine }  from '../engine/KickEngine';
+import { HatEngine }   from '../engine/HatEngine';
+import { SnareEngine } from '../engine/SnareEngine';
+import { ClapEngine }  from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
 
 import {
+  type Project,
+  type ProjectTrack,
   type EngineType,
-  type MixerState,
-  DEFAULT_MIXER_STATE,
-} from '../project/types';
+  type EngineParamsMap,
+  loadProject,
+  installAutoSave,
+} from '../project';
 
-export { DEFAULT_MIXER_STATE };
-export type { EngineType, MixerState };
+// === Pure data state — built from localStorage (or fresh) at module init. ===
 
-// === Pure data state — safe to live at module scope (no audio nodes here) ===
+const project: Project = reactive(loadProject());
+installAutoSave(project);   // debounced localStorage writes
 
 const sequencer = reactive(new Sequencer());
 
-export interface TrackState {
-  engineType: EngineType;
-  playMode: 'mono' | 'chord';
-  synth: SynthEngineParams;
-  kick: KickEngineParams;
-  hat: HatEngineParams;
-  snare: SnareEngineParams;
-  clap: ClapEngineParams;
-  mixer: MixerState;
-}
+// === Engine factories — unchanged ===
+const ENGINE_SWAP_FADE_SECONDS = 0.02;
+
+const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap'];
+
+const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
+  synth: (ctx, dest) => new SynthEngine(ctx, dest),
+  kick:  (ctx, dest) => new KickEngine(ctx, dest),
+  hat:   (ctx, dest) => new HatEngine(ctx, dest),
+  snare: (ctx, dest) => new SnareEngine(ctx, dest),
+  clap:  (ctx, dest) => new ClapEngine(ctx, dest),
+};
 
 // Mixer volume is stored as slider position 0..1 (perceptual). The actual
 // AudioParam.gain needs a linear multiplier — convert via -54..+6 dB then
@@ -42,29 +47,6 @@ function sliderToLinearGain(slider: number): number {
   const db = -54 + slider * 60;
   return Math.pow(10, db / 20);
 }
-
-const trackStates = reactive<TrackState[]>(Array(4).fill(null).map(() => ({
-  engineType: 'synth' as EngineType,
-  playMode: 'mono' as const,
-  synth: structuredClone(SynthEngine.DEFAULT_PARAMS),
-  kick:  structuredClone(KickEngine.DEFAULT_PARAMS),
-  hat:   structuredClone(HatEngine.DEFAULT_PARAMS),
-  snare: structuredClone(SnareEngine.DEFAULT_PARAMS),
-  clap:  structuredClone(ClapEngine.DEFAULT_PARAMS),
-  mixer: { ...DEFAULT_MIXER_STATE },
-})));
-
-const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
-  synth: (ctx, dest) => new SynthEngine(ctx, dest),
-  kick:  (ctx, dest) => new KickEngine(ctx, dest),
-  hat:   (ctx, dest) => new HatEngine(ctx, dest),
-  snare: (ctx, dest) => new SnareEngine(ctx, dest),
-  clap:  (ctx, dest) => new ClapEngine(ctx, dest),
-};
-
-const ENGINE_SWAP_FADE_SECONDS = 0.02;
-
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap'];
 
 // JSON-clone: walks string-keyed enumerable props only, skipping the Symbol
 // metadata that Vue's reactive proxy attaches. structuredClone fails on
@@ -145,8 +127,8 @@ function buildAudioState(): AudioState {
   const engines: SoundEngine[] = [];
 
   const syncTrackToEngine = (i: number) => {
-    const state = trackStates[i];
-    const targetType = state.engineType;
+    const track = project.tracks[i];
+    const targetType = track.engineType;
     const existing = engines[i];
 
     if (!existing || existing.engineType !== targetType) {
@@ -162,22 +144,22 @@ function buildAudioState(): AudioState {
       engines[i] = engineFactories[targetType](ctx, trackGains[i]);
     }
 
-    engines[i].applyParams(state[targetType] as Record<string, any>);
+    engines[i].applyParams(track.engines[targetType] as Record<string, any>);
   };
 
   const updateMixerGains = () => {
-    const anySoloed = trackStates.some(ts => ts.mixer?.soloed);
+    const anySoloed = project.tracks.some(t => t.mixer?.soloed);
     for (let i = 0; i < 4; i++) {
-      const state = trackStates[i];
+      const track = project.tracks[i];
       const audible = anySoloed
-        ? (state.mixer.soloed && !state.mixer.muted)
-        : !state.mixer.muted;
-      const targetGain = audible ? sliderToLinearGain(state.mixer.volume) : 0;
+        ? (track.mixer.soloed && !track.mixer.muted)
+        : !track.mixer.muted;
+      const targetGain = audible ? sliderToLinearGain(track.mixer.volume) : 0;
       trackGains[i].gain.setTargetAtTime(targetGain, ctx.currentTime, 0.015);
     }
   };
 
-  // Build engines + apply current trackStates (which may already carry pre-play knob edits).
+  // Build engines + apply current project tracks (which may already carry pre-play knob edits).
   for (let i = 0; i < 4; i++) {
     syncTrackToEngine(i);
   }
@@ -191,7 +173,7 @@ function buildAudioState(): AudioState {
       // Engine-type change triggers full sync: dispose old, build new, apply
       // the entire new slice. Slice watchers handle the steady-state case.
       watch(
-        () => trackStates[i].engineType,
+        () => project.tracks[i].engineType,
         () => syncTrackToEngine(i)
       );
 
@@ -202,13 +184,13 @@ function buildAudioState(): AudioState {
       // reactive proxy reference for both.
       for (const slice of ENGINE_SLICES) {
         watch(
-          () => snapshot(trackStates[i][slice]),
+          () => snapshot(project.tracks[i].engines[slice]),
           (newVal, oldVal) => {
             // Only apply if this slice is the active engine for the track.
             // Edits to a non-active slice are buffered until that engine
             // becomes active (the engineType watcher then full-syncs).
-            if (trackStates[i].engineType !== slice) return;
-            const changed = diffParams(newVal as Record<string, unknown>, oldVal as Record<string, unknown>);
+            if (project.tracks[i].engineType !== slice) return;
+            const changed = diffParams(newVal as unknown as Record<string, unknown>, oldVal as unknown as Record<string, unknown>);
             if (changed) engines[i].applyParams(changed);
           }
         );
@@ -217,7 +199,7 @@ function buildAudioState(): AudioState {
       // Mixer watcher stays deep: solo logic is global, so any change has to
       // recompute all 4 track gains via updateMixerGains.
       watch(
-        () => trackStates[i].mixer,
+        () => project.tracks[i].mixer,
         () => updateMixerGains(),
         { deep: true }
       );
@@ -252,26 +234,38 @@ export function useSynth() {
 
   const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
-  function trackParam<K extends keyof TrackState, P extends keyof TrackState[K]>(
-    engine: K, param: P, fallback: TrackState[K][P]
-  ): WritableComputedRef<TrackState[K][P]> {
+  function trackParam<K extends keyof EngineParamsMap, P extends keyof EngineParamsMap[K]>(
+    engine: K, param: P, fallback: EngineParamsMap[K][P]
+  ): WritableComputedRef<EngineParamsMap[K][P]> {
     return computed({
       get: () => activeTrackIndex.value !== null
-        ? trackStates[activeTrackIndex.value][engine][param]
+        ? project.tracks[activeTrackIndex.value].engines[engine][param]
         : fallback,
-      set: (val: TrackState[K][P]) => {
+      set: (val: EngineParamsMap[K][P]) => {
         if (activeTrackIndex.value !== null) {
-          trackStates[activeTrackIndex.value][engine][param] = val;
+          project.tracks[activeTrackIndex.value].engines[engine][param] = val;
         }
       }
     });
   }
 
   const engineType = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].engineType : 'synth' as EngineType,
+    get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].engineType : 'synth' as EngineType,
     set: (val: EngineType) => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].engineType = val;
+      if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].engineType = val;
     }
+  });
+
+  const playMode = computed({
+    get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].playMode : 'mono' as const,
+    set: (val: 'mono' | 'chord') => {
+      if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].playMode = val;
+    }
+  });
+
+  const bpm = computed({
+    get: () => project.bpm,
+    set: (v: number) => { project.bpm = v; },
   });
 
   // --- Synth params ---
@@ -309,20 +303,13 @@ export function useSynth() {
   const clapTone = trackParam('clap', 'tone', 1000);
   const clapSloppy = trackParam('clap', 'sloppy', 0.015);
 
-  const playMode = computed({
-    get: () => activeTrackIndex.value !== null ? trackStates[activeTrackIndex.value].playMode : 'mono' as const,
-    set: (val: 'mono' | 'chord') => {
-      if (activeTrackIndex.value !== null) trackStates[activeTrackIndex.value].playMode = val;
-    }
-  });
-
   const shortestActiveNoteDuration = computed<number | null>(() => {
     if (activeTrackIndex.value === null) return null;
-    const track = sequencer.tracks[activeTrackIndex.value];
+    const track = project.tracks[activeTrackIndex.value];
     if (!track) return null;
     const activeSteps = track.steps.filter(s => s.note !== null && !s.muted);
     if (activeSteps.length === 0) return null;
-    const tickDuration = (60 / sequencer.bpm) / 4;
+    const tickDuration = (60 / project.bpm) / 4;
     const minTicks = Math.min(...activeSteps.map(s => s.length));
     return minTicks * tickDuration;
   });
@@ -346,16 +333,17 @@ export function useSynth() {
       sequencer.stop();
       currentStep.value = -1;
     } else {
-      sequencer.start(state.ctx, (stepIndex, time) => {
+      sequencer.start(state.ctx, () => project.bpm, (stepIndex, time) => {
         currentStep.value = stepIndex;
 
         for (let i = 0; i < 4; i++) {
-          const step = sequencer.tracks[i].steps[stepIndex];
+          const track = project.tracks[i];
+          const step = track.steps[stepIndex];
           if (step.note && !step.muted) {
-            const engineTypeI = trackStates[i].engineType;
+            const engineTypeI = track.engineType;
             if (engineTypeI === 'synth') {
-              const currentPlayMode = trackStates[i].playMode || 'mono';
-              const tickDuration = (60 / sequencer.bpm) / 4;
+              const currentPlayMode = track.playMode || 'mono';
+              const tickDuration = (60 / project.bpm) / 4;
               const duration = step.length * tickDuration;
               if (currentPlayMode === 'chord') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
@@ -382,14 +370,15 @@ export function useSynth() {
   };
 
   const getTrackEngineType = (index: number): EngineType => {
-    return trackStates[index].engineType;
+    return project.tracks[index].engineType;
   };
 
   return {
-    trackStates,
+    project,                                       // NEW: single source of truth
+    sequencer,
+    bpm,                                           // NEW: writable computed against project.bpm
     analyser,
     trackGains,
-    sequencer,
     activeTrackIndex,
     currentStep,
     waveforms,
