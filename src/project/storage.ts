@@ -34,7 +34,7 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
   const t = (typeof loaded === 'object' && loaded !== null) ? (loaded as Partial<ProjectTrack>) : {};
   const loadedEngines = (t as any).engines ?? {};
 
-  return {
+  const reconciled: ProjectTrack = {
     engineType: (t.engineType as ProjectTrack['engineType']) ?? fresh.engineType,
     engines: {
       synth: deepMerge(SynthEngine.DEFAULT_PARAMS, loadedEngines.synth),
@@ -47,6 +47,16 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
     playMode: (t.playMode as ProjectTrack['playMode']) ?? fresh.playMode,
     steps: reconcileSteps(t.steps, fresh.steps),
   };
+
+  // Legacy compat: pre-refactor localStorage / .prj.json files stored
+  // playMode on the track. No schema bump (zero users) — silently absorb
+  // the old field into synth.mode here. The old playMode field itself
+  // gets dropped at T3 when ProjectTrack drops the type.
+  if ((t as any).playMode === 'chord') {
+    reconciled.engines.synth.mode = 'poly';
+  }
+
+  return reconciled;
 }
 
 export function reconcileWithDefaults(loaded: unknown): Project {
