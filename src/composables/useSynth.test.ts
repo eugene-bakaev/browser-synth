@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
 
 // Same minimal Web Audio mock as TrackMixer.test — useSynth touches AudioContext
@@ -60,13 +60,13 @@ let useSynth: any;
 let disposeSynth: any;
 
 describe('useSynth narrow watchers (A2)', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
+    // Clear persisted project so each test gets a fresh module-scope project.
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
     const mod = await import('./useSynth');
     useSynth = mod.useSynth;
     disposeSynth = mod.disposeSynth;
-  });
-
-  beforeEach(() => {
     // Reset audio state between tests so each gets a fresh engine to spy on.
     disposeSynth();
   });
@@ -78,7 +78,7 @@ describe('useSynth narrow watchers (A2)', () => {
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.trackStates[0].synth.filterCutoff = 1234;
+    synth.project.tracks[0].engines.synth.filterCutoff = 1234;
     await nextTick();
 
     expect(applySpy).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe('useSynth narrow watchers (A2)', () => {
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.trackStates[0].synth.filterEnv.a = 0.123;
+    synth.project.tracks[0].engines.synth.filterEnv.a = 0.123;
     await nextTick();
 
     // ADSR objects are passed whole to applyParams (engine setter takes a/d/s/r
@@ -111,7 +111,7 @@ describe('useSynth narrow watchers (A2)', () => {
     applySpy.mockClear();
 
     // Mutate the kick slice on track 0 while engineType is still 'synth'.
-    synth.trackStates[0].kick.tune = 80;
+    synth.project.tracks[0].engines.kick.tune = 80;
     await nextTick();
 
     expect(applySpy).not.toHaveBeenCalled();
