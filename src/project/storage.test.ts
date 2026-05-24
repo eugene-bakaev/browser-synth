@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { reactive } from 'vue';
-import { loadProject, installAutoSave, serializeProject, deserializeProject } from './storage';
+import { reactive, watch, nextTick } from 'vue';
+import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject } from './storage';
 import { freshProject } from './factory';
 import { PROJECT_SCHEMA_VERSION } from './types';
 
@@ -185,5 +185,82 @@ describe('deserializeProject', () => {
   it('throws for an unknown future schemaVersion', () => {
     const future = JSON.stringify({ schemaVersion: 99, bpm: 100, tracks: [] });
     expect(() => deserializeProject(future)).toThrowError(/Unknown project schemaVersion: 99/);
+  });
+});
+
+describe('replaceProject', () => {
+  it('preserves the target reactive proxy identity (=== before and after)', () => {
+    const target = reactive(freshProject());
+    const targetTrack0 = target.tracks[0];
+    const targetEngines0Synth = target.tracks[0].engines.synth;
+    const targetMixer0 = target.tracks[0].mixer;
+    const targetStep0 = target.tracks[0].steps[0];
+
+    const source = freshProject();
+    source.bpm = 99;
+    source.tracks[0].engines.synth.filterCutoff = 4321;
+
+    replaceProject(target, source);
+
+    expect(target.tracks[0]).toBe(targetTrack0);
+    expect(target.tracks[0].engines.synth).toBe(targetEngines0Synth);
+    expect(target.tracks[0].mixer).toBe(targetMixer0);
+    expect(target.tracks[0].steps[0]).toBe(targetStep0);
+  });
+
+  it('mutates top-level fields (schemaVersion, bpm)', () => {
+    const target = reactive(freshProject());
+    const source = freshProject();
+    source.bpm = 77;
+    replaceProject(target, source);
+    expect(target.bpm).toBe(77);
+    expect(target.schemaVersion).toBe(1);
+  });
+
+  it('mutates engine slot fields without rebinding the slot object', () => {
+    const target = reactive(freshProject());
+    const synthRef = target.tracks[0].engines.synth;
+    const source = freshProject();
+    source.tracks[0].engines.synth.filterCutoff = 1234;
+    replaceProject(target, source);
+    expect(target.tracks[0].engines.synth).toBe(synthRef);
+    expect(target.tracks[0].engines.synth.filterCutoff).toBe(1234);
+  });
+
+  it('mutates mixer + playMode + engineType per track', () => {
+    const target = reactive(freshProject());
+    const source = freshProject();
+    source.tracks[2].engineType = 'kick';
+    source.tracks[2].playMode = 'chord';
+    source.tracks[2].mixer.volume = 0.25;
+    replaceProject(target, source);
+    expect(target.tracks[2].engineType).toBe('kick');
+    expect(target.tracks[2].playMode).toBe('chord');
+    expect(target.tracks[2].mixer.volume).toBe(0.25);
+  });
+
+  it('mutates each step in place (preserves step proxy identity)', () => {
+    const target = reactive(freshProject());
+    const step5Ref = target.tracks[0].steps[5];
+    const source = freshProject();
+    source.tracks[0].steps[5].note = 'C';
+    source.tracks[0].steps[5].velocity = 0.42;
+    replaceProject(target, source);
+    expect(target.tracks[0].steps[5]).toBe(step5Ref);
+    expect(target.tracks[0].steps[5].note).toBe('C');
+    expect(target.tracks[0].steps[5].velocity).toBe(0.42);
+  });
+
+  it('fires the deep watcher (Vue picks up the mutations)', async () => {
+    const target = reactive(freshProject());
+    const fired = vi.fn();
+    watch(target, fired, { deep: true });
+
+    const source = freshProject();
+    source.bpm = 88;
+    replaceProject(target, source);
+
+    await nextTick();
+    expect(fired).toHaveBeenCalled();
   });
 });
