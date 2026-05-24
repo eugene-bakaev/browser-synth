@@ -271,9 +271,9 @@ if (engine.engineType !== targetType) {
 | #7 | 🟧 | ✅ Fixed | `469b3ef` (sequencer anchor + BPM rebase) |
 | #8 | 🟨 | ✅ Fixed | `469b3ef` (deleted `v-if="false"` + SignalFlow) |
 | #9 | 🟨 | ⏳ Deferred → A2 | — |
-| #10 | 🟨 | ✅ Done → A3 (`<TBD>`) | Dense `EngineParamsMap` in `ProjectTrack` |
+| #10 | 🟨 | ✅ Done → A3 (`3c95126`) | Dense `EngineParamsMap` in `ProjectTrack` |
 | #11 | 🟦 | ✅ Resolved by `469b3ef` + `5881a6b` |
-| #12 | 🟩 | ✅ Persistence done → F1 (`<TBD>`); named presets open | `src/project/storage.ts` |
+| #12 | 🟩 | ✅ Persistence done → F1 (`3c95126`); named presets open | `src/project/storage.ts` |
 | #13 | 🟦 | ⏳ Deferred → A4 | — |
 | #14 | 🟦 | ✅ Fixed | `469b3ef` (removed unused `engines` export) |
 | #15 | 🟥 | ✅ Fixed | `469b3ef` (velocity wired end-to-end) |
@@ -327,7 +327,7 @@ The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `aud
 |---|---|---|
 | **A1** | ~~Full singleton → composable refactor of `useSynth`~~ | ✅ **Done** — lazy `AudioContext`, watchers in `EffectScope`, explicit `ensureAudio()` / `disposeSynth()`. See ARCHITECTURE.md §6 + D8. |
 | **A2** | ~~Narrow watcher paths in `useSynth`~~ | ✅ **Done** — per-slice watchers + `diffParams` forward only changed keys. Regression tests in `useSynth.test.ts`. See ARCHITECTURE.md §6 reactivity flow. |
-| **A3** | ~~Tagged-union `TrackState`~~ | ✅ **Done** (`<TBD>`) — replaced by dense `ProjectTrack` with `engines: EngineParamsMap` (all 5 engine slots always populated). Active engine narrowed via `activeParams` helper. Engine-swap is a single-field write; per-engine state persists across swaps. See `src/project/types.ts` and `docs/superpowers/specs/2026-05-23-project-model-design.md`. |
+| **A3** | ~~Tagged-union `TrackState`~~ | ✅ **Done** (`3c95126`) — replaced by dense `ProjectTrack` with `engines: EngineParamsMap` (all 5 engine slots always populated). Active engine narrowed via `activeParams` helper. Engine-swap is a single-field write; per-engine state persists across swaps. See `src/project/types.ts` and `docs/superpowers/specs/2026-05-23-project-model-design.md`. |
 | **A4** | ~~CSS scoping audit~~ | ✅ **Done** — App.vue split into unscoped (design system: `module-group`, `knob-row`, `rack-column*`, element theme) + scoped (App.vue-only layout). Convention documented in ARCHITECTURE.md §9. |
 | **A5** | ~~Sequencer reactivity audit~~ | ✅ **Done** — audit found 5 scheduler internals (`currentStep`, `timer`, `nextStepIndex`, `scheduleStartTime`, `lastBpm`) being proxied unnecessarily. Moved into a `markRaw`'d `internals` object. UI surface (`tracks`, `bpm`, `isPlaying`) stays reactive. See ARCHITECTURE.md §7 "Reactivity boundary". |
 
@@ -335,7 +335,7 @@ The U-pass commit (`4a8aecd`) also fixed a latent A1 reactivity regression: `aud
 
 | # | Item |
 |---|---|
-| **F1** | `localStorage` persistence — ✅ **persistence DONE** (`<TBD>`); **named presets still open** | Persistence shipped: `loadProject()` restores on page load, `installAutoSave()` debounce-writes on every change, schema versioning + migration registry in place. Named presets (save/load/rename per-engine snapshots) are a separate future branch. |
+| **F1** | `localStorage` persistence — ✅ **persistence DONE** (`3c95126`); **named presets still open** | Persistence shipped: `loadProject()` restores on page load, `installAutoSave()` debounce-writes on every change, schema versioning + migration registry in place. Named presets (save/load/rename per-engine snapshots) are a separate future branch. |
 
 ---
 
