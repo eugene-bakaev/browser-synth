@@ -256,10 +256,14 @@ export function useSynth() {
     }
   });
 
-  const playMode = computed({
-    get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].playMode : 'mono' as const,
-    set: (val: 'mono' | 'chord') => {
-      if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].playMode = val;
+  const synthMode = computed({
+    get: () => activeTrackIndex.value !== null
+      ? project.tracks[activeTrackIndex.value].engines.synth.mode
+      : 'mono' as const,
+    set: (val: 'mono' | 'poly') => {
+      if (activeTrackIndex.value !== null) {
+        project.tracks[activeTrackIndex.value].engines.synth.mode = val;
+      }
     }
   });
 
@@ -342,10 +346,10 @@ export function useSynth() {
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
             if (engineTypeI === 'synth') {
-              const currentPlayMode = track.playMode || 'mono';
+              const currentPlayMode = track.engines.synth.mode;
               const tickDuration = (60 / project.bpm) / 4;
               const duration = step.length * tickDuration;
-              if (currentPlayMode === 'chord') {
+              if (currentPlayMode === 'poly') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
                 state.engines[i].trigger(freqs, duration, time, step.velocity);
               } else {
@@ -383,7 +387,7 @@ export function useSynth() {
     currentStep,
     waveforms,
     engineType,
-    playMode,
+    synthMode,
     osc1Type,
     osc2Type,
     osc1Coarse,

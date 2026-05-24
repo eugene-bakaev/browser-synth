@@ -227,15 +227,13 @@ describe('replaceProject', () => {
     expect(target.tracks[0].engines.synth.filterCutoff).toBe(1234);
   });
 
-  it('mutates mixer + playMode + engineType per track', () => {
+  it('mutates mixer + engineType per track', () => {
     const target = reactive(freshProject());
     const source = freshProject();
     source.tracks[2].engineType = 'kick';
-    source.tracks[2].playMode = 'chord';
     source.tracks[2].mixer.volume = 0.25;
     replaceProject(target, source);
     expect(target.tracks[2].engineType).toBe('kick');
-    expect(target.tracks[2].playMode).toBe('chord');
     expect(target.tracks[2].mixer.volume).toBe(0.25);
   });
 
@@ -282,5 +280,14 @@ describe('reconcileWithDefaults — legacy playMode compat', () => {
     expect(out.tracks[1].engines.synth.mode).toBe('mono');
     expect(out.tracks[2].engines.synth.mode).toBe('poly');
     expect(out.tracks[3].engines.synth.mode).toBe('mono');
+  });
+
+  it('drops the legacy playMode field from the reconciled track', () => {
+    const legacy = {
+      schemaVersion: 1,
+      tracks: [{ playMode: 'chord' }, {}, {}, {}],
+    };
+    const out = reconcileWithDefaults(legacy) as unknown as { tracks: any[] };
+    expect('playMode' in out.tracks[0]).toBe(false);
   });
 });
