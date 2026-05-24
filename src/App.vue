@@ -13,6 +13,8 @@
           <label>BPM</label>
           <input type="number" v-model.number="bpm" min="40" max="240">
         </div>
+        <button @click="onSave" title="Save project to a file">SAVE</button>
+        <button @click="onOpen" title="Open a project from a file">OPEN</button>
       </div>
     </header>
 
@@ -190,6 +192,9 @@ import {
   clearTrack as clearProjectTrack,
   shiftTrack as shiftProjectTrack,
   fillTrack  as fillProjectTrack,
+  saveProjectToFile,
+  openProjectFromFile,
+  replaceProject,
 } from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
@@ -244,6 +249,20 @@ const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 
   shiftProjectTrack(project.tracks[trackId], direction);
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
   fillProjectTrack(project.tracks[trackId], interval);
+
+const onSave = () => {
+  saveProjectToFile(project);
+};
+
+const onOpen = async () => {
+  try {
+    const loaded = await openProjectFromFile();
+    if (loaded) replaceProject(project, loaded);
+  } catch (e) {
+    console.warn('Open failed:', e);
+    alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
 
 const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purple, Orange, Green
 </script>
