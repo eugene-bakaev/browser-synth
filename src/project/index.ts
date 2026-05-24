@@ -32,3 +32,8 @@ export {
   applyPreset,
   type Preset,
 } from './preset';
+export {
+  savePresetToFile,
+  openPresetFromFile,
+  PresetFileError,
+} from './preset-file-io';
