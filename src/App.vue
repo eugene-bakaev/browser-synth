@@ -88,6 +88,11 @@
             CLAP
           </button>
         </div>
+
+        <div class="preset-controls">
+          <button @click="onSavePreset" title="Save the current engine + its params as a preset">SAVE PRESET</button>
+          <button @click="onLoadPreset" title="Load a preset onto this track">LOAD PRESET</button>
+        </div>
       </div>
 
       <div class="focused-layout">
@@ -198,6 +203,10 @@ import {
   openProjectFromFile,
   replaceProject,
   freshProject,
+  makePreset,
+  savePresetToFile,
+  openPresetFromFile,
+  applyPreset,
 } from './project';
 import Tracker from './components/Tracker.vue';
 import SynthPanel from './components/SynthPanel.vue';
@@ -271,6 +280,24 @@ const onOpen = async () => {
   } catch (e) {
     console.warn('Open failed:', e);
     alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
+};
+
+const onSavePreset = () => {
+  if (activeTrackIndex.value === null) return;
+  const track = project.tracks[activeTrackIndex.value];
+  const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
+  savePresetToFile(preset);
+};
+
+const onLoadPreset = async () => {
+  if (activeTrackIndex.value === null) return;
+  try {
+    const preset = await openPresetFromFile();
+    if (preset) applyPreset(project.tracks[activeTrackIndex.value], preset);
+  } catch (e) {
+    console.warn('Load preset failed:', e);
+    alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
   }
 };
 
@@ -563,6 +590,29 @@ header {
 .engine-selector button.active {
   background: #222;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.preset-controls {
+  display: flex;
+  gap: 10px;
+}
+.preset-controls button {
+  background: #181818;
+  color: #888;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.preset-controls button:hover {
+  background: #252525;
+  color: #fff;
+  border-color: #555;
 }
 
 .mixer-section {
