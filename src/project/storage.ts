@@ -101,3 +101,26 @@ export function installAutoSave(project: Project): () => void {
     stop();
   };
 }
+
+// JSON snapshot suitable for writing to disk or localStorage. Going through
+// toRaw strips Vue's reactive proxies so JSON.stringify can't trip on proxy
+// metadata or circular reactive structures.
+export function serializeProject(project: Project): string {
+  return JSON.stringify(toRaw(project));
+}
+
+// Inverse of serializeProject. Mirrors loadProject's parse step: invalid
+// JSON warns + returns a freshProject; valid JSON goes through
+// migrateToLatest + reconcileWithDefaults. Future-schemaVersion still
+// throws (the only unrecoverable case).
+export function deserializeProject(text: string): Project {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.warn('Project deserialize failed (invalid JSON), starting fresh:', e);
+    return freshProject();
+  }
+  const migrated = migrateToLatest(parsed);
+  return reconcileWithDefaults(migrated);
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive } from 'vue';
-import { loadProject, installAutoSave } from './storage';
+import { loadProject, installAutoSave, serializeProject, deserializeProject } from './storage';
 import { freshProject } from './factory';
 import { PROJECT_SCHEMA_VERSION } from './types';
 
@@ -126,5 +126,64 @@ describe('installAutoSave', () => {
     expect(() => vi.advanceTimersByTime(500)).not.toThrow();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe('serializeProject', () => {
+  it('produces JSON identical to JSON.stringify(toRaw(project))', () => {
+    const p = freshProject();
+    p.bpm = 144;
+    p.tracks[0].engines.synth.filterCutoff = 1234;
+    const json = serializeProject(p);
+    const parsed = JSON.parse(json);
+    expect(parsed.bpm).toBe(144);
+    expect(parsed.tracks[0].engines.synth.filterCutoff).toBe(1234);
+    expect(parsed.schemaVersion).toBe(1);
+  });
+
+  it('strips Vue reactive proxies (uses toRaw under the hood)', () => {
+    const p = reactive(freshProject());
+    p.bpm = 100;
+    const json = serializeProject(p);
+    // If we hadn't called toRaw, JSON.stringify could leak proxy metadata or
+    // throw on circular reactive structures. Spot-check the output is plain.
+    const parsed = JSON.parse(json);
+    expect(parsed.bpm).toBe(100);
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+  });
+});
+
+describe('deserializeProject', () => {
+  it('round-trips through serializeProject', () => {
+    const p = freshProject();
+    p.bpm = 99;
+    p.tracks[1].engines.kick.tune = 70;
+    const restored = deserializeProject(serializeProject(p));
+    expect(restored.bpm).toBe(99);
+    expect(restored.tracks[1].engines.kick.tune).toBe(70);
+  });
+
+  it('fills missing fields via the reconciler', () => {
+    const partial = JSON.stringify({
+      schemaVersion: 1,
+      bpm: 130,
+      tracks: [{}, {}, {}, {}],
+    });
+    const restored = deserializeProject(partial);
+    expect(restored.tracks[0].engines.synth).toBeDefined();
+    expect(restored.tracks[0].steps).toHaveLength(16);
+  });
+
+  it('returns freshProject (with warn) on malformed JSON', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const restored = deserializeProject('{not json');
+    expect(restored.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('throws for an unknown future schemaVersion', () => {
+    const future = JSON.stringify({ schemaVersion: 99, bpm: 100, tracks: [] });
+    expect(() => deserializeProject(future)).toThrowError(/Unknown project schemaVersion: 99/);
   });
 });
