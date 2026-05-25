@@ -67,7 +67,7 @@ const props = withDefaults(defineProps<{
   step: number;
   modelValue: number;
   defaultValue?: number;
-  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db' | 'degrees';
 }>(), {
   defaultValue: undefined,
   format: undefined
@@ -121,6 +121,8 @@ const formattedValue = computed(() => {
       const prefix = db > 0 ? '+' : '';
       return prefix + db.toFixed(1) + ' dB';
     }
+    case 'degrees':
+      return Math.round(val) + '°';
     default:
       return val.toString();
   }

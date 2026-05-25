@@ -130,6 +130,9 @@
                 v-model:filterRes="filterRes"
                 v-model:filterEnvAmount="filterEnvAmount"
                 v-model:mode="synthMode"
+                v-model:oscMode="oscMode"
+                v-model:osc1Phase="osc1Phase"
+                v-model:osc2Phase="osc2Phase"
                 :waveforms="waveforms"
                 :filterEnv="filterEnv"
                 :ampEnv="ampEnv"
@@ -242,6 +245,9 @@ const {
   filterEnvAmount,
   filterEnv,
   ampEnv,
+  oscMode,
+  osc1Phase,
+  osc2Phase,
   shortestActiveNoteDuration,
   kickTune,
   kickDecay,
