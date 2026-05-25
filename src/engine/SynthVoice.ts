@@ -1,5 +1,5 @@
 import { PatchBay } from './PatchBay';
-import { OscillatorModule } from './modules/Oscillator';
+import { makeOscillator, type IOscillatorModule } from './modules/oscillator';
 import { MixerModule } from './modules/Mixer';
 import { FilterModule } from './modules/Filter';
 import { EnvelopeModule } from './modules/Envelope';
@@ -8,8 +8,8 @@ export class SynthVoice {
   readonly ctx: AudioContext;
   private patchBay: PatchBay;
   
-  osc1: OscillatorModule;
-  osc2: OscillatorModule;
+  osc1: IOscillatorModule;
+  osc2: IOscillatorModule;
   mixer: MixerModule;
   filter: FilterModule;
   ampEnv: EnvelopeModule;
@@ -27,8 +27,8 @@ export class SynthVoice {
     this.ctx = ctx;
     this.patchBay = new PatchBay();
 
-    this.osc1 = new OscillatorModule(ctx);
-    this.osc2 = new OscillatorModule(ctx);
+    this.osc1 = makeOscillator('free-run', ctx);
+    this.osc2 = makeOscillator('free-run', ctx);
     this.mixer = new MixerModule(ctx);
     this.filter = new FilterModule(ctx);
     this.ampEnv = new EnvelopeModule();
@@ -51,9 +51,14 @@ export class SynthVoice {
   }
 
   trigger(freq: number, duration: number, time: number, velocity: number = 1.0) {
-    // Set oscillator frequencies at targeted time
-    this.osc1.setFrequencyAtTime(freq, time);
-    this.osc2.setFrequencyAtTime(freq, time);
+    // releaseTime: the moment the amp envelope is fully released. Retrigger-
+    // mode oscillators use this to schedule stop(releaseTime + 50ms safety).
+    // Free-run / phase-offset ignore it (their triggerAt delegates to
+    // setFrequencyAtTime).
+    const releaseTime = time + duration + this.ampEnv.r;
+
+    this.osc1.triggerAt(freq, time, releaseTime);
+    this.osc2.triggerAt(freq, time, releaseTime);
 
     // Trigger Amplitude Envelope on the local voice VCA, scaled by velocity
     const v = Math.max(0, Math.min(1, velocity));
