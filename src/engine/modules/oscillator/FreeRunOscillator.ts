@@ -1,15 +1,16 @@
-import { Module, ModulePort } from '../types';
+import type { ModulePort, Module } from '../../types';
+import type { IOscillatorModule } from './types';
 
-export class OscillatorModule implements Module {
+export class FreeRunOscillator implements IOscillatorModule, Module {
   readonly name = 'Oscillator';
   private osc: OscillatorNode;
   private gain: GainNode;
-  
-  coarseTune: number = 0; // -3 to +3 octaves
+
+  coarseTune: number = 0; // -3..+3 octaves
   private baseFreq: number = 440;
 
-  readonly inputs = {};
-  readonly outputs: Record<string, ModulePort>;
+  readonly inputs: Record<string, ModulePort> = {};
+  readonly outputs: { main: GainNode };
 
   constructor(ctx: AudioContext) {
     this.osc = ctx.createOscillator();
@@ -25,13 +26,16 @@ export class OscillatorModule implements Module {
     this.osc.frequency.setValueAtTime(finalFreq, time);
   }
 
-  setFrequency(freq: number) {
-    this.setFrequencyAtTime(freq, this.osc.context.currentTime);
+  // Free-run delegates triggerAt to setFrequencyAtTime — the steady-state
+  // path is identical to today's behavior; releaseTime is unused because the
+  // osc never stops until dispose().
+  triggerAt(freq: number, time: number, _releaseTime: number) {
+    this.setFrequencyAtTime(freq, time);
   }
 
   setCoarseTune(octaves: number) {
     this.coarseTune = octaves;
-    this.setFrequency(this.baseFreq);
+    this.setFrequencyAtTime(this.baseFreq, this.osc.context.currentTime);
   }
 
   setFineTune(cents: number) {
@@ -42,11 +46,16 @@ export class OscillatorModule implements Module {
     this.osc.type = type;
   }
 
+  // Documented no-op — free-run mode does not control phase.
+  setPhase(_degrees: number) {
+    /* no-op */
+  }
+
   dispose() {
     try {
       this.osc.stop();
-    } catch (e) {
-      // already stopped or not started
+    } catch {
+      // already stopped
     }
     this.osc.disconnect();
     this.gain.disconnect();
