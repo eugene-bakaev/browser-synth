@@ -60,6 +60,23 @@ describe('preset — serialize/deserialize round-trip', () => {
     expect((restored.params as any).mode).toBe(SynthEngine.DEFAULT_PARAMS.mode);
   });
 
+  it('legacy preset (no oscMode/phase fields) round-trips with default oscMode=free-run', () => {
+    const legacy = {
+      schemaVersion: 1,
+      engineType: 'synth',
+      params: {
+        osc1Type: 'sawtooth',
+        osc2Type: 'sawtooth',
+        // Note: oscMode, osc1Phase, osc2Phase intentionally absent.
+      },
+    };
+    const text = JSON.stringify(legacy);
+    const restored = deserializePreset(text);
+    expect((restored.params as any).oscMode).toBe('free-run');
+    expect((restored.params as any).osc1Phase).toBe(0);
+    expect((restored.params as any).osc2Phase).toBe(0);
+  });
+
   it('throws on malformed JSON', () => {
     expect(() => deserializePreset('{ not json')).toThrow();
   });

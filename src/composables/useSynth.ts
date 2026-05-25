@@ -290,6 +290,9 @@ export function useSynth() {
   const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 2.4);
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+  const oscMode = trackParam('synth', 'oscMode', 'free-run' as const);
+  const osc1Phase = trackParam('synth', 'osc1Phase', 0);
+  const osc2Phase = trackParam('synth', 'osc2Phase', 0);
 
   // --- Kick params ---
   const kickTune = trackParam('kick', 'tune', 55);
@@ -405,6 +408,9 @@ export function useSynth() {
     filterEnvAmount,
     filterEnv,
     ampEnv,
+    oscMode,
+    osc1Phase,
+    osc2Phase,
     shortestActiveNoteDuration,
     kickTune,
     kickDecay,

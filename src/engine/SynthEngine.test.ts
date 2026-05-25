@@ -26,6 +26,7 @@ class MockOscillatorNode extends MockAudioNode {
   type = 'sine';
   start = vi.fn();
   stop = vi.fn();
+  setPeriodicWave = vi.fn();
 }
 
 class MockBiquadFilterNode extends MockAudioNode {
@@ -45,6 +46,9 @@ class MockAudioContext {
   createGain() { return new MockGainNode(); }
   createOscillator() { return new MockOscillatorNode(); }
   createBiquadFilter() { return new MockBiquadFilterNode(); }
+  // PhaseOffsetOscillator needs this — setOscMode('phase-offset') in tests
+  // calls makeOscillator which goes through createPeriodicWave + setPeriodicWave.
+  createPeriodicWave = vi.fn().mockImplementation(() => ({}));
 }
 
 vi.stubGlobal('AudioNode', MockAudioNode);
@@ -196,5 +200,31 @@ describe('SynthEngine', () => {
   it('should dispose without throwing', () => {
     const engine = new SynthEngine();
     expect(() => engine.dispose()).not.toThrow();
+  });
+
+  it('setOscMode replaces oscillators on every voice', () => {
+    const engine = new SynthEngine();
+    const spies = engine.voices.map(v => vi.spyOn(v, 'replaceOscillators'));
+    engine.setOscMode('phase-offset');
+    spies.forEach(s => expect(s).toHaveBeenCalledTimes(1));
+  });
+
+  it('setOscMode is idempotent when called with the current mode', () => {
+    const engine = new SynthEngine();
+    engine.setOscMode('free-run'); // already the default
+    const spies = engine.voices.map(v => vi.spyOn(v, 'replaceOscillators'));
+    engine.setOscMode('free-run');
+    spies.forEach(s => expect(s).not.toHaveBeenCalled());
+  });
+
+  it('applyParams routes oscMode/osc1Phase/osc2Phase to their setters', () => {
+    const engine = new SynthEngine();
+    const setMode = vi.spyOn(engine, 'setOscMode');
+    const setP1 = vi.spyOn(engine, 'setOsc1Phase');
+    const setP2 = vi.spyOn(engine, 'setOsc2Phase');
+    engine.applyParams({ oscMode: 'phase-offset', osc1Phase: 90, osc2Phase: 270 });
+    expect(setMode).toHaveBeenCalledWith('phase-offset');
+    expect(setP1).toHaveBeenCalledWith(90);
+    expect(setP2).toHaveBeenCalledWith(270);
   });
 });

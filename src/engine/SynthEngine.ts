@@ -1,5 +1,6 @@
 import { SoundEngine } from './types';
 import { SynthVoice } from './SynthVoice';
+import type { OscMode } from './modules/oscillator';
 
 export interface ADSR {
   a: number;
@@ -25,6 +26,16 @@ export interface SynthEngineParams {
   // Sequencer-level concern: read by useSynth's step trigger, not by SynthEngine
   // or SynthVoice. Lives here so engine presets carry their intended play mode.
   mode: 'mono' | 'poly';
+
+  // Experimental: which oscillator-phase strategy to use.
+  // 'free-run' = today's behavior; 'phase-offset' = rotated PeriodicWave;
+  // 'retrigger-recreate' = fresh OscillatorNode per trigger;
+  // 'retrigger-wavetable' = AudioBufferSourceNode + one-cycle bank.
+  // Per-osc phase knobs (in degrees, 0..360) apply in 'phase-offset' and
+  // retrigger modes; free-run ignores them.
+  oscMode: OscMode;
+  osc1Phase: number;
+  osc2Phase: number;
 }
 
 export class SynthEngine implements SoundEngine {
@@ -53,6 +64,9 @@ export class SynthEngine implements SoundEngine {
     filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
     ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
     mode: 'mono',
+    oscMode: 'free-run',
+    osc1Phase: 0,
+    osc2Phase: 0,
   };
 
   // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
@@ -70,6 +84,9 @@ export class SynthEngine implements SoundEngine {
   private filterRes: number = SynthEngine.DEFAULT_PARAMS.filterRes;
   private filterEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.filterEnv };
   private ampEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.ampEnv };
+  private oscMode: OscMode = SynthEngine.DEFAULT_PARAMS.oscMode;
+  private osc1Phase: number = SynthEngine.DEFAULT_PARAMS.osc1Phase;
+  private osc2Phase: number = SynthEngine.DEFAULT_PARAMS.osc2Phase;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
@@ -177,6 +194,36 @@ export class SynthEngine implements SoundEngine {
     this.voices.forEach(voice => voice.applyParams({ ampEnv: this.ampEnv }));
   }
 
+  setOscMode(mode: OscMode) {
+    if (mode === this.oscMode) return;
+    this.oscMode = mode;
+    // Each voice rebuilds its osc1/osc2 from the factory, then re-applies
+    // the cached osc/phase/coarse/fine/waveform state so the swap is seamless.
+    this.voices.forEach(voice => voice.replaceOscillators(
+      mode,
+      {
+        osc1Type: this.osc1Type,
+        osc2Type: this.osc2Type,
+        osc1Coarse: this.osc1Coarse,
+        osc1Fine: this.osc1Fine,
+        osc2Coarse: this.osc2Coarse,
+        osc2Fine: this.osc2Fine,
+        osc1Phase: this.osc1Phase,
+        osc2Phase: this.osc2Phase,
+      },
+    ));
+  }
+
+  setOsc1Phase(degrees: number) {
+    this.osc1Phase = ((degrees % 360) + 360) % 360;
+    this.voices.forEach(voice => voice.osc1.setPhase(this.osc1Phase));
+  }
+
+  setOsc2Phase(degrees: number) {
+    this.osc2Phase = ((degrees % 360) + 360) % 360;
+    this.voices.forEach(voice => voice.osc2.setPhase(this.osc2Phase));
+  }
+
   // --- Polymorphic param application ---
 
   applyParams(params: Record<string, any>) {
@@ -193,6 +240,9 @@ export class SynthEngine implements SoundEngine {
     if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);
     if (params.filterEnv !== undefined) this.setFilterEnv(params.filterEnv);
     if (params.ampEnv !== undefined) this.setAmpEnv(params.ampEnv);
+    if (params.oscMode !== undefined) this.setOscMode(params.oscMode);
+    if (params.osc1Phase !== undefined) this.setOsc1Phase(params.osc1Phase);
+    if (params.osc2Phase !== undefined) this.setOsc2Phase(params.osc2Phase);
   }
 
   trigger(freq: number | number[], duration: number, time?: number, velocity: number = 1.0) {

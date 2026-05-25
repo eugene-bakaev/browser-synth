@@ -23,12 +23,15 @@
     <!-- Column 1: Oscillators & Mixer -->
     <div class="rack-column">
       <OscillatorPanel
+        v-model:oscMode="oscMode"
         v-model:osc1Type="osc1Type"
         v-model:osc1Coarse="osc1Coarse"
         v-model:osc1Fine="osc1Fine"
+        v-model:osc1Phase="osc1Phase"
         v-model:osc2Type="osc2Type"
         v-model:osc2Coarse="osc2Coarse"
         v-model:osc2Fine="osc2Fine"
+        v-model:osc2Phase="osc2Phase"
         :waveforms="waveforms"
       />
       <MixerPanel
@@ -94,6 +97,9 @@ const osc2Level = defineModel<number>('osc2Level', { required: true });
 const filterCutoff = defineModel<number>('filterCutoff', { required: true });
 const filterRes = defineModel<number>('filterRes', { required: true });
 const filterEnvAmount = defineModel<number>('filterEnvAmount', { required: true });
+const oscMode = defineModel<'free-run' | 'phase-offset' | 'retrigger-recreate' | 'retrigger-wavetable'>('oscMode', { required: true });
+const osc1Phase = defineModel<number>('osc1Phase', { required: true });
+const osc2Phase = defineModel<number>('osc2Phase', { required: true });
 </script>
 
 <style scoped>

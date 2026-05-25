@@ -1,5 +1,5 @@
 import { PatchBay } from './PatchBay';
-import { makeOscillator, type IOscillatorModule } from './modules/oscillator';
+import { makeOscillator, type IOscillatorModule, type OscMode } from './modules/oscillator';
 import { MixerModule } from './modules/Mixer';
 import { FilterModule } from './modules/Filter';
 import { EnvelopeModule } from './modules/Envelope';
@@ -130,6 +130,45 @@ export class SynthVoice {
       this.ampEnv.s = Math.max(0, Math.min(1, params.ampEnv.s));
       this.ampEnv.r = Math.max(0.001, params.ampEnv.r);
     }
+  }
+
+  // Tear down osc1/osc2, rebuild them via the factory at `mode`, then reapply
+  // the cached state so the audible content survives the swap. PatchBay
+  // edges are re-established into mixer ch1/ch2.
+  replaceOscillators(
+    mode: OscMode,
+    state: {
+      osc1Type: OscillatorType;
+      osc2Type: OscillatorType;
+      osc1Coarse: number;
+      osc1Fine: number;
+      osc2Coarse: number;
+      osc2Fine: number;
+      osc1Phase: number;
+      osc2Phase: number;
+    },
+  ) {
+    // Dispose old osc modules.
+    this.osc1.dispose();
+    this.osc2.dispose();
+
+    // Build new ones from the factory (imported at top of file).
+    this.osc1 = makeOscillator(mode, this.ctx);
+    this.osc2 = makeOscillator(mode, this.ctx);
+
+    // Re-apply cached state.
+    this.osc1.setWaveform(state.osc1Type);
+    this.osc1.setCoarseTune(state.osc1Coarse);
+    this.osc1.setFineTune(state.osc1Fine);
+    this.osc1.setPhase(state.osc1Phase);
+    this.osc2.setWaveform(state.osc2Type);
+    this.osc2.setCoarseTune(state.osc2Coarse);
+    this.osc2.setFineTune(state.osc2Fine);
+    this.osc2.setPhase(state.osc2Phase);
+
+    // Re-wire into mixer ch1/ch2 using the existing PatchBay.
+    this.patchBay.connect(this.osc1.outputs.main, this.mixer.inputs.ch1);
+    this.patchBay.connect(this.osc2.outputs.main, this.mixer.inputs.ch2);
   }
 
   dispose() {
