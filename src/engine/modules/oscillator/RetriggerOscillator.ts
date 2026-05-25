@@ -1,7 +1,6 @@
 import type { IOscillatorModule } from './types';
 import { baseTable, rotatePhase } from './WaveformTables';
-
-const STOP_TAIL_SECONDS = 0.05; // safety margin past ampEnv release
+import { STOP_TAIL_SECONDS } from './constants';
 
 export class RetriggerOscillator implements IOscillatorModule {
   private ctx: AudioContext;
