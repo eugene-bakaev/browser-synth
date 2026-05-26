@@ -17,6 +17,11 @@ export interface SynthEngineParams {
   osc2Fine: number;
   osc1Level: number;
   osc2Level: number;
+  // Duty cycle for the pulse worklet oscillator. Only audible when the
+  // matching oscNType === 'square'; the worklet provides a PolyBLEP-corrected
+  // pulse that band-limits cleanly across the keyboard. 0.5 = symmetric square.
+  osc1PulseWidth: number;
+  osc2PulseWidth: number;
   filterCutoff: number;
   filterRes: number;
   filterEnvAmount: number;
@@ -46,6 +51,8 @@ export class SynthEngine implements SoundEngine {
     osc2Fine: 0,
     osc1Level: 0.5,
     osc2Level: 0.5,
+    osc1PulseWidth: 0.5,
+    osc2PulseWidth: 0.5,
     filterCutoff: 2000,
     filterRes: 1,
     // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
@@ -65,6 +72,8 @@ export class SynthEngine implements SoundEngine {
   private osc2Fine: number = SynthEngine.DEFAULT_PARAMS.osc2Fine;
   private osc1Level: number = SynthEngine.DEFAULT_PARAMS.osc1Level;
   private osc2Level: number = SynthEngine.DEFAULT_PARAMS.osc2Level;
+  private osc1PulseWidth: number = SynthEngine.DEFAULT_PARAMS.osc1PulseWidth;
+  private osc2PulseWidth: number = SynthEngine.DEFAULT_PARAMS.osc2PulseWidth;
   private baseCutoff: number = SynthEngine.DEFAULT_PARAMS.filterCutoff;
   private filterEnvAmount: number = SynthEngine.DEFAULT_PARAMS.filterEnvAmount;
   private filterRes: number = SynthEngine.DEFAULT_PARAMS.filterRes;
@@ -89,6 +98,8 @@ export class SynthEngine implements SoundEngine {
         osc2Fine: this.osc2Fine,
         osc1Level: this.osc1Level,
         osc2Level: this.osc2Level,
+        osc1PulseWidth: this.osc1PulseWidth,
+        osc2PulseWidth: this.osc2PulseWidth,
         filterRes: this.filterRes,
         filterCutoff: this.baseCutoff,
         filterEnvAmount: this.filterEnvAmount,
@@ -141,6 +152,16 @@ export class SynthEngine implements SoundEngine {
     this.voices.forEach(voice => voice.applyParams({ osc2Level: this.osc2Level }));
   }
 
+  setOsc1PulseWidth(val: number) {
+    this.osc1PulseWidth = Math.max(0.05, Math.min(0.95, val));
+    this.voices.forEach(voice => voice.applyParams({ osc1PulseWidth: this.osc1PulseWidth }));
+  }
+
+  setOsc2PulseWidth(val: number) {
+    this.osc2PulseWidth = Math.max(0.05, Math.min(0.95, val));
+    this.voices.forEach(voice => voice.applyParams({ osc2PulseWidth: this.osc2PulseWidth }));
+  }
+
   setFilterCutoff(val: number) {
     this.baseCutoff = Math.max(20, Math.min(20000, val));
     this.voices.forEach(voice => voice.applyParams({ filterCutoff: this.baseCutoff }));
@@ -188,6 +209,8 @@ export class SynthEngine implements SoundEngine {
     if (params.osc2Fine !== undefined) this.setOsc2Fine(params.osc2Fine);
     if (params.osc1Level !== undefined) this.setOsc1Level(params.osc1Level);
     if (params.osc2Level !== undefined) this.setOsc2Level(params.osc2Level);
+    if (params.osc1PulseWidth !== undefined) this.setOsc1PulseWidth(params.osc1PulseWidth);
+    if (params.osc2PulseWidth !== undefined) this.setOsc2PulseWidth(params.osc2PulseWidth);
     if (params.filterRes !== undefined) this.setFilterRes(params.filterRes);
     if (params.filterCutoff !== undefined) this.setFilterCutoff(params.filterCutoff);
     if (params.filterEnvAmount !== undefined) this.setFilterEnvAmount(params.filterEnvAmount);

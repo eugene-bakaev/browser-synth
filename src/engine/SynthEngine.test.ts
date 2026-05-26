@@ -34,10 +34,23 @@ class MockBiquadFilterNode extends MockAudioNode {
   Q = new MockAudioParam();
 }
 
+class MockAudioWorkletNode extends MockAudioNode {
+  parameters = new Map<string, MockAudioParam>([
+    ['frequency',  new MockAudioParam()],
+    ['detune',     new MockAudioParam()],
+    ['pulseWidth', new MockAudioParam()],
+  ]);
+}
+
 class MockAudioContext {
   state = 'suspended';
   currentTime = 0;
   destination = new MockAudioNode();
+  // OscillatorModule constructs `new AudioWorkletNode(ctx, 'pulse')` in its
+  // ctor. We don't await addModule here (these tests bypass useSynth's async
+  // bootstrap and go straight to `new SynthEngine()`), so the mock just lets
+  // node construction succeed.
+  audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
   resume = vi.fn().mockImplementation(() => {
     this.state = 'running';
     return Promise.resolve();
@@ -50,6 +63,7 @@ class MockAudioContext {
 vi.stubGlobal('AudioNode', MockAudioNode);
 vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
+vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
 describe('SynthEngine', () => {
   it('should have correct engineType', () => {
@@ -196,5 +210,70 @@ describe('SynthEngine', () => {
   it('should dispose without throwing', () => {
     const engine = new SynthEngine();
     expect(() => engine.dispose()).not.toThrow();
+  });
+
+  it('clamps pulse width to [0.05, 0.95] and routes osc1/osc2 independently', () => {
+    const engine = new SynthEngine();
+    engine.applyParams({ osc1PulseWidth: 0.3, osc2PulseWidth: 0.7 });
+    expect((engine as any).osc1PulseWidth).toBeCloseTo(0.3, 5);
+    expect((engine as any).osc2PulseWidth).toBeCloseTo(0.7, 5);
+
+    engine.applyParams({ osc1PulseWidth: 0 });
+    expect((engine as any).osc1PulseWidth).toBe(0.05);
+
+    engine.applyParams({ osc1PulseWidth: 1 });
+    expect((engine as any).osc1PulseWidth).toBe(0.95);
+  });
+
+  it('routes pulseWidth to the AudioWorkletNode pulseWidth AudioParam', () => {
+    const engine = new SynthEngine();
+    const oscModule = engine.voices[0].osc1 as any;
+    const pw = oscModule.pulseNode.parameters.get('pulseWidth') as any;
+    pw.setValueAtTime.mockClear();
+
+    engine.applyParams({ osc1PulseWidth: 0.25 });
+
+    expect(pw.setValueAtTime).toHaveBeenCalledWith(0.25, expect.any(Number));
+  });
+
+  it("setWaveform('square') hot-swaps the gain input from native osc to worklet node", () => {
+    const engine = new SynthEngine();
+    const oscModule = engine.voices[0].osc1 as any;
+    oscModule.nativeOsc.disconnect.mockClear();
+    oscModule.pulseNode.connect.mockClear();
+
+    engine.applyParams({ osc1Type: 'square' });
+
+    expect(oscModule.nativeOsc.disconnect).toHaveBeenCalled();
+    expect(oscModule.pulseNode.connect).toHaveBeenCalledWith(oscModule.gain);
+    expect((oscModule as any).active).toBe('pulse');
+  });
+
+  it("setWaveform back to a non-square type swaps the gain input back to native osc", () => {
+    const engine = new SynthEngine();
+    const oscModule = engine.voices[0].osc1 as any;
+    engine.applyParams({ osc1Type: 'square' });
+    oscModule.pulseNode.disconnect.mockClear();
+    oscModule.nativeOsc.connect.mockClear();
+
+    engine.applyParams({ osc1Type: 'sawtooth' });
+
+    expect(oscModule.pulseNode.disconnect).toHaveBeenCalled();
+    expect(oscModule.nativeOsc.connect).toHaveBeenCalledWith(oscModule.gain);
+    expect(oscModule.nativeOsc.type).toBe('sawtooth');
+    expect((oscModule as any).active).toBe('native');
+  });
+
+  it('fans out setFrequencyAtTime to both native osc and worklet so mid-note waveform swaps keep pitch', () => {
+    const engine = new SynthEngine();
+    const oscModule = engine.voices[0].osc1 as any;
+    oscModule.nativeOsc.frequency.setValueAtTime.mockClear();
+    const pulseFreq = oscModule.pulseNode.parameters.get('frequency') as any;
+    pulseFreq.setValueAtTime.mockClear();
+
+    engine.trigger(523.25, 0.5, 0);
+
+    expect(oscModule.nativeOsc.frequency.setValueAtTime).toHaveBeenCalledWith(523.25, 0);
+    expect(pulseFreq.setValueAtTime).toHaveBeenCalledWith(523.25, 0);
   });
 });

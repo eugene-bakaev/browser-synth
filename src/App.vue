@@ -121,9 +121,11 @@
                 v-model:osc1Type="osc1Type"
                 v-model:osc1Coarse="osc1Coarse"
                 v-model:osc1Fine="osc1Fine"
+                v-model:osc1PulseWidth="osc1PulseWidth"
                 v-model:osc2Type="osc2Type"
                 v-model:osc2Coarse="osc2Coarse"
                 v-model:osc2Fine="osc2Fine"
+                v-model:osc2PulseWidth="osc2PulseWidth"
                 v-model:osc1Level="osc1Level"
                 v-model:osc2Level="osc2Level"
                 v-model:filterCutoff="filterCutoff"
@@ -233,8 +235,10 @@ const {
   osc2Type,
   osc1Coarse,
   osc1Fine,
+  osc1PulseWidth,
   osc2Coarse,
   osc2Fine,
+  osc2PulseWidth,
   osc1Level,
   osc2Level,
   filterCutoff,

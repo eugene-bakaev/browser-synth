@@ -8,6 +8,12 @@ import { ClapEngine }  from '../engine/ClapEngine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
+// Worklet asset URL — must be a separate browser asset loaded via
+// audioContext.audioWorklet.addModule, not bundled into the main chunk. Vite
+// recognizes the `new URL(string-literal, import.meta.url)` pattern and emits
+// the file alongside the main bundle with a hashed filename. The processor
+// inside registers itself as 'pulse'.
+const pulseWorkletUrl = new URL('../engine/worklets/pulse-processor.js', import.meta.url).href;
 
 import {
   type Project,
@@ -97,8 +103,13 @@ interface AudioState {
 // computeds would cache the initial null forever (oscilloscope stays flat).
 const audioState = shallowRef<AudioState | null>(null);
 
-function buildAudioState(): AudioState {
+async function buildAudioState(): Promise<AudioState> {
   const ctx = new AudioContext();
+
+  // Pulse oscillator worklet must be registered before any SynthVoice (and
+  // its inner OscillatorModule) constructs an AudioWorkletNode('pulse'). The
+  // module load is async; the rest of the graph wiring must wait.
+  await ctx.audioWorklet.addModule(pulseWorkletUrl);
 
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-12, ctx.currentTime);
@@ -213,11 +224,19 @@ function buildAudioState(): AudioState {
   return { ctx, trackAnalysers, trackGains, engines, scope };
 }
 
-function ensureAudio(): AudioState {
-  if (!audioState.value) {
-    audioState.value = buildAudioState();
+// Single-flight bootstrap. Concurrent ensureAudio() calls during the
+// addModule window share one Promise so we never spawn two AudioContexts.
+let bootstrapping: Promise<AudioState> | null = null;
+
+async function ensureAudio(): Promise<AudioState> {
+  if (audioState.value) return audioState.value;
+  if (!bootstrapping) {
+    bootstrapping = buildAudioState().then(s => {
+      audioState.value = s;
+      return s;
+    });
   }
-  return audioState.value;
+  return bootstrapping;
 }
 
 // Exposed primarily for tests; production code does not call this.
@@ -230,6 +249,7 @@ export function disposeSynth() {
   }
   state.ctx.close().catch(() => { /* ctx may already be closed */ });
   audioState.value = null;
+  bootstrapping = null;
 }
 
 export function useSynth() {
@@ -285,6 +305,8 @@ export function useSynth() {
   const osc2Fine = trackParam('synth', 'osc2Fine', 0);
   const osc1Level = trackParam('synth', 'osc1Level', 0.5);
   const osc2Level = trackParam('synth', 'osc2Level', 0.5);
+  const osc1PulseWidth = trackParam('synth', 'osc1PulseWidth', 0.5);
+  const osc2PulseWidth = trackParam('synth', 'osc2PulseWidth', 0.5);
   const filterCutoff = trackParam('synth', 'filterCutoff', 2000);
   const filterRes = trackParam('synth', 'filterRes', 1);
   const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 2.4);
@@ -327,11 +349,12 @@ export function useSynth() {
   const trackAnalysers: ComputedRef<AnalyserNode[] | null> = computed(() => audioState.value?.trackAnalysers ?? null);
   const trackGains: ComputedRef<GainNode[] | null> = computed(() => audioState.value?.trackGains ?? null);
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     // First user gesture: this is where the AudioContext + engines + watchers
     // come alive. Doing it here (not at module load) eliminates Chrome's
-    // "AudioContext was not allowed to start" warning.
-    const state = ensureAudio();
+    // "AudioContext was not allowed to start" warning. The await covers the
+    // worklet module load (~few ms on first play, instant thereafter).
+    const state = await ensureAudio();
 
     if (state.ctx.state === 'suspended') {
       state.ctx.resume();
@@ -400,6 +423,8 @@ export function useSynth() {
     osc2Fine,
     osc1Level,
     osc2Level,
+    osc1PulseWidth,
+    osc2PulseWidth,
     filterCutoff,
     filterRes,
     filterEnvAmount,

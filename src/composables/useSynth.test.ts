@@ -38,11 +38,22 @@ class MockDynamicsCompressorNode extends MockAudioNode {
   release = new MockAudioParam();
 }
 class MockAnalyserNode extends MockAudioNode { fftSize = 1024; }
+class MockAudioWorkletNode extends MockAudioNode {
+  parameters = new Map<string, MockAudioParam>([
+    ['frequency',  new MockAudioParam()],
+    ['detune',     new MockAudioParam()],
+    ['pulseWidth', new MockAudioParam()],
+  ]);
+}
 class MockAudioContext {
   state = 'suspended';
   currentTime = 0;
   sampleRate = 44100;
   destination = new MockAudioNode();
+  // OscillatorModule constructs an AudioWorkletNode in its ctor; useSynth
+  // awaits addModule before any voice is built. Mock both so the bootstrap
+  // resolves and node creation doesn't throw.
+  audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
   close = vi.fn().mockResolvedValue(undefined);
   resume = vi.fn().mockImplementation(() => { this.state = 'running'; return Promise.resolve(); });
   createGain() { return new MockGainNode(); }
@@ -55,6 +66,7 @@ class MockAudioContext {
 vi.stubGlobal('AudioNode', MockAudioNode);
 vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
+vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
 let useSynth: any;
 let disposeSynth: any;
@@ -73,7 +85,7 @@ describe('useSynth narrow watchers (A2)', () => {
 
   it('forwards only the changed key when one synth param is mutated', async () => {
     const synth = useSynth();
-    const state = synth.ensureAudio();
+    const state = await synth.ensureAudio();
     const engine = state.engines[0];
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
@@ -87,7 +99,7 @@ describe('useSynth narrow watchers (A2)', () => {
 
   it('forwards the full ADSR object when an envelope leaf is mutated', async () => {
     const synth = useSynth();
-    const state = synth.ensureAudio();
+    const state = await synth.ensureAudio();
     const engine = state.engines[0];
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
@@ -105,7 +117,7 @@ describe('useSynth narrow watchers (A2)', () => {
 
   it('skips applyParams when an inactive engine slice changes', async () => {
     const synth = useSynth();
-    const state = synth.ensureAudio();
+    const state = await synth.ensureAudio();
     const synthEngine = state.engines[0]; // track 0 starts as synth
     const applySpy = vi.spyOn(synthEngine, 'applyParams');
     applySpy.mockClear();
