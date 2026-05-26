@@ -60,6 +60,16 @@ describe('preset — serialize/deserialize round-trip', () => {
     expect((restored.params as any).mode).toBe(SynthEngine.DEFAULT_PARAMS.mode);
   });
 
+  // Pinned to the OSC_PHASE_EXPERIMENT flag's default-off state. Flag flip
+  // means re-evaluating this expectation.
+  it('coerces saved non-free-run oscMode to free-run while the experiment flag is off', () => {
+    const params: any = { ...SynthEngine.DEFAULT_PARAMS, oscMode: 'phase-offset', osc1Phase: 90 };
+    const preset = makePreset('synth', params);
+    const restored = deserializePreset(serializePreset(preset));
+    expect((restored.params as any).oscMode).toBe('free-run');
+    expect((restored.params as any).osc1Phase).toBe(90);
+  });
+
   it('legacy preset (no oscMode/phase fields) round-trips with default oscMode=free-run', () => {
     const legacy = {
       schemaVersion: 1,

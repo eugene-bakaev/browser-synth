@@ -2,7 +2,7 @@
   <div class="module-group">
     <h3>Oscillators</h3>
 
-    <div class="osc-mode-row">
+    <div v-if="OSC_PHASE_EXPERIMENT" class="osc-mode-row">
       <label>OSC MODE</label>
       <select v-model="oscMode">
         <option value="free-run">free-run</option>
@@ -21,7 +21,7 @@
         <div class="osc-knobs">
           <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc1Coarse" format="octave" v-model="osc1Coarse" />
           <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc1Fine" format="cents" v-model="osc1Fine" />
-          <div :class="{ inert: oscMode === 'free-run' }">
+          <div v-if="OSC_PHASE_EXPERIMENT" :class="{ inert: oscMode === 'free-run' }">
             <Knob label="Phase" :min="0" :max="360" :step="1" :defaultValue="DEFAULTS.osc1Phase" format="degrees" v-model="osc1Phase" />
           </div>
         </div>
@@ -34,7 +34,7 @@
         <div class="osc-knobs">
           <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc2Coarse" format="octave" v-model="osc2Coarse" />
           <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc2Fine" format="cents" v-model="osc2Fine" />
-          <div :class="{ inert: oscMode === 'free-run' }">
+          <div v-if="OSC_PHASE_EXPERIMENT" :class="{ inert: oscMode === 'free-run' }">
             <Knob label="Phase" :min="0" :max="360" :step="1" :defaultValue="DEFAULTS.osc2Phase" format="degrees" v-model="osc2Phase" />
           </div>
         </div>
@@ -47,6 +47,7 @@
 import Knob from './Knob.vue';
 import { SynthEngine } from '../engine/SynthEngine';
 import type { OscMode } from '../engine/modules/oscillator';
+import { OSC_PHASE_EXPERIMENT } from '../config/featureFlags';
 
 const DEFAULTS = SynthEngine.DEFAULT_PARAMS;
 
