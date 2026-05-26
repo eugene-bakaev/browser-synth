@@ -10,6 +10,7 @@
         <div class="osc-knobs">
           <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc1Coarse" format="octave" v-model="osc1Coarse" />
           <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc1Fine" format="cents" v-model="osc1Fine" />
+          <Knob v-if="osc1Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc1PulseWidth" format="percent" v-model="osc1PulseWidth" />
         </div>
       </div>
       <div class="osc-unit">
@@ -20,6 +21,7 @@
         <div class="osc-knobs">
           <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc2Coarse" format="octave" v-model="osc2Coarse" />
           <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc2Fine" format="cents" v-model="osc2Fine" />
+          <Knob v-if="osc2Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc2PulseWidth" format="percent" v-model="osc2PulseWidth" />
         </div>
       </div>
     </div>
@@ -39,10 +41,12 @@ defineProps<{
 const osc1Type = defineModel<OscillatorType>('osc1Type', { required: true });
 const osc1Coarse = defineModel<number>('osc1Coarse', { required: true });
 const osc1Fine = defineModel<number>('osc1Fine', { required: true });
+const osc1PulseWidth = defineModel<number>('osc1PulseWidth', { required: true });
 
 const osc2Type = defineModel<OscillatorType>('osc2Type', { required: true });
 const osc2Coarse = defineModel<number>('osc2Coarse', { required: true });
 const osc2Fine = defineModel<number>('osc2Fine', { required: true });
+const osc2PulseWidth = defineModel<number>('osc2PulseWidth', { required: true });
 </script>
 
 <style scoped>

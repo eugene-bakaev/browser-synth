@@ -48,11 +48,20 @@ class MockAnalyserNode extends MockAudioNode {
   fftSize = 1024;
 }
 
+class MockAudioWorkletNode extends MockAudioNode {
+  parameters = new Map<string, MockAudioParam>([
+    ['frequency',  new MockAudioParam()],
+    ['detune',     new MockAudioParam()],
+    ['pulseWidth', new MockAudioParam()],
+  ]);
+}
+
 class MockAudioContext {
   state = 'suspended';
   currentTime = 0;
   sampleRate = 44100;
   destination = new MockAudioNode();
+  audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
   resume = vi.fn().mockImplementation(() => {
     this.state = 'running';
     return Promise.resolve();
@@ -67,6 +76,7 @@ class MockAudioContext {
 vi.stubGlobal('AudioNode', MockAudioNode);
 vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
+vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
 // Mirrors useSynth.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
 // Same math, so the floating-point result matches bit-for-bit.
@@ -83,10 +93,11 @@ describe('TrackMixer Logic', () => {
     useSynth = mod.useSynth;
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     synthData = useSynth();
     // Audio state is lazy now — force it up so trackGains exist + watchers are live.
-    synthData.ensureAudio();
+    // Bootstrap is async because of the pulse worklet's addModule step.
+    await synthData.ensureAudio();
     trackGains = synthData.trackGains.value;
 
     // Reset project.tracks to defaults. Slider is 0..1 (perceptual); the gain

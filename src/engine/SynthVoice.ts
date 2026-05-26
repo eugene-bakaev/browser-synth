@@ -88,6 +88,9 @@ export class SynthVoice {
     
     if (params.osc1Level !== undefined) this.mixer.setChannelGain(1, params.osc1Level);
     if (params.osc2Level !== undefined) this.mixer.setChannelGain(2, params.osc2Level);
+
+    if (params.osc1PulseWidth !== undefined) this.osc1.setPulseWidth(params.osc1PulseWidth);
+    if (params.osc2PulseWidth !== undefined) this.osc2.setPulseWidth(params.osc2PulseWidth);
     
     if (params.filterRes !== undefined) {
       const clamped = Math.max(0, Math.min(20, params.filterRes));

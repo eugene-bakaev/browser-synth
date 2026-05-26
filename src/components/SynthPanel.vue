@@ -26,9 +26,11 @@
         v-model:osc1Type="osc1Type"
         v-model:osc1Coarse="osc1Coarse"
         v-model:osc1Fine="osc1Fine"
+        v-model:osc1PulseWidth="osc1PulseWidth"
         v-model:osc2Type="osc2Type"
         v-model:osc2Coarse="osc2Coarse"
         v-model:osc2Fine="osc2Fine"
+        v-model:osc2PulseWidth="osc2PulseWidth"
         :waveforms="waveforms"
       />
       <MixerPanel
@@ -86,9 +88,11 @@ const mode = defineModel<'mono' | 'poly'>('mode', { required: true });
 const osc1Type = defineModel<OscillatorType>('osc1Type', { required: true });
 const osc1Coarse = defineModel<number>('osc1Coarse', { required: true });
 const osc1Fine = defineModel<number>('osc1Fine', { required: true });
+const osc1PulseWidth = defineModel<number>('osc1PulseWidth', { required: true });
 const osc2Type = defineModel<OscillatorType>('osc2Type', { required: true });
 const osc2Coarse = defineModel<number>('osc2Coarse', { required: true });
 const osc2Fine = defineModel<number>('osc2Fine', { required: true });
+const osc2PulseWidth = defineModel<number>('osc2PulseWidth', { required: true });
 const osc1Level = defineModel<number>('osc1Level', { required: true });
 const osc2Level = defineModel<number>('osc2Level', { required: true });
 const filterCutoff = defineModel<number>('filterCutoff', { required: true });
