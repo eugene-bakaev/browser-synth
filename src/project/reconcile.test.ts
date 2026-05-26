@@ -78,4 +78,18 @@ describe('reconcileWithDefaults', () => {
     const reconciled = reconcileWithDefaults({} as any);
     expect(reconciled.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
+
+  // Pinned to the OSC_PHASE_EXPERIMENT flag's default-off state. If the flag
+  // is flipped on, this assertion intentionally fails — that's the signal to
+  // also update the spec for what a flipped-on load should look like.
+  it('coerces saved non-free-run oscMode to free-run while the experiment flag is off', () => {
+    const p = freshProject();
+    (p.tracks[0].engines.synth as any).oscMode = 'phase-offset';
+    (p.tracks[0].engines.synth as any).osc1Phase = 90;
+    const reconciled = reconcileWithDefaults(p);
+    expect(reconciled.tracks[0].engines.synth.oscMode).toBe('free-run');
+    // Phase value survives — free-run ignores it, but flipping the flag back
+    // on must restore the user's saved state.
+    expect((reconciled.tracks[0].engines.synth as any).osc1Phase).toBe(90);
+  });
 });

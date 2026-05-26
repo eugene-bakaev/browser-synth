@@ -5,6 +5,7 @@ import { KickEngine }  from '../engine/KickEngine';
 import { HatEngine }   from '../engine/HatEngine';
 import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine }  from '../engine/ClapEngine';
+import { OSC_PHASE_EXPERIMENT } from '../config/featureFlags';
 import type {
   EngineType,
   EngineParamsMap,
@@ -75,6 +76,12 @@ export function deserializePreset(text: string): Preset {
 
   const engineType = parsed.engineType as EngineType;
   const params = deepMerge(DEFAULTS[engineType], parsed.params) as EngineParamsMap[EngineType];
+
+  // OSC_PHASE_EXPERIMENT flag-off coercion: revert non-free-run oscMode on
+  // load. See storage.ts reconcileTrack for the project-level mirror.
+  if (engineType === 'synth' && !OSC_PHASE_EXPERIMENT) {
+    (params as EngineParamsMap['synth']).oscMode = 'free-run';
+  }
 
   return {
     schemaVersion: PRESET_SCHEMA_VERSION,

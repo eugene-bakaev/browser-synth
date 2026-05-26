@@ -15,6 +15,7 @@ import {
 } from './types';
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
+import { OSC_PHASE_EXPERIMENT } from '../config/featureFlags';
 
 const STORAGE_KEY = 'fiddle:project';
 const SAVE_DEBOUNCE_MS = 500;
@@ -54,6 +55,13 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
   const legacy = t as { playMode?: 'mono' | 'chord' };
   if (legacy.playMode === 'chord') {
     reconciled.engines.synth.mode = 'poly';
+  }
+
+  // OSC_PHASE_EXPERIMENT flag-off coercion: any saved non-free-run oscMode
+  // gets reverted at load. Phase values are left in the data (free-run
+  // ignores them) so flipping the flag back on restores the saved state.
+  if (!OSC_PHASE_EXPERIMENT) {
+    reconciled.engines.synth.oscMode = 'free-run';
   }
 
   return reconciled;
