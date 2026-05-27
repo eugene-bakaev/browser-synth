@@ -12,7 +12,9 @@
 
 A browser-based **4-track step sequencer + synthesizer** built on Vue 3 + Web Audio. Each track runs one of five sound engines (Synth, Kick, Hat, Snare, Clap). 16 steps per track, BPM 40–240, with per-step note/octave/length/velocity/mute/chord-type.
 
-There is **no backend**. All user-editable state lives in a `Project` object that is auto-saved to `localStorage` on every change and restored on page load. See §13 for the project module and [`CODE_REVIEW.md`](./CODE_REVIEW.md) F1 for status.
+All user-editable state lives in a `Project` object that is auto-saved to `localStorage` on every change and restored on page load. See §13 for the project module and [`CODE_REVIEW.md`](./CODE_REVIEW.md) F1 for status.
+
+A **Fastify + WebSocket server** has been scaffolded in `packages/server/` to host a future live-collaboration mode (project state synced over WS while audio stays local in each browser). At time of writing it is a skeleton only — `/health` and a `/ws` placeholder that emits `{ type: 'hello' }`. No sync protocol exists yet; see §14 for the current state and intent.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -40,51 +42,83 @@ There is **no backend**. All user-editable state lives in a `Project` object tha
 
 ## 2. Module map
 
+The repo is an **npm workspaces monorepo** with three packages under `packages/`. The client is the Vue/Vite app described throughout this doc; the server is a Fastify + `ws` skeleton being prepared for a future WebSocket-synced project state (see §14); shared holds the symbols that must compile in both Node and the browser.
+
 ```
-src/
-├── App.vue                     # Top-level layout: overview grid OR focused single-track editor
-├── main.ts                     # Vue mount
-├── composables/
-│   └── useSynth.ts             # ⚠ singleton dressed as a composable — see §6
-├── sequencer/
-│   └── Sequencer.ts            # Lookahead scheduler, 4 × Track[16 × Step]
-├── engine/
-│   ├── types.ts                # SoundEngine, Module, ModulePort
-│   ├── SynthEngine.ts          # 6-voice subtractive synth
-│   ├── SynthVoice.ts           # One voice (osc×2 → mixer → filter → VCA)
-│   ├── KickEngine.ts           # Pitch-swept sine
-│   ├── HatEngine.ts            # Bandpassed noise + metallic oscillators
-│   ├── SnareEngine.ts          # Noise + tonal body
-│   ├── ClapEngine.ts           # Multi-burst noise
-│   ├── PatchBay.ts             # Trivial connect/disconnect helper
-│   └── modules/
-│       ├── Oscillator.ts       # OscillatorNode + per-osc gain + coarse/fine tune
-│       ├── Mixer.ts            # 2-channel pre-filter mix
-│       ├── Filter.ts           # Lowpass BiquadFilterNode wrapper
-│       ├── Envelope.ts         # Shared ADSR; drives amp env AND filter env
-│       └── Noise.ts            # Per-context cached 2s white-noise buffer
-├── project/
-│   ├── types.ts        # Project, ProjectTrack, EngineParamsMap, PROJECT_SCHEMA_VERSION, activeParams
-│   ├── factory.ts      # freshProject(), freshTrack(), freshStep()
-│   ├── mutations.ts    # clearTrack(), shiftTrack(), fillTrack() — pure ops over ProjectTrack
-│   ├── migrations.ts   # migrateToLatest(raw) — versioned schema entry point
-│   ├── storage.ts      # loadProject(), installAutoSave() — localStorage + debounced observer
-│   ├── file-io.ts      # saveProjectToFile(), openProjectFromFile(), ProjectFileError
-│   ├── preset.ts       # Preset type, makePreset, serializePreset/deserializePreset, applyPreset
-│   ├── preset-file-io.ts # savePresetToFile(), openPresetFromFile()
-│   └── index.ts        # public barrel
-├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer, Visualizer
-└── utils/                      # noteToFreq, chord resolution, debounce, deepMerge
+browser-synth/
+├── package.json                # workspaces: ["packages/*"]; root scripts fan out via -w
+├── tsconfig.base.json          # strict TS base; client and server each extend + override
+├── vercel.json                 # Vercel deploys ONLY @fiddle/client (buildCommand -w @fiddle/client)
+├── docker-compose.yml          # local server dev: tsx watch + bind-mounts on packages/server/src + packages/shared/src
+├── docs/                       # this doc, CODE_REVIEW.md, superpowers/specs/, superpowers/plans/
+└── packages/
+    ├── shared/                 # @fiddle/shared — see §14
+    │   └── src/index.ts        # EngineType, MixerState, DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION
+    ├── server/                 # @fiddle/server — see §14
+    │   ├── Dockerfile          # multi-stage: builder → runtime (node:22-alpine, ~253MB)
+    │   ├── .dockerignore
+    │   └── src/
+    │       ├── index.ts        # listen(host, port) bootstrap; reads PORT/HOST env
+    │       ├── server.ts       # buildServer() — registers @fastify/websocket + routes
+    │       ├── server.test.ts  # smoke test via Fastify .inject()
+    │       └── routes/
+    │           ├── health.ts   # GET /health → { ok: true }
+    │           └── ws.ts       # GET /ws (placeholder; sends { type: 'hello' } on connect)
+    └── client/                 # @fiddle/client — the Vue/Vite app
+        ├── vite.config.ts
+        ├── vitest.config.ts
+        ├── index.html
+        └── src/
+            ├── App.vue                     # Top-level layout: overview grid OR focused single-track editor
+            ├── main.ts                     # Vue mount
+            ├── composables/
+            │   └── useSynth.ts             # ⚠ singleton dressed as a composable — see §6
+            ├── sequencer/
+            │   └── Sequencer.ts            # Lookahead scheduler, 4 × Track[16 × Step]
+            ├── engine/
+            │   ├── types.ts                # SoundEngine, Module, ModulePort
+            │   ├── SynthEngine.ts          # 6-voice subtractive synth
+            │   ├── SynthVoice.ts           # One voice (osc×2 → mixer → filter → VCA)
+            │   ├── KickEngine.ts           # Pitch-swept sine
+            │   ├── HatEngine.ts            # Bandpassed noise + metallic oscillators
+            │   ├── SnareEngine.ts          # Noise + tonal body
+            │   ├── ClapEngine.ts           # Multi-burst noise
+            │   ├── PatchBay.ts             # Trivial connect/disconnect helper
+            │   └── modules/
+            │       ├── Oscillator.ts       # OscillatorNode + per-osc gain + coarse/fine tune
+            │       ├── Mixer.ts            # 2-channel pre-filter mix
+            │       ├── Filter.ts           # Lowpass BiquadFilterNode wrapper
+            │       ├── Envelope.ts         # Shared ADSR; drives amp env AND filter env
+            │       └── Noise.ts            # Per-context cached 2s white-noise buffer
+            ├── project/
+            │   ├── types.ts        # Project, ProjectTrack, EngineParamsMap; re-sources 4 symbols from @fiddle/shared
+            │   ├── factory.ts      # freshProject(), freshTrack(), freshStep()
+            │   ├── mutations.ts    # clearTrack(), shiftTrack(), fillTrack() — pure ops over ProjectTrack
+            │   ├── migrations.ts   # migrateToLatest(raw) — versioned schema entry point
+            │   ├── storage.ts      # loadProject(), installAutoSave() — localStorage + debounced observer
+            │   ├── file-io.ts      # saveProjectToFile(), openProjectFromFile(), ProjectFileError
+            │   ├── preset.ts       # Preset type, makePreset, serializePreset/deserializePreset, applyPreset
+            │   ├── preset-file-io.ts # savePresetToFile(), openPresetFromFile()
+            │   └── index.ts        # public barrel
+            ├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer, Visualizer
+            └── utils/                      # noteToFreq, chord resolution, debounce, deepMerge
 ```
 
-**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. 165 tests at time of writing.
+**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. **183 tests** total at time of writing (182 client + 1 server smoke test).
+
+**Common commands** (from repo root):
+- `npm run dev` — client (Vite) + server (`tsx watch`) in parallel via `npm-run-all`.
+- `npm run build` — client (`vue-tsc && vite build`) then server (`tsc`). Vercel only runs the client build.
+- `npm test` — fans out to every workspace with a `test` script.
+- `npm run typecheck` — same fan-out for `vue-tsc --noEmit` (client) and `tsc --noEmit` (server).
+- `docker compose up` — server only, port 8787, live-reload on edits to `packages/server/src` or `packages/shared/src`.
 
 ---
 
 ## 3. The `SoundEngine` contract (the most important interface)
 
 ```ts
-// src/engine/types.ts
+// packages/client/src/engine/types.ts
 export interface SoundEngine {
   readonly engineType: string;
   trigger(freq: number | number[], duration: number, time?: number, velocity?: number): void;
@@ -351,15 +385,19 @@ App.vue
 
 ## 12. Where to start when…
 
+All client paths below are relative to `packages/client/src/`.
+
 | Task | First file to read |
 |---|---|
 | Add a new engine type | `engine/KickEngine.ts` (smallest), `engine/types.ts`, `composables/useSynth.ts` (`engineFactories`, `TrackState`, `trackParam` wiring) |
 | Add a new knob to the synth | `components/SynthPanel.vue` (template/v-model), `composables/useSynth.ts` (`trackParam` line), `engine/SynthEngine.ts` (setter + `applyParams` line), `engine/SynthVoice.ts` (param application) |
 | Change envelope behavior | `engine/modules/Envelope.ts` (+ Decision D2/D3 in appendix) |
 | Change sequencer timing | `sequencer/Sequencer.ts` (+ Decision D6) |
-| Add a named preset | F1 (presets still open) in `CODE_REVIEW.md`; persistence itself is done — see §13 and `src/project/storage.ts` |
-| Change project schema | `src/project/types.ts` (bump `PROJECT_SCHEMA_VERSION`), `src/project/migrations.ts` (add handler), `src/project/storage.ts` (`reconcileWithDefaults` if new optional fields) |
+| Add a named preset | F1 (presets still open) in `CODE_REVIEW.md`; persistence itself is done — see §13 and `project/storage.ts` |
+| Change project schema | `project/types.ts` (bump `PROJECT_SCHEMA_VERSION` — note: it currently re-exports from `@fiddle/shared`, so the bump lands in `packages/shared/src/index.ts`), `project/migrations.ts` (add handler), `project/storage.ts` (`reconcileWithDefaults` if new optional fields) |
 | Refactor `useSynth` | A1 in `CODE_REVIEW.md`; preserve the "one AudioContext, watchers survive HMR" property |
+| Add a server route or evolve the WS protocol | `packages/server/src/server.ts` (registration), `packages/server/src/routes/` (handlers), `packages/shared/src/index.ts` (message types if shared with the client). See §14. |
+| Add a symbol used by both client and server | `packages/shared/src/index.ts` only. Constraint: no DOM/Audio types, must stay JSON-serializable, must compile under both `moduleResolution: bundler` and `NodeNext`. |
 
 ---
 
@@ -437,7 +475,7 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 ## 13. The Project module
 
-`src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md).
+`packages/client/src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md). A small subset of types and constants is re-sourced from `@fiddle/shared` (see §14) so the future WebSocket server can speak the same project schema without pulling in DOM/Audio types.
 
 **What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
 
@@ -447,21 +485,67 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **Auto-save.** `installAutoSave(project)` sets up a deep Vue watcher that serializes `project` to `localStorage` on a 500 ms debounce. It returns a `stop()` fn used by `disposeSynth()`. The key is `fiddle:project`. Any component or composable that holds a reference to `project` (via `useSynth().project`) writes through to auto-save automatically — no explicit save calls anywhere.
 
-**File I/O.** `src/project/file-io.ts` adds explicit Save / Open support on top of the same serialization pipeline. `serializeProject(project)` and `deserializeProject(text)` (both in `storage.ts`) are the round-trip helpers: `serializeProject` calls `toRaw` before `JSON.stringify` so Vue proxy metadata never reaches the file; `deserializeProject` runs the full `migrateToLatest` + `reconcileWithDefaults` pass, so a partial or older-schema file is upgraded and filled to current defaults exactly as a localStorage restore would be. `replaceProject(target, source)` mutates `target` in place to match `source` — preserving the reactive proxy identity — so the `buildAudioState` watchers that hold references to `project.tracks[i]` don't need teardown on Open. `saveProjectToFile` / `openProjectFromFile` (the two public helpers in `file-io.ts`) feature-detect the File System Access API and fall back to a download-anchor / `<input type="file">` pair for browsers that don't support it. Both functions return `null` / resolve silently on user cancellation. `ProjectFileError` is the typed error for unreadable JSON, failed migrations, and future `schemaVersion` values the current code doesn't understand. The canonical extension for new project saves is `.prj.json`; the open picker also accepts plain `.json` for legacy files saved before the extension was introduced. Both are identical in content to the localStorage payload; files and localStorage are interchangeable snapshots. All three helpers (`serializeProject`, `deserializeProject`, `replaceProject`) are re-exported from `src/project/index.ts` alongside the `file-io.ts` exports. Long-form design rationale lives in [`docs/superpowers/specs/2026-05-24-project-file-io-design.md`](./superpowers/specs/2026-05-24-project-file-io-design.md).
+**File I/O.** `packages/client/src/project/file-io.ts` adds explicit Save / Open support on top of the same serialization pipeline. `serializeProject(project)` and `deserializeProject(text)` (both in `storage.ts`) are the round-trip helpers: `serializeProject` calls `toRaw` before `JSON.stringify` so Vue proxy metadata never reaches the file; `deserializeProject` runs the full `migrateToLatest` + `reconcileWithDefaults` pass, so a partial or older-schema file is upgraded and filled to current defaults exactly as a localStorage restore would be. `replaceProject(target, source)` mutates `target` in place to match `source` — preserving the reactive proxy identity — so the `buildAudioState` watchers that hold references to `project.tracks[i]` don't need teardown on Open. `saveProjectToFile` / `openProjectFromFile` (the two public helpers in `file-io.ts`) feature-detect the File System Access API and fall back to a download-anchor / `<input type="file">` pair for browsers that don't support it. Both functions return `null` / resolve silently on user cancellation. `ProjectFileError` is the typed error for unreadable JSON, failed migrations, and future `schemaVersion` values the current code doesn't understand. The canonical extension for new project saves is `.prj.json`; the open picker also accepts plain `.json` for legacy files saved before the extension was introduced. Both are identical in content to the localStorage payload; files and localStorage are interchangeable snapshots. All three helpers (`serializeProject`, `deserializeProject`, `replaceProject`) are re-exported from `packages/client/src/project/index.ts` alongside the `file-io.ts` exports. Long-form design rationale lives in [`docs/superpowers/specs/2026-05-24-project-file-io-design.md`](./superpowers/specs/2026-05-24-project-file-io-design.md).
 
 **Engine presets.** A preset is a single engine's choice + its full param
 set, serialized as a `.chnl.json` file. Distinct from `.prj.json` project
 files (which capture the whole 4-track project + BPM + steps).
-`src/project/preset.ts` defines the `Preset` type, `makePreset` factory,
+`packages/client/src/project/preset.ts` defines the `Preset` type, `makePreset` factory,
 `serializePreset` / `deserializePreset`, and `applyPreset(track, preset)`
 which mutates a track in place — sets `engineType`, `Object.assign`s
 `params` into the matching engine slice, and leaves the other engines on
 that track, the mixer, and the steps untouched (so toggling back to a
 previously-active engine restores its prior params). File I/O lives in
-`src/project/preset-file-io.ts` and follows the same picker + fallback
+`packages/client/src/project/preset-file-io.ts` and follows the same picker + fallback
 pattern as project save/open. Presets carry their own
 `PRESET_SCHEMA_VERSION` (currently `1`), independent from `PROJECT_SCHEMA_VERSION`.
 
 ---
 
-*Last updated: 2026-05-24 (post-project-model: A3 + F1 persistence). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync.*
+## 14. The backend scaffolding (`@fiddle/server` and `@fiddle/shared`)
+
+The repo became an npm-workspaces monorepo in commit `36eb334` (merge of `feature/backend-scaffolding`) to make room for a future WebSocket-synced multi-user mode. **Audio stays local** in each browser — the server only carries project-state mutations. None of the sync mechanism is implemented yet; what's landed is the surface where it will plug in.
+
+### `@fiddle/shared` (`packages/shared/`)
+
+A tiny, framework-free package that compiles cleanly in both the browser (`moduleResolution: bundler`) and Node (`moduleResolution: NodeNext`). It currently re-exports four symbols:
+
+- `EngineType` — `'synth' | 'kick' | 'hat' | 'snare' | 'clap'`.
+- `MixerState` — `{ volume; muted; soloed }`.
+- `DEFAULT_MIXER_STATE`.
+- `PROJECT_SCHEMA_VERSION` — the schema literal (currently `1 as const`).
+
+`packages/client/src/project/types.ts` re-sources those four from `@fiddle/shared` and re-exports them through the project barrel. Other project types (`Project`, `ProjectTrack`, `EngineParamsMap`) stay in the client because they import engine param types from `../engine/...`.
+
+**Constraint:** anything added to `@fiddle/shared` must stay portable — no DOM types, no `AudioContext`, no Vue, no Node-only modules. The litmus test is "could a future Cloudflare Worker or a CLI import this?" If not, it doesn't belong here.
+
+### `@fiddle/server` (`packages/server/`)
+
+- **Stack:** Fastify 5 + `@fastify/websocket` 11 (which wraps `ws` underneath). TypeScript with `moduleResolution: NodeNext`, built via `tsc` to `dist/`, started with `node dist/index.js`. Dev runs via `tsx watch src/index.ts`.
+- **Entry layout:** `src/index.ts` reads `PORT` (default `8787`) and `HOST` (default `0.0.0.0`) and calls `app.listen(...)`. `src/server.ts` exports `buildServer()` which constructs the Fastify instance, registers the websocket plugin, and registers the route plugins. This split keeps the construction pure so tests can exercise it via Fastify's `.inject()` HTTP simulator without binding a port.
+- **Routes:**
+  - `GET /health` → `{ ok: true }`. The Render/Docker liveness probe.
+  - `GET /ws` — placeholder. On connect it logs and sends `{ type: 'hello' }`. Incoming messages are typed as `RawData` from `'ws'` (the `@types/ws` devDep is what makes `socket` non-`any`); they're logged but otherwise ignored. **There is no sync protocol yet.** That design lives in a separate spec/plan cycle that hasn't started.
+- **Logger gotcha:** `logger: process.env.NODE_ENV !== 'test'`. The pino JSON output otherwise dominates vitest's reporter and obscures real failures.
+- **Build gotcha:** `tsconfig.json` excludes `**/*.test.ts` from the build so `tsc` doesn't emit `dist/server.test.js` (which vitest would then re-pick-up alongside the source).
+
+### Docker / local server dev
+
+- `packages/server/Dockerfile` — multi-stage `node:22-alpine` (`builder` → `runtime`), runtime image ~253 MB. Install uses `npm ci --include-workspace-root` so the workspace symlink to `@fiddle/shared` resolves.
+- `docker-compose.yml` (at repo root) — builds the `builder` target, runs `tsx watch`, bind-mounts `packages/server/src` and `packages/shared/src`, exposes 8787. The bind mounts make local edits hot-reload without rebuilding the image.
+
+### Vercel deploy (client) stays working
+
+`vercel.json` at the repo root pins the Vite framework preset and forces `buildCommand: npm run build -w @fiddle/client` with `outputDirectory: packages/client/dist`. This is config-as-code on purpose — no dashboard "Root Directory" override is needed, so the workspace move was invisible to the existing Vercel project.
+
+### Render deploy (server) — planned, not configured
+
+The server is intended to deploy to Render.com when the sync protocol lands. The Dockerfile is the artifact Render will build; no `render.yaml` is checked in yet.
+
+### What's planned next (not implemented)
+
+The intent driving all of the above: a JSON-serializable, diff-friendly, versioned project state synced via WebSocket between 2+ clients, no auth, with audio rendered locally in each browser. The `/ws` route is the seam. Until that protocol is designed and implemented, the server is dead code from the user's perspective.
+
+---
+
+*Last updated: 2026-05-27 (post-backend-scaffolding: monorepo + Fastify/ws skeleton + Docker). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync. When §14 evolves (sync protocol lands), note the matching commit and update the "placeholder" language.*
