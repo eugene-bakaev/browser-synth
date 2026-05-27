@@ -11,7 +11,8 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "vue": "^3.4.0"
+    "vue": "^3.4.0",
+    "@fiddle/shared": "*"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
