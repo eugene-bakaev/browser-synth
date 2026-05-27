@@ -349,6 +349,7 @@ Single source of truth for TypeScript compiler options; each workspace's `tsconf
     "allowImportingTsExtensions": false,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "esModuleInterop": true,
     "noEmit": true,
     "strict": true,
     "noUnusedLocals": true,
