@@ -5,8 +5,19 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "dev:client": "npm run dev -w @fiddle/client",
+    "dev:server": "npm run dev -w @fiddle/server",
+    "dev": "npm-run-all --parallel dev:client dev:server",
     "build:client": "npm run build -w @fiddle/client",
-    "test:client": "npm test -w @fiddle/client",
-    "typecheck:client": "npm run typecheck -w @fiddle/client"
+    "build:server": "npm run build -w @fiddle/server",
+    "build": "npm run build:client && npm run build:server",
+    "test:client": "npm run test -w @fiddle/client",
+    "test:server": "npm run test -w @fiddle/server",
+    "test": "npm test --workspaces --if-present",
+    "typecheck:client": "npm run typecheck -w @fiddle/client",
+    "typecheck:server": "npm run typecheck -w @fiddle/server",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
   }
 }
