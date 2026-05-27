@@ -1,0 +1,8 @@
+node_modules
+dist
+.vscode
+.git
+*.log
+packages/client
+docs
+screenshot.png
