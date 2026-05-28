@@ -1,4 +1,5 @@
 import { ref, reactive, watch, computed, effectScope, shallowRef, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
+import type { OscillatorTypeLiteral } from '@fiddle/shared';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine }  from '../engine/KickEngine';
@@ -256,7 +257,7 @@ export function useSynth() {
   const currentStep = ref(-1);
   const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
-  const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
+  const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
   function trackParam<K extends keyof EngineParamsMap, P extends keyof EngineParamsMap[K]>(
     engine: K, param: P, fallback: EngineParamsMap[K][P]
@@ -297,8 +298,8 @@ export function useSynth() {
   });
 
   // --- Synth params ---
-  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth' as OscillatorType);
-  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth' as OscillatorType);
+  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth');
+  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth');
   const osc1Coarse = trackParam('synth', 'osc1Coarse', 0);
   const osc1Fine = trackParam('synth', 'osc1Fine', 0);
   const osc2Coarse = trackParam('synth', 'osc2Coarse', 0);

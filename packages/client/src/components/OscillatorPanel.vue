@@ -31,19 +31,22 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import { SynthEngine } from '../engine/SynthEngine';
+import type { OscillatorTypeLiteral } from '@fiddle/shared';
 
 const DEFAULTS = SynthEngine.DEFAULT_PARAMS;
 
 defineProps<{
-  waveforms: OscillatorType[];
+  // OscillatorTypeLiteral is the 4-waveform union shared with the engine
+  // (excludes DOM's 'custom', which we never use).
+  waveforms: OscillatorTypeLiteral[];
 }>();
 
-const osc1Type = defineModel<OscillatorType>('osc1Type', { required: true });
+const osc1Type = defineModel<OscillatorTypeLiteral>('osc1Type', { required: true });
 const osc1Coarse = defineModel<number>('osc1Coarse', { required: true });
 const osc1Fine = defineModel<number>('osc1Fine', { required: true });
 const osc1PulseWidth = defineModel<number>('osc1PulseWidth', { required: true });
 
-const osc2Type = defineModel<OscillatorType>('osc2Type', { required: true });
+const osc2Type = defineModel<OscillatorTypeLiteral>('osc2Type', { required: true });
 const osc2Coarse = defineModel<number>('osc2Coarse', { required: true });
 const osc2Fine = defineModel<number>('osc2Fine', { required: true });
 const osc2PulseWidth = defineModel<number>('osc2PulseWidth', { required: true });

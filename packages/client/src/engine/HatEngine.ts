@@ -1,11 +1,10 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
+import { DEFAULT_HAT_PARAMS, type HatEngineParams } from '@fiddle/shared';
 
-export interface HatEngineParams {
-  decay: number;     // seconds (0.02 - 0.6)
-  tone: number;      // bandpass filter cutoff Hz (3000 - 14000)
-  metallic: number;  // blend ratio: 0 = noise only, 1 = metal only
-}
+// Re-export so existing consumers `import { HatEngineParams } from
+// '../engine/HatEngine'` keep working without churn.
+export type { HatEngineParams } from '@fiddle/shared';
 
 export class HatEngine implements SoundEngine {
   readonly engineType = 'hat';
@@ -25,16 +24,14 @@ export class HatEngine implements SoundEngine {
   private bandpassFilter: BiquadFilterNode;
   private ampGain: GainNode;
 
-  static readonly DEFAULT_PARAMS: HatEngineParams = {
-    decay: 0.15,
-    tone: 8000,
-    metallic: 0.5,
-  };
+  // Default param values live in @fiddle/shared (DEFAULT_HAT_PARAMS); kept
+  // here as a static for backward-compat with existing consumers.
+  static readonly DEFAULT_PARAMS: HatEngineParams = DEFAULT_HAT_PARAMS;
 
   // Parameters
-  private decay: number = HatEngine.DEFAULT_PARAMS.decay;
-  private tone: number = HatEngine.DEFAULT_PARAMS.tone;
-  private metallic: number = HatEngine.DEFAULT_PARAMS.metallic;
+  private decay: number = DEFAULT_HAT_PARAMS.decay;
+  private tone: number = DEFAULT_HAT_PARAMS.tone;
+  private metallic: number = DEFAULT_HAT_PARAMS.metallic;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

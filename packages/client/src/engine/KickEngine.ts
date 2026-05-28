@@ -1,10 +1,9 @@
 import { SoundEngine } from './types';
+import { DEFAULT_KICK_PARAMS, type KickEngineParams } from '@fiddle/shared';
 
-export interface KickEngineParams {
-  tune: number;   // Base pitch in Hz (40 - 120)
-  decay: number;  // Decay time in seconds (0.05 - 1.5)
-  click: number;  // Click depth (0.0 - 1.0)
-}
+// Re-export so existing consumers `import { KickEngineParams } from
+// '../engine/KickEngine'` keep working without churn.
+export type { KickEngineParams } from '@fiddle/shared';
 
 export class KickEngine implements SoundEngine {
   readonly engineType = 'kick';
@@ -12,16 +11,14 @@ export class KickEngine implements SoundEngine {
   private ampGain: GainNode;
   private activeOscs: Set<OscillatorNode> = new Set();
 
-  static readonly DEFAULT_PARAMS: KickEngineParams = {
-    tune: 55,
-    decay: 0.3,
-    click: 0.5,
-  };
+  // Default param values live in @fiddle/shared (DEFAULT_KICK_PARAMS); kept
+  // here as a static for backward-compat with existing consumers.
+  static readonly DEFAULT_PARAMS: KickEngineParams = DEFAULT_KICK_PARAMS;
 
   // Parameters
-  private tune: number = KickEngine.DEFAULT_PARAMS.tune;
-  private decay: number = KickEngine.DEFAULT_PARAMS.decay;
-  private click: number = KickEngine.DEFAULT_PARAMS.click;
+  private tune: number = DEFAULT_KICK_PARAMS.tune;
+  private decay: number = DEFAULT_KICK_PARAMS.decay;
+  private click: number = DEFAULT_KICK_PARAMS.click;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

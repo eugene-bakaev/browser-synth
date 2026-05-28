@@ -1,11 +1,10 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
+import { DEFAULT_CLAP_PARAMS, type ClapEngineParams } from '@fiddle/shared';
 
-export interface ClapEngineParams {
-  decay: number;   // Clap tail decay in seconds (0.05 - 0.8)
-  tone: number;    // Bandpass filter cutoff frequency Hz (500 - 3000)
-  sloppy: number;  // Spacing between initial impulses (0.005 - 0.03)
-}
+// Re-export so existing consumers `import { ClapEngineParams } from
+// '../engine/ClapEngine'` keep working without churn.
+export type { ClapEngineParams } from '@fiddle/shared';
 
 export class ClapEngine implements SoundEngine {
   readonly engineType = 'clap';
@@ -17,16 +16,14 @@ export class ClapEngine implements SoundEngine {
   private ampGain: GainNode;
   private activeSources: Set<AudioBufferSourceNode> = new Set();
 
-  static readonly DEFAULT_PARAMS: ClapEngineParams = {
-    decay: 0.25,
-    tone: 1000,
-    sloppy: 0.015,
-  };
+  // Default param values live in @fiddle/shared (DEFAULT_CLAP_PARAMS); kept
+  // here as a static for backward-compat with existing consumers.
+  static readonly DEFAULT_PARAMS: ClapEngineParams = DEFAULT_CLAP_PARAMS;
 
   // Parameters
-  private decay: number = ClapEngine.DEFAULT_PARAMS.decay;
-  private tone: number = ClapEngine.DEFAULT_PARAMS.tone;
-  private sloppy: number = ClapEngine.DEFAULT_PARAMS.sloppy;
+  private decay: number = DEFAULT_CLAP_PARAMS.decay;
+  private tone: number = DEFAULT_CLAP_PARAMS.tone;
+  private sloppy: number = DEFAULT_CLAP_PARAMS.sloppy;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();

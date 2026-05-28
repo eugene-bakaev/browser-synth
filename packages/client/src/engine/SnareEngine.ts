@@ -1,11 +1,10 @@
 import { SoundEngine } from './types';
 import { getNoiseBuffer } from './modules/Noise';
+import { DEFAULT_SNARE_PARAMS, type SnareEngineParams } from '@fiddle/shared';
 
-export interface SnareEngineParams {
-  tune: number;    // Base pitch in Hz (100 - 250)
-  decay: number;   // Snare wires decay in seconds (0.05 - 0.8)
-  snappy: number;  // Noise level ratio vs body (0.0 - 1.0)
-}
+// Re-export so existing consumers `import { SnareEngineParams } from
+// '../engine/SnareEngine'` keep working without churn.
+export type { SnareEngineParams } from '@fiddle/shared';
 
 export class SnareEngine implements SoundEngine {
   readonly engineType = 'snare';
@@ -23,16 +22,14 @@ export class SnareEngine implements SoundEngine {
   // Master output
   private masterGain: GainNode;
 
-  static readonly DEFAULT_PARAMS: SnareEngineParams = {
-    tune: 180,
-    decay: 0.25,
-    snappy: 0.5,
-  };
+  // Default param values live in @fiddle/shared (DEFAULT_SNARE_PARAMS); kept
+  // here as a static for backward-compat with existing consumers.
+  static readonly DEFAULT_PARAMS: SnareEngineParams = DEFAULT_SNARE_PARAMS;
 
   // Parameters
-  private tune: number = SnareEngine.DEFAULT_PARAMS.tune;
-  private decay: number = SnareEngine.DEFAULT_PARAMS.decay;
-  private snappy: number = SnareEngine.DEFAULT_PARAMS.snappy;
+  private tune: number = DEFAULT_SNARE_PARAMS.tune;
+  private decay: number = DEFAULT_SNARE_PARAMS.decay;
+  private snappy: number = DEFAULT_SNARE_PARAMS.snappy;
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
