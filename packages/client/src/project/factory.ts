@@ -1,14 +1,16 @@
-import { SynthEngine } from '../engine/SynthEngine';
-import { KickEngine }  from '../engine/KickEngine';
-import { HatEngine }   from '../engine/HatEngine';
-import { SnareEngine } from '../engine/SnareEngine';
-import { ClapEngine }  from '../engine/ClapEngine';
 import type { Step } from '../sequencer/Sequencer';
+import {
+  DEFAULT_MIXER_STATE,
+  DEFAULT_SYNTH_PARAMS,
+  DEFAULT_KICK_PARAMS,
+  DEFAULT_HAT_PARAMS,
+  DEFAULT_SNARE_PARAMS,
+  DEFAULT_CLAP_PARAMS,
+  PROJECT_SCHEMA_VERSION,
+} from '@fiddle/shared';
 import {
   type Project,
   type ProjectTrack,
-  DEFAULT_MIXER_STATE,
-  PROJECT_SCHEMA_VERSION,
 } from './types';
 
 export function freshStep(): Step {
@@ -27,11 +29,11 @@ export function freshTrack(): ProjectTrack {
   return {
     engineType: 'synth',
     engines: {
-      synth: structuredClone(SynthEngine.DEFAULT_PARAMS),
-      kick:  structuredClone(KickEngine.DEFAULT_PARAMS),
-      hat:   structuredClone(HatEngine.DEFAULT_PARAMS),
-      snare: structuredClone(SnareEngine.DEFAULT_PARAMS),
-      clap:  structuredClone(ClapEngine.DEFAULT_PARAMS),
+      synth: structuredClone(DEFAULT_SYNTH_PARAMS),
+      kick:  structuredClone(DEFAULT_KICK_PARAMS),
+      hat:   structuredClone(DEFAULT_HAT_PARAMS),
+      snare: structuredClone(DEFAULT_SNARE_PARAMS),
+      clap:  structuredClone(DEFAULT_CLAP_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
     steps: Array.from({ length: 16 }, () => freshStep()),
