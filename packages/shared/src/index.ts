@@ -25,3 +25,8 @@ export const PROJECT_SCHEMA_VERSION = 1 as const;
 // Moved out of the client `engine/*Engine.ts` files so the server can construct
 // a default Project and validate paths without dragging in DOM/Web Audio types.
 export * from './engines/index.js';
+
+// Project shape (Step, ProjectTrack, Project) + freshProject factory. Lives in
+// shared so both client and server can build a default Project and reason about
+// it as the canonical wire format.
+export * from './project/index.js';
