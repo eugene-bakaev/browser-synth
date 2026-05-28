@@ -30,3 +30,7 @@ export * from './engines/index.js';
 // shared so both client and server can build a default Project and reason about
 // it as the canonical wire format.
 export * from './project/index.js';
+
+// WebSocket sync protocol: PROTOCOL_VERSION, identity constants (PALETTE,
+// HANDLES), message type definitions, and Zod schemas for inbound messages.
+export * from './protocol/index.js';
