@@ -7,7 +7,7 @@ services:
   - type: web
     name: fiddle-server
     runtime: node            # if the validator rejects this, use `env: node`
-    plan: starter            # always-on (no idle spin-down); in-memory rooms survive between connections
+    plan: free               # no-cost tier; spins down when idle (cold start + in-memory rooms lost). Use "starter" (~$7/mo) for always-on.
     region: oregon           # pick the region closest to your users
     branch: main
     rootDir: .               # monorepo root: build runs across the workspace
