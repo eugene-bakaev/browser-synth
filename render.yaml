@@ -1,0 +1,26 @@
+# Render Blueprint — backend WebSocket sync server for Fiddle Synth.
+#
+# The frontend stays on Vercel (static Vite build); this file defines ONLY the
+# Fastify sync server. Deploy via: Render Dashboard → New + → Blueprint → pick
+# this repo. Render reads this file from the repo's default branch (main).
+services:
+  - type: web
+    name: fiddle-server
+    runtime: node            # if the validator rejects this, use `env: node`
+    plan: free               # bump to "starter" to avoid idle spin-down (see note)
+    region: oregon           # pick the region closest to your users
+    branch: main
+    rootDir: .               # monorepo root: build runs across the workspace
+    buildCommand: npm ci && npm run build:server
+    startCommand: node packages/server/dist/index.js
+    healthCheckPath: /health
+
+    # IMPORTANT: the room store is in-memory (per process). Keep this at ONE
+    # instance — horizontal scaling would split rooms across instances and
+    # clients in the same room wouldn't see each other. Do not enable autoscaling.
+    numInstances: 1
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # PORT is injected by Render automatically; the server reads process.env.PORT.
