@@ -1,0 +1,195 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { WsClient } from './WsClient';
+import { PROJECT_SCHEMA_VERSION, type ServerMessage } from '@fiddle/shared';
+
+// Minimal WebSocket double. The real WebSocket constructor type is
+// `typeof WebSocket`, which is just a structural constructor signature —
+// passing this as `socketCtor` via `as unknown as typeof WebSocket` works
+// because none of the static surface is consulted at runtime.
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+  url: string;
+  readyState = 0;
+  onopen: ((ev: unknown) => void) | null = null;
+  onmessage: ((ev: { data: unknown }) => void) | null = null;
+  onclose: ((ev: unknown) => void) | null = null;
+  onerror: ((ev: unknown) => void) | null = null;
+  sent: string[] = [];
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+  send(d: string) {
+    this.sent.push(d);
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.({});
+  }
+  _open() {
+    this.readyState = 1;
+    this.onopen?.({});
+  }
+  _msg(data: string) {
+    this.onmessage?.({ data });
+  }
+}
+
+// In-memory `Storage` substitute. sessionStorage is jsdom-only and we want
+// these tests to run in Node without an env pragma.
+function memoryStorage(): Storage {
+  const m = new Map<string, string>();
+  return {
+    getItem: (k) => m.get(k) ?? null,
+    setItem: (k, v) => {
+      m.set(k, String(v));
+    },
+    removeItem: (k) => {
+      m.delete(k);
+    },
+    clear: () => m.clear(),
+    key: (i) => Array.from(m.keys())[i] ?? null,
+    get length() {
+      return m.size;
+    },
+  };
+}
+
+function makeClient(opts?: {
+  storage?: Storage;
+  onMessage?: (m: ServerMessage) => void;
+  onStateChange?: (s: string) => void;
+  roomId?: string;
+}) {
+  const storage = opts?.storage ?? memoryStorage();
+  const client = new WsClient({
+    url: 'ws://test/ws/room',
+    roomId: opts?.roomId ?? 'room',
+    socketCtor: MockWebSocket as unknown as typeof WebSocket,
+    storage,
+    onMessage: opts?.onMessage ?? (() => {}),
+    onStateChange: opts?.onStateChange,
+  });
+  return { client, storage };
+}
+
+describe('WsClient', () => {
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+  });
+
+  it('sends a fresh hello on open when no clientId is persisted', () => {
+    const { client } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    expect(sock.sent).toHaveLength(1);
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello).toEqual({
+      v: 1,
+      type: 'hello',
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    });
+    expect(hello.clientId).toBeUndefined();
+    expect(hello.resumeFromOpId).toBeUndefined();
+  });
+
+  it('sends a resume hello when clientId + opIdLastSeen are persisted', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_old', opIdLastSeen: 42, clientSeq: 7 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello).toEqual({
+      v: 1,
+      type: 'hello',
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      clientId: 'c_old',
+      resumeFromOpId: 42,
+    });
+  });
+
+  it('transitions to live on sync.complete', () => {
+    const { client } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    sock._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_new',
+        color: '#ff0000',
+        handle: 'Nova',
+        opIdHead: 0,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    expect(client.state).toBe('catching-up');
+    sock._msg(JSON.stringify({ v: 1, type: 'sync.complete', opId: 0 }));
+    expect(client.state).toBe('live');
+    expect(client.isLive()).toBe(true);
+  });
+
+  it('persists clientId + opIdHead on welcome (resets clientSeq for new identity)', () => {
+    const { client, storage } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    sock._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_new',
+        color: '#ff0000',
+        handle: 'Nova',
+        opIdHead: 100,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    const raw = storage.getItem('fiddle:sync:room');
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!)).toEqual({
+      clientId: 'c_new',
+      opIdLastSeen: 100,
+      clientSeq: 0,
+    });
+  });
+
+  it('auto-responds to ping with pong', () => {
+    const onMessage = vi.fn();
+    const { client } = makeClient({ onMessage });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    // Clear the hello so we only see the pong below.
+    sock.sent.length = 0;
+    sock._msg(JSON.stringify({ v: 1, type: 'ping' }));
+    expect(sock.sent).toHaveLength(1);
+    expect(JSON.parse(sock.sent[0])).toEqual({ v: 1, type: 'pong' });
+    // onMessage is still invoked after the auto-pong.
+    expect(onMessage).toHaveBeenCalledWith({ v: 1, type: 'ping' });
+  });
+
+  it('nextClientSeq increments monotonically and persists', () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_x', opIdLastSeen: 0, clientSeq: 0 }),
+    );
+    const { client } = makeClient({ storage });
+    expect(client.nextClientSeq()).toBe(1);
+    expect(client.nextClientSeq()).toBe(2);
+    expect(client.nextClientSeq()).toBe(3);
+    const persisted = JSON.parse(storage.getItem('fiddle:sync:room')!);
+    expect(persisted.clientSeq).toBe(3);
+  });
+});
