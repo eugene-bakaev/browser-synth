@@ -21,6 +21,11 @@ export interface RoomState {
   opLog: AppliedOp[];
   nextOpId: number;
   identities: Map<string, Identity>;
+  // clientIds with a live socket right now. The roster (presence) is built from
+  // this set; `identities` is kept broader so a reconnecting client can resume
+  // its identity even after its socket dropped. Cleared entry-by-entry on
+  // disconnect; the whole room (identities included) is GC'd after grace.
+  connected: Set<string>;
   // When the last connection drops the room enters a grace window before GC.
   // Cleared when a new client joins; fires `pruneRoom` on expiry.
   graceTimer: NodeJS.Timeout | null;

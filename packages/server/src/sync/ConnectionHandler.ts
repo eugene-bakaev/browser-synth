@@ -136,6 +136,10 @@ export class ConnectionHandler {
       return;
     }
 
+    // We're no longer live. Drop from the presence set so we leave the roster,
+    // but keep our identity in the registry so a reconnect can resume it.
+    await this.store.markDisconnected(this.roomId, this.clientId);
+
     // The route layer removes this socket from the pool BEFORE invoking
     // onClose, so pool.size reflects the post-departure count.
     if (this.pool.size(this.roomId) === 0) {
@@ -146,8 +150,8 @@ export class ConnectionHandler {
       return;
     }
 
-    // Peers still here: fan out a fresh roster so their UIs drop us.
-    const roster = await this.store.listIdentities(this.roomId);
+    // Peers still here: fan out a fresh roster (connected only) so their UIs drop us.
+    const roster = await this.store.listConnected(this.roomId);
     const update: PresenceUpdateMessage = {
       v: 1,
       type: 'presence.update',
@@ -188,8 +192,10 @@ export class ConnectionHandler {
     }
 
     if (!identity) {
-      const roster = await this.store.listIdentities(this.roomId);
-      identity = makeIdentity(roster);
+      // Assign a color/handle distinct from currently-connected peers (departed
+      // members free their color for reuse).
+      const present = await this.store.listConnected(this.roomId);
+      identity = makeIdentity(present);
       await this.store.setIdentity(this.roomId, identity);
     }
 
@@ -197,7 +203,10 @@ export class ConnectionHandler {
     this.identity = identity;
     this.helloProcessed = true;
 
-    const roster = await this.store.listIdentities(this.roomId);
+    // Now live: include us in the presence roster broadcast below.
+    await this.store.markConnected(this.roomId, identity.clientId);
+
+    const roster = await this.store.listConnected(this.roomId);
     const welcome: WelcomeMessage = {
       v: 1,
       type: 'welcome',

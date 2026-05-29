@@ -111,6 +111,38 @@ describe('InMemoryRoomStore', () => {
     expect(await store.listIdentities('room1')).toHaveLength(0);
   });
 
+  it('listConnected reflects live presence, independent of the identity registry', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('room1', freshProject);
+    await store.setIdentity('room1', { clientId: 'c1', color: '#FF4136', handle: 'Owl' });
+    await store.setIdentity('room1', { clientId: 'c2', color: '#0074D9', handle: 'Fox' });
+
+    // Identities exist but no one is marked connected yet.
+    expect(await store.listConnected('room1')).toHaveLength(0);
+
+    await store.markConnected('room1', 'c1');
+    await store.markConnected('room1', 'c2');
+    expect((await store.listConnected('room1')).map((i) => i.clientId)).toEqual(['c1', 'c2']);
+
+    // c1 disconnects: drops from presence, but its identity is retained for resume.
+    await store.markDisconnected('room1', 'c1');
+    expect((await store.listConnected('room1')).map((i) => i.clientId)).toEqual(['c2']);
+    expect(await store.getIdentity('room1', 'c1')).toBeDefined();
+
+    // Reconnect re-adds c1 to presence without a new identity.
+    await store.markConnected('room1', 'c1');
+    expect((await store.listConnected('room1')).map((i) => i.clientId).sort()).toEqual(['c1', 'c2']);
+  });
+
+  it('removeIdentity also clears live presence', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('room1', freshProject);
+    await store.setIdentity('room1', { clientId: 'c1', color: '#FF4136', handle: 'Owl' });
+    await store.markConnected('room1', 'c1');
+    await store.removeIdentity('room1', 'c1');
+    expect(await store.listConnected('room1')).toHaveLength(0);
+  });
+
   it('pruneRoom drops the room', async () => {
     const store = new InMemoryRoomStore();
     await store.getOrCreate('room1', freshProject);
