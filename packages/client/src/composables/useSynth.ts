@@ -29,7 +29,7 @@ import {
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
 import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
-import { setDeep } from '../sync/setDeep';
+import { setDeep } from '@fiddle/shared';
 import { resolveRoomIdFromUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
@@ -137,37 +137,39 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
   wsClientFactory = f ?? ((opts) => new WsClient(opts));
 }
 
-// Translate one diffed engine slice into leaf-level outbound ops. The
+// Leaf fields edited as a single discrete action (a select or toggle) flush to
+// the wire immediately; everything else (knobs/sliders/drags) rides the 50ms
+// throttle. Centralized here so the policy lives in one place rather than being
+// re-derived inline in each watcher. Keyed by leaf field name — unambiguous
+// across the accept-list (no continuous and discrete field share a name).
+const DISCRETE_LEAF_FIELDS = new Set<string>([
+  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType',
+]);
+function gestureEndForLeaf(leafKey: string): boolean {
+  return DISCRETE_LEAF_FIELDS.has(leafKey);
+}
+
+// Emit the leaf-level outbound ops for one diffed object at `prefix`. The
 // accept-list forbids whole-object writes, so nested params (filterEnv/ampEnv)
-// are drilled one level to their changed a/d/s/r leaves; scalar params emit a
+// are drilled one level to their changed a/d/s/r leaves; scalar fields emit a
 // single op. `priorValue` is the pre-edit value, carried for nack rollback.
-function emitEngineChange(
-  trackIdx: number,
-  slice: EngineType,
+// Shared by the engine-slice, mixer, and step watchers.
+function emitLeafDiff(
+  prefix: Path,
   changed: Record<string, unknown>,
-  oldSlice: Record<string, unknown> | undefined,
+  oldObj: Record<string, unknown> | undefined,
 ): void {
   if (!outbox) return;
   for (const [key, value] of Object.entries(changed)) {
     if (value !== null && typeof value === 'object') {
-      const oldObj = (oldSlice?.[key] ?? {}) as Record<string, unknown>;
-      const newObj = value as Record<string, unknown>;
-      for (const subKey of Object.keys(newObj)) {
-        if (oldObj[subKey] === newObj[subKey]) continue;
-        outbox.enqueue(
-          ['tracks', trackIdx, 'engines', slice, key, subKey],
-          newObj[subKey],
-          oldObj[subKey],
-          false,
-        );
+      const oldNested = (oldObj?.[key] ?? {}) as Record<string, unknown>;
+      const newNested = value as Record<string, unknown>;
+      for (const subKey of Object.keys(newNested)) {
+        if (oldNested[subKey] === newNested[subKey]) continue;
+        outbox.enqueue([...prefix, key, subKey], newNested[subKey], oldNested[subKey], gestureEndForLeaf(subKey));
       }
     } else {
-      outbox.enqueue(
-        ['tracks', trackIdx, 'engines', slice, key],
-        value,
-        oldSlice?.[key],
-        false,
-      );
+      outbox.enqueue([...prefix, key], value, oldObj?.[key], gestureEndForLeaf(key));
     }
   }
 }
@@ -306,7 +308,7 @@ async function buildAudioState(): Promise<AudioState> {
       () => project.bpm,
       (newVal, oldVal) => {
         if (outbox && !isApplyingFromNetwork()) {
-          outbox.enqueue(['bpm'], newVal, oldVal, false);
+          outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
         }
       },
       { flush: 'sync' },
@@ -321,8 +323,7 @@ async function buildAudioState(): Promise<AudioState> {
         (newType, oldType) => {
           syncTrackToEngine(i);
           if (outbox && !isApplyingFromNetwork()) {
-            // Discrete selection (not a drag) → flush immediately.
-            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, true);
+            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
           }
         },
         { flush: 'sync' },
@@ -337,17 +338,20 @@ async function buildAudioState(): Promise<AudioState> {
         watch(
           () => snapshot(project.tracks[i].engines[slice]),
           (newVal, oldVal) => {
-            // Only apply if this slice is the active engine for the track.
-            // Edits to a non-active slice are buffered until that engine
-            // becomes active (the engineType watcher then full-syncs).
-            if (project.tracks[i].engineType !== slice) return;
             const changed = diffParams(newVal as unknown as Record<string, unknown>, oldVal as unknown as Record<string, unknown>);
             if (!changed) return;
-            engines[i].applyParams(changed);
-            // Outbound sync. Skipped while a network op is being applied (the
-            // sync flush below means this fires inside the suppressed write).
+            // Only feed the engine if this slice is the track's active engine;
+            // a non-active slice's params apply when it becomes active (the
+            // engineType watcher full-syncs).
+            if (project.tracks[i].engineType === slice) {
+              engines[i].applyParams(changed);
+            }
+            // Emit regardless of active slice so peers stay in sync for edits
+            // to any writable param. Skipped while a network op is being
+            // applied (sync flush below means this fires inside the suppressed
+            // write, so the guard is still held).
             if (outbox && !isApplyingFromNetwork()) {
-              emitEngineChange(i, slice, changed, oldVal as unknown as Record<string, unknown>);
+              emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
             }
           },
           // flush:'sync' so the applyingFromNetwork guard — held synchronously
@@ -366,21 +370,12 @@ async function buildAudioState(): Promise<AudioState> {
         () => snapshot(project.tracks[i].mixer),
         (newVal, oldVal) => {
           updateMixerGains();
-          if (!outbox || isApplyingFromNetwork()) return;
-          const changed = diffParams(
-            newVal as unknown as Record<string, unknown>,
-            oldVal as unknown as Record<string, unknown>,
-          );
-          if (!changed) return;
-          for (const [key, value] of Object.entries(changed)) {
-            // volume is a slider (continuous) → throttle; muted/soloed are
-            // toggles (discrete) → flush immediately.
-            outbox.enqueue(
-              ['tracks', i, 'mixer', key],
-              value,
-              (oldVal as unknown as Record<string, unknown>)?.[key],
-              key !== 'volume',
+          if (outbox && !isApplyingFromNetwork()) {
+            const changed = diffParams(
+              newVal as unknown as Record<string, unknown>,
+              oldVal as unknown as Record<string, unknown>,
             );
+            if (changed) emitLeafDiff(['tracks', i, 'mixer'], changed, oldVal as unknown as Record<string, unknown>);
           }
         },
         { flush: 'sync' },
@@ -398,18 +393,7 @@ async function buildAudioState(): Promise<AudioState> {
               newSteps[j] as unknown as Record<string, unknown>,
               oldSteps[j] as unknown as Record<string, unknown>,
             );
-            if (!changed) continue;
-            for (const [key, value] of Object.entries(changed)) {
-              // length/velocity can be dragged (continuous) → throttle; the
-              // rest (note/octave/muted/isChord/chordType) are discrete.
-              const continuous = key === 'length' || key === 'velocity';
-              outbox.enqueue(
-                ['tracks', i, 'steps', j, key],
-                value,
-                (oldSteps[j] as unknown as Record<string, unknown>)?.[key],
-                !continuous,
-              );
-            }
+            if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
           }
         },
         { flush: 'sync' },

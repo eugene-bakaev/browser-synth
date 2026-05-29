@@ -14,7 +14,7 @@
 // allowed to clobber the newer value.
 
 import type { Project, SetOpBroadcast } from '@fiddle/shared';
-import { setDeep } from './setDeep.js';
+import { setDeep, pathKey } from '@fiddle/shared';
 
 // Module-scope flag: set true while a programmatic (network-origin) write runs;
 // the sync-participating watchers in useSynth.ts check this and skip calling
@@ -35,7 +35,7 @@ export function exitSuppress(): void { applyingFromNetwork = false; }
 const lastAppliedOpIdForPath = new Map<string, number>();
 
 export function applyOp(project: Project, op: SetOpBroadcast): boolean {
-  const key = JSON.stringify(op.path);
+  const key = pathKey(op.path);
   const prev = lastAppliedOpIdForPath.get(key) ?? -1;
   if (op.opId <= prev) return false;  // stale; ignore
   lastAppliedOpIdForPath.set(key, op.opId);
@@ -43,6 +43,13 @@ export function applyOp(project: Project, op: SetOpBroadcast): boolean {
   enterSuppress();
   try {
     setDeep(project as unknown as Record<string, unknown>, op.path, op.value);
+  } catch (err) {
+    // A malformed / out-of-range path should never reach us — the server
+    // bounds-checks (accept-list indicesInRange) before broadcasting. But if
+    // one ever does, drop it here rather than let the throw escape and break
+    // the whole inbound message handler for this frame.
+    console.warn('applyOp: dropped op with unresolvable path', op.path, err);
+    return false;
   } finally {
     exitSuppress();
   }

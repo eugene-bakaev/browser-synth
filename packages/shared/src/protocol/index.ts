@@ -1,5 +1,5 @@
 export { PROTOCOL_VERSION } from './version.js';
-export { PALETTE, HANDLES } from './identity.js';
+export { PALETTE, HANDLES, CROCKFORD_BASE32, randomBase32 } from './identity.js';
 export type { PaletteColor, Handle } from './identity.js';
 export type {
   Path,

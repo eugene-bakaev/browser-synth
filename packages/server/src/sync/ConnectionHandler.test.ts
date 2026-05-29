@@ -224,6 +224,25 @@ describe('ConnectionHandler', () => {
       expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
     });
 
+    it('out-of-range track index is nacked with path.invalid (not crashed)', async () => {
+      const { socket, handler } = await helloOne();
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['tracks', 99, 'engineType'],
+        value: 'synth',
+      });
+
+      const nack = socket.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+      expect(nack.code).toBe('path.invalid');
+      expect(nack.clientSeq).toBe(1);
+      // The op must not have been appended/broadcast.
+      expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
+    });
+
     it('invalid value is nacked with value.invalid', async () => {
       const { socket, handler } = await helloOne();
       await handler.onMessage({
