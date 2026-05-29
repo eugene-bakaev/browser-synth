@@ -91,6 +91,9 @@ describe('TrackMixer Logic', () => {
   beforeAll(async () => {
     const mod = await import('../composables/useSynth');
     useSynth = mod.useSynth;
+    // Mixer tests don't exercise the WS layer — keep it dark so ensureAudio()
+    // doesn't try to resolve a room / open a socket (no `window` in node env).
+    mod.setSyncEnabled(false);
   });
 
   beforeEach(async () => {

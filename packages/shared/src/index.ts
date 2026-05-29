@@ -20,3 +20,20 @@ export const DEFAULT_MIXER_STATE: MixerState = {
 // Bump only on breaking schema changes. Additive changes are handled by the
 // client-side reconcileWithDefaults at load time.
 export const PROJECT_SCHEMA_VERSION = 1 as const;
+
+// Engine param shapes + defaults (per-engine modules under ./engines/).
+// Moved out of the client `engine/*Engine.ts` files so the server can construct
+// a default Project and validate paths without dragging in DOM/Web Audio types.
+export * from './engines/index.js';
+
+// Project shape (Step, ProjectTrack, Project) + freshProject factory. Lives in
+// shared so both client and server can build a default Project and reason about
+// it as the canonical wire format.
+export * from './project/index.js';
+
+// WebSocket sync protocol: PROTOCOL_VERSION, identity constants (PALETTE,
+// HANDLES), message type definitions, and Zod schemas for inbound messages.
+export * from './protocol/index.js';
+
+// Wire-path helpers (setDeep, pathKey) shared by client + server.
+export * from './path.js';

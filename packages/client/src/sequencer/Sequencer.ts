@@ -1,14 +1,8 @@
 import { markRaw } from 'vue';
 
-export interface Step {
-  note: string | null;
-  octave: number;
-  length: number;         // duration in ticks (16th notes)
-  velocity: number;       // 0..1
-  muted: boolean;
-  isChord?: boolean;
-  chordType?: string;
-}
+// Step now lives in @fiddle/shared (canonical wire-format type). Re-export
+// here so existing imports `from '../sequencer/Sequencer'` keep resolving.
+export type { Step } from '@fiddle/shared';
 
 // Scheduler bookkeeping that doesn't need Vue reactivity. Bundled into one
 // markRaw'd object so `reactive(new Sequencer())` skips proxying these fields.

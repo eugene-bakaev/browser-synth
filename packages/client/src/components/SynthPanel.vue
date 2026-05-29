@@ -74,9 +74,10 @@ import MixerPanel from './MixerPanel.vue';
 import FilterPanel from './FilterPanel.vue';
 import EnvelopePanel from './EnvelopePanel.vue';
 import Visualizer from './Visualizer.vue';
+import type { OscillatorTypeLiteral } from '@fiddle/shared';
 
 defineProps<{
-  waveforms: OscillatorType[];
+  waveforms: OscillatorTypeLiteral[];
   filterEnv: { a: number; d: number; s: number; r: number };
   ampEnv: { a: number; d: number; s: number; r: number };
   shortestActiveNoteDuration: number | null;
@@ -85,11 +86,11 @@ defineProps<{
 }>();
 
 const mode = defineModel<'mono' | 'poly'>('mode', { required: true });
-const osc1Type = defineModel<OscillatorType>('osc1Type', { required: true });
+const osc1Type = defineModel<OscillatorTypeLiteral>('osc1Type', { required: true });
 const osc1Coarse = defineModel<number>('osc1Coarse', { required: true });
 const osc1Fine = defineModel<number>('osc1Fine', { required: true });
 const osc1PulseWidth = defineModel<number>('osc1PulseWidth', { required: true });
-const osc2Type = defineModel<OscillatorType>('osc2Type', { required: true });
+const osc2Type = defineModel<OscillatorTypeLiteral>('osc2Type', { required: true });
 const osc2Coarse = defineModel<number>('osc2Coarse', { required: true });
 const osc2Fine = defineModel<number>('osc2Fine', { required: true });
 const osc2PulseWidth = defineModel<number>('osc2PulseWidth', { required: true });

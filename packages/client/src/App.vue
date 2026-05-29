@@ -1,10 +1,12 @@
 <template>
+  <ErrorOverlay />
   <div class="synth-container">
     <header>
       <div class="brand">
         <h1>Fiddle Synth</h1>
         <span class="sub-brand">// 4-TRACK SEQUENCER</span>
       </div>
+      <RoomBar />
       <div class="transport">
         <button @click="togglePlay" :class="{ playing: sequencer.isPlaying }">
           {{ sequencer.isPlaying ? 'STOP' : 'PLAY' }}
@@ -197,8 +199,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, provide } from 'vue';
 import { useSynth } from './composables/useSynth';
+import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import {
   clearTrack as clearProjectTrack,
   shiftTrack as shiftProjectTrack,
@@ -214,6 +217,8 @@ import {
   resetEnginePatch,
 } from './project';
 import Tracker from './components/Tracker.vue';
+import RoomBar from './components/RoomBar.vue';
+import ErrorOverlay from './components/ErrorOverlay.vue';
 import SynthPanel from './components/SynthPanel.vue';
 import KickPanel from './components/KickPanel.vue';
 import HatPanel from './components/HatPanel.vue';
@@ -263,6 +268,11 @@ const {
   selectTrack,
   getTrackEngineType,
 } = useSynth();
+
+// Hand the focused-track index down to the engine/drum panels so each Knob can
+// build its sync path (['tracks', idx, 'engines', <engine>, <field>]) for the
+// remote-activity ring + gesture-end flush. See sync/knobSync.ts.
+provide(ACTIVE_TRACK_KEY, activeTrackIndex);
 
 const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null

@@ -1,4 +1,5 @@
 import { ref, reactive, watch, computed, effectScope, shallowRef, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
+import type { OscillatorTypeLiteral } from '@fiddle/shared';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine }  from '../engine/KickEngine';
@@ -23,6 +24,16 @@ import {
   loadProject,
   installAutoSave,
 } from '../project';
+
+// --- Sync layer (WebSocket collaboration) ---
+import { WsClient, type WsClientOptions } from '../sync/WsClient';
+import { Outbox } from '../sync/Outbox';
+import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
+import { setDeep } from '@fiddle/shared';
+import { resolveRoomIdFromUrl } from '../sync/roomId';
+import { dispatchServerMessage } from '../sync/messageDispatch';
+import { roster, selfClientId, resetPresence } from '../sync/presence';
+import type { Path } from '@fiddle/shared';
 
 // === Pure data state — built from localStorage (or fresh) at module init. ===
 
@@ -102,6 +113,119 @@ interface AudioState {
 // `let` looks identical here but Vue can't observe the assignment, so the
 // computeds would cache the initial null forever (oscilloscope stays flat).
 const audioState = shallowRef<AudioState | null>(null);
+
+// === Sync state — built alongside audio (see buildSyncState). ===
+//
+// Module-scope (like `project`) because there is exactly one room connection
+// per tab, shared by every useSynth() consumer.
+let wsClient: WsClient | null = null;
+let outbox: Outbox | null = null;
+const fatalError = ref<{ code: string; message: string } | null>(null);
+
+// Flush the outbox entry for `path` immediately — called from a knob's
+// gesture-end (mouseup) so the final drag value goes out without waiting out
+// the 50ms throttle. No-op when sync is off or nothing is pending. Used by the
+// panels via useKnobSync (see sync/knobSync.ts).
+export function endGesture(path: Path): void {
+  outbox?.flushPath(path);
+}
+
+// Tests flip this off so ensureAudio() doesn't open a real socket; production
+// leaves it on. Kept here (not a build-time const) so a test can toggle it on
+// the freshly-imported module instance.
+let syncEnabled = true;
+export function setSyncEnabled(v: boolean): void { syncEnabled = v; }
+
+// Injectable so tests can hand back a WsClient wired to a MockWebSocket +
+// in-memory storage instead of touching the network. Production uses the
+// default real constructor.
+type WsClientFactory = (opts: WsClientOptions) => WsClient;
+let wsClientFactory: WsClientFactory = (opts) => new WsClient(opts);
+export function setWsClientFactory(f: WsClientFactory | null): void {
+  wsClientFactory = f ?? ((opts) => new WsClient(opts));
+}
+
+// Leaf fields edited as a single discrete action (a select or toggle) flush to
+// the wire immediately; everything else (knobs/sliders/drags) rides the 50ms
+// throttle. Centralized here so the policy lives in one place rather than being
+// re-derived inline in each watcher. Keyed by leaf field name — unambiguous
+// across the accept-list (no continuous and discrete field share a name).
+const DISCRETE_LEAF_FIELDS = new Set<string>([
+  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType',
+]);
+function gestureEndForLeaf(leafKey: string): boolean {
+  return DISCRETE_LEAF_FIELDS.has(leafKey);
+}
+
+// Emit the leaf-level outbound ops for one diffed object at `prefix`. The
+// accept-list forbids whole-object writes, so nested params (filterEnv/ampEnv)
+// are drilled one level to their changed a/d/s/r leaves; scalar fields emit a
+// single op. `priorValue` is the pre-edit value, carried for nack rollback.
+// Shared by the engine-slice, mixer, and step watchers.
+function emitLeafDiff(
+  prefix: Path,
+  changed: Record<string, unknown>,
+  oldObj: Record<string, unknown> | undefined,
+): void {
+  if (!outbox) return;
+  for (const [key, value] of Object.entries(changed)) {
+    if (value !== null && typeof value === 'object') {
+      const oldNested = (oldObj?.[key] ?? {}) as Record<string, unknown>;
+      const newNested = value as Record<string, unknown>;
+      for (const subKey of Object.keys(newNested)) {
+        if (oldNested[subKey] === newNested[subKey]) continue;
+        outbox.enqueue([...prefix, key, subKey], newNested[subKey], oldNested[subKey], gestureEndForLeaf(subKey));
+      }
+    } else {
+      outbox.enqueue([...prefix, key], value, oldObj?.[key], gestureEndForLeaf(key));
+    }
+  }
+}
+
+// Build the room connection + outbox and start connecting. Idempotent; called
+// from ensureAudio() once the engines exist (the WS doesn't strictly need
+// audio, but ordering them keeps a single teardown path in disposeSynth).
+function buildSyncState(): void {
+  if (wsClient) return;
+  const roomId = resolveRoomIdFromUrl();
+  const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
+    .env?.VITE_WS_URL;
+  const wsUrl = envUrl
+    ? `${envUrl.replace(/\/$/, '')}/ws/${roomId}`
+    : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${roomId}`;
+
+  wsClient = wsClientFactory({
+    url: wsUrl,
+    roomId,
+    onMessage: (msg) => dispatchServerMessage(msg, {
+      project,
+      wsClient: wsClient!,
+      outbox: outbox!,
+      onFatalError: (code, message) => { fatalError.value = { code, message }; },
+    }),
+    onStateChange: (s) => {
+      if (s === 'closed' && outbox) outbox.onClosed();
+    },
+  });
+
+  outbox = new Outbox({
+    nextClientSeq: () => wsClient!.nextClientSeq(),
+    send: (op) => wsClient!.send(op),
+    applyLocal: (path: Path, value: unknown) => {
+      // Rollback write: suppress so the sync watcher reverts the engine without
+      // re-enqueuing the reverted value back to the server.
+      enterSuppress();
+      try {
+        setDeep(project as unknown as Record<string, unknown>, path, value);
+      } finally {
+        exitSuppress();
+      }
+    },
+    isLive: () => !!wsClient?.isLive(),
+  });
+
+  wsClient.connect();
+}
 
 async function buildAudioState(): Promise<AudioState> {
   const ctx = new AudioContext();
@@ -184,12 +308,33 @@ async function buildAudioState(): Promise<AudioState> {
   // via disposeSynth() — without this the original code had no teardown path.
   const scope = effectScope(true);
   scope.run(() => {
+    // BPM is global (not per-track). Sync-flush so the applyingFromNetwork guard
+    // (held synchronously during applyOp/replaceProject) actually covers the
+    // watcher fire — see applyOp.ts. No engine call: the sequencer reads
+    // project.bpm directly each tick.
+    watch(
+      () => project.bpm,
+      (newVal, oldVal) => {
+        if (outbox && !isApplyingFromNetwork()) {
+          outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
+        }
+      },
+      { flush: 'sync' },
+    );
+
     for (let i = 0; i < 4; i++) {
       // Engine-type change triggers full sync: dispose old, build new, apply
       // the entire new slice. Slice watchers handle the steady-state case.
+      // Sync-flush + suppression guard so a remote swap doesn't echo back out.
       watch(
         () => project.tracks[i].engineType,
-        () => syncTrackToEngine(i)
+        (newType, oldType) => {
+          syncTrackToEngine(i);
+          if (outbox && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
+          }
+        },
+        { flush: 'sync' },
       );
 
       // Per-slice narrow watchers. Wrapping the getter in snapshot() does two
@@ -201,22 +346,65 @@ async function buildAudioState(): Promise<AudioState> {
         watch(
           () => snapshot(project.tracks[i].engines[slice]),
           (newVal, oldVal) => {
-            // Only apply if this slice is the active engine for the track.
-            // Edits to a non-active slice are buffered until that engine
-            // becomes active (the engineType watcher then full-syncs).
-            if (project.tracks[i].engineType !== slice) return;
             const changed = diffParams(newVal as unknown as Record<string, unknown>, oldVal as unknown as Record<string, unknown>);
-            if (changed) engines[i].applyParams(changed);
-          }
+            if (!changed) return;
+            // Only feed the engine if this slice is the track's active engine;
+            // a non-active slice's params apply when it becomes active (the
+            // engineType watcher full-syncs).
+            if (project.tracks[i].engineType === slice) {
+              engines[i].applyParams(changed);
+            }
+            // Emit regardless of active slice so peers stay in sync for edits
+            // to any writable param. Skipped while a network op is being
+            // applied (sync flush below means this fires inside the suppressed
+            // write, so the guard is still held).
+            if (outbox && !isApplyingFromNetwork()) {
+              emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
+            }
+          },
+          // flush:'sync' so the applyingFromNetwork guard — held synchronously
+          // during applyOp/replaceProject — actually covers this watcher fire.
+          // With the default async flush the guard would already be cleared by
+          // the time the watcher ran, and remote ops would echo back out.
+          { flush: 'sync' },
         );
       }
 
-      // Mixer watcher stays deep: solo logic is global, so any change has to
-      // recompute all 4 track gains via updateMixerGains.
+      // Mixer: any change recomputes all 4 track gains (solo logic is global).
+      // snapshot()+diff (instead of the old deep watch) lets us emit the
+      // individual changed leaf (volume/muted/soloed) outbound. Sync-flush for
+      // the suppression guard, as above.
       watch(
-        () => project.tracks[i].mixer,
-        () => updateMixerGains(),
-        { deep: true }
+        () => snapshot(project.tracks[i].mixer),
+        (newVal, oldVal) => {
+          updateMixerGains();
+          if (outbox && !isApplyingFromNetwork()) {
+            const changed = diffParams(
+              newVal as unknown as Record<string, unknown>,
+              oldVal as unknown as Record<string, unknown>,
+            );
+            if (changed) emitLeafDiff(['tracks', i, 'mixer'], changed, oldVal as unknown as Record<string, unknown>);
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      // Steps have no engine reaction (the sequencer reads them each tick), so
+      // this watcher exists purely to sync edits. Diff per-step and emit the
+      // changed leaf for each. Sync-flush + suppression guard, as above.
+      watch(
+        () => snapshot(project.tracks[i].steps),
+        (newSteps, oldSteps) => {
+          if (!outbox || isApplyingFromNetwork() || !oldSteps) return;
+          for (let j = 0; j < newSteps.length; j++) {
+            const changed = diffParams(
+              newSteps[j] as unknown as Record<string, unknown>,
+              oldSteps[j] as unknown as Record<string, unknown>,
+            );
+            if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
+          }
+        },
+        { flush: 'sync' },
       );
     }
   });
@@ -233,6 +421,9 @@ async function ensureAudio(): Promise<AudioState> {
   if (!bootstrapping) {
     bootstrapping = buildAudioState().then(s => {
       audioState.value = s;
+      // Bring the room connection up once engines exist. Gated so tests can
+      // opt out of opening a socket.
+      if (syncEnabled) buildSyncState();
       return s;
     });
   }
@@ -250,13 +441,23 @@ export function disposeSynth() {
   state.ctx.close().catch(() => { /* ctx may already be closed */ });
   audioState.value = null;
   bootstrapping = null;
+
+  // Tear down the sync layer too so a re-init (or a test) starts clean.
+  if (wsClient) {
+    wsClient.disconnect();
+    wsClient = null;
+  }
+  outbox = null;
+  fatalError.value = null;
+  resetApplyOpState();
+  resetPresence();
 }
 
 export function useSynth() {
   const currentStep = ref(-1);
   const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
 
-  const waveforms: OscillatorType[] = ['sine', 'square', 'sawtooth', 'triangle'];
+  const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
   function trackParam<K extends keyof EngineParamsMap, P extends keyof EngineParamsMap[K]>(
     engine: K, param: P, fallback: EngineParamsMap[K][P]
@@ -297,8 +498,8 @@ export function useSynth() {
   });
 
   // --- Synth params ---
-  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth' as OscillatorType);
-  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth' as OscillatorType);
+  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth');
+  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth');
   const osc1Coarse = trackParam('synth', 'osc1Coarse', 0);
   const osc1Fine = trackParam('synth', 'osc1Fine', 0);
   const osc2Coarse = trackParam('synth', 'osc2Coarse', 0);
@@ -449,5 +650,9 @@ export function useSynth() {
     // Force audio init without playing — needed by tests and any consumer
     // that needs the audio graph up before the first togglePlay.
     ensureAudio,
+    // --- Sync surface (read by RoomBar / ErrorOverlay in Task 16) ---
+    fatalError,       // ref<{code,message}|null> — set on a fatal server error
+    roster,           // ref<Identity[]> — everyone in the room
+    selfClientId,     // ref<string|null> — which roster entry is us
   };
 }

@@ -1,8 +1,13 @@
 <template>
-  <div class="knob" @dblclick="resetToDefault">
+  <div
+    class="knob"
+    :class="{ 'remote-active': activityColor }"
+    :style="activityColor ? { '--activity-color': activityColor } : undefined"
+    @dblclick="resetToDefault"
+  >
     <label class="knob-label">{{ label }}</label>
-    
-    <div 
+
+    <div
       class="knob-dial-container"
       @pointerdown="onPointerDown"
       ref="dialRef"
@@ -59,6 +64,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { Path } from '@fiddle/shared';
+import { touchedFor } from '../sync/presence';
 
 const props = withDefaults(defineProps<{
   label: string;
@@ -68,12 +75,25 @@ const props = withDefaults(defineProps<{
   modelValue: number;
   defaultValue?: number;
   format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+  // The sync path this knob writes to, e.g. ['tracks',0,'engines','synth','filterCutoff'].
+  // Optional: unsynced knobs (and, until the panels plumb it through, all knobs)
+  // leave it undefined and the collaboration affordances stay dormant.
+  syncPath?: Path;
 }>(), {
   defaultValue: undefined,
-  format: undefined
+  format: undefined,
+  syncPath: undefined,
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'gesture-end']);
+
+// When another client just touched this knob's path, render a fading ring in
+// their color. Reactive via presence's touchedMap; clears when the touch
+// record expires (presence reassigns the map on expiry, retriggering this).
+const activityColor = computed(() => {
+  if (!props.syncPath) return null;
+  return touchedFor(props.syncPath)?.color ?? null;
+});
 
 // Generate unique IDs for SVG defs to avoid collisions
 const instanceId = Math.random().toString(36).substring(2, 9);
@@ -210,6 +230,9 @@ const onPointerMove = (e: PointerEvent) => {
 const onPointerUp = () => {
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('pointerup', onPointerUp);
+  // Signal end-of-drag so the parent can flush a final value to the outbox
+  // immediately (bypassing the 50ms throttle). Wiring is layered in later.
+  emit('gesture-end');
 };
 
 const resetToDefault = () => {
@@ -248,6 +271,15 @@ const resetToDefault = () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  /* Animate the ring out so a remote touch fades rather than snaps off. */
+  transition: box-shadow 500ms ease-out;
+}
+
+/* Colored ring around the dial when another client just touched this param. */
+.knob.remote-active .knob-dial-container {
+  box-shadow: 0 0 0 2px var(--activity-color), 0 0 8px var(--activity-color);
+  transition: box-shadow 80ms ease-in;
 }
 
 .knob-svg {

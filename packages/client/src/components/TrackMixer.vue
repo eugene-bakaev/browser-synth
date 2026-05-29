@@ -39,6 +39,8 @@
             :defaultValue="DEFAULT_MIXER_STATE.volume"
             format="db"
             v-model="track.mixer.volume"
+            :syncPath="['tracks', index, 'mixer', 'volume']"
+            @gesture-end="endGesture(['tracks', index, 'mixer', 'volume'])"
           />
         </div>
 
@@ -69,6 +71,7 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
+import { endGesture } from '../composables/useSynth';
 
 const props = defineProps<{
   trackStates: ProjectTrack[];

@@ -1,36 +1,10 @@
 import { SoundEngine } from './types';
 import { SynthVoice } from './SynthVoice';
+import { DEFAULT_SYNTH_PARAMS, type ADSR, type SynthEngineParams } from '@fiddle/shared';
 
-export interface ADSR {
-  a: number;
-  d: number;
-  s: number;
-  r: number;
-}
-
-export interface SynthEngineParams {
-  osc1Type: OscillatorType;
-  osc2Type: OscillatorType;
-  osc1Coarse: number;
-  osc1Fine: number;
-  osc2Coarse: number;
-  osc2Fine: number;
-  osc1Level: number;
-  osc2Level: number;
-  // Duty cycle for the pulse worklet oscillator. Only audible when the
-  // matching oscNType === 'square'; the worklet provides a PolyBLEP-corrected
-  // pulse that band-limits cleanly across the keyboard. 0.5 = symmetric square.
-  osc1PulseWidth: number;
-  osc2PulseWidth: number;
-  filterCutoff: number;
-  filterRes: number;
-  filterEnvAmount: number;
-  filterEnv: ADSR;
-  ampEnv: ADSR;
-  // Sequencer-level concern: read by useSynth's step trigger, not by SynthEngine
-  // or SynthVoice. Lives here so engine presets carry their intended play mode.
-  mode: 'mono' | 'poly';
-}
+// Re-export so existing client-side consumers `import { SynthEngineParams } from
+// '../engine/SynthEngine'` keep working without churn.
+export type { ADSR, SynthEngineParams } from '@fiddle/shared';
 
 export class SynthEngine implements SoundEngine {
   readonly engineType = 'synth';
@@ -40,45 +14,28 @@ export class SynthEngine implements SoundEngine {
   private readonly numVoices = 6;
   private readonly masterVCA: GainNode;
 
-  // Single source of truth for what a "fresh" synth sounds like. Track defaults
-  // in useSynth.ts spread this rather than redeclaring values inline.
-  static readonly DEFAULT_PARAMS: SynthEngineParams = {
-    osc1Type: 'sawtooth',
-    osc2Type: 'sawtooth',
-    osc1Coarse: 0,
-    osc1Fine: 0,
-    osc2Coarse: 0,
-    osc2Fine: 0,
-    osc1Level: 0.5,
-    osc2Level: 0.5,
-    osc1PulseWidth: 0.5,
-    osc2PulseWidth: 0.5,
-    filterCutoff: 2000,
-    filterRes: 1,
-    // In octaves (bipolar). See SynthVoice.FILTER_ENV_MAX_OCTAVES for range.
-    filterEnvAmount: 2.4,
-    filterEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-    ampEnv: { a: 0.01, d: 0.2, s: 0.5, r: 0.5 },
-    mode: 'mono',
-  };
+  // Default param values now live in @fiddle/shared (DEFAULT_SYNTH_PARAMS) so
+  // server-side code can read them too. Re-exported on the class for backward
+  // compatibility with existing consumers (panels, presets, factory, tests).
+  static readonly DEFAULT_PARAMS: SynthEngineParams = DEFAULT_SYNTH_PARAMS;
 
-  // Parameter cache for voice initialization. Initialized from DEFAULT_PARAMS
+  // Parameter cache for voice initialization. Initialized from DEFAULT_SYNTH_PARAMS
   // so all the "what is the default synth sound" knowledge lives in one place.
-  private osc1Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc1Type;
-  private osc2Type: OscillatorType = SynthEngine.DEFAULT_PARAMS.osc2Type;
-  private osc1Coarse: number = SynthEngine.DEFAULT_PARAMS.osc1Coarse;
-  private osc1Fine: number = SynthEngine.DEFAULT_PARAMS.osc1Fine;
-  private osc2Coarse: number = SynthEngine.DEFAULT_PARAMS.osc2Coarse;
-  private osc2Fine: number = SynthEngine.DEFAULT_PARAMS.osc2Fine;
-  private osc1Level: number = SynthEngine.DEFAULT_PARAMS.osc1Level;
-  private osc2Level: number = SynthEngine.DEFAULT_PARAMS.osc2Level;
-  private osc1PulseWidth: number = SynthEngine.DEFAULT_PARAMS.osc1PulseWidth;
-  private osc2PulseWidth: number = SynthEngine.DEFAULT_PARAMS.osc2PulseWidth;
-  private baseCutoff: number = SynthEngine.DEFAULT_PARAMS.filterCutoff;
-  private filterEnvAmount: number = SynthEngine.DEFAULT_PARAMS.filterEnvAmount;
-  private filterRes: number = SynthEngine.DEFAULT_PARAMS.filterRes;
-  private filterEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.filterEnv };
-  private ampEnv: ADSR = { ...SynthEngine.DEFAULT_PARAMS.ampEnv };
+  private osc1Type: OscillatorType = DEFAULT_SYNTH_PARAMS.osc1Type;
+  private osc2Type: OscillatorType = DEFAULT_SYNTH_PARAMS.osc2Type;
+  private osc1Coarse: number = DEFAULT_SYNTH_PARAMS.osc1Coarse;
+  private osc1Fine: number = DEFAULT_SYNTH_PARAMS.osc1Fine;
+  private osc2Coarse: number = DEFAULT_SYNTH_PARAMS.osc2Coarse;
+  private osc2Fine: number = DEFAULT_SYNTH_PARAMS.osc2Fine;
+  private osc1Level: number = DEFAULT_SYNTH_PARAMS.osc1Level;
+  private osc2Level: number = DEFAULT_SYNTH_PARAMS.osc2Level;
+  private osc1PulseWidth: number = DEFAULT_SYNTH_PARAMS.osc1PulseWidth;
+  private osc2PulseWidth: number = DEFAULT_SYNTH_PARAMS.osc2PulseWidth;
+  private baseCutoff: number = DEFAULT_SYNTH_PARAMS.filterCutoff;
+  private filterEnvAmount: number = DEFAULT_SYNTH_PARAMS.filterEnvAmount;
+  private filterRes: number = DEFAULT_SYNTH_PARAMS.filterRes;
+  private filterEnv: ADSR = { ...DEFAULT_SYNTH_PARAMS.filterEnv };
+  private ampEnv: ADSR = { ...DEFAULT_SYNTH_PARAMS.ampEnv };
 
   constructor(sharedCtx?: AudioContext, destination?: AudioNode) {
     this.ctx = sharedCtx ?? new AudioContext();
