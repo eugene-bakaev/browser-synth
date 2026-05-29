@@ -9,10 +9,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.a" format="ms" v-model="filterEnv.a" />
-      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.d" format="ms" v-model="filterEnv.d" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.filterEnv.s" format="percent" v-model="filterEnv.s" />
-      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.filterEnv.r" format="ms" v-model="filterEnv.r" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.a" format="ms" v-model="filterEnv.a" :syncPath="ks.pathFor(['filterEnv','a'])" @gesture-end="ks.end(['filterEnv','a'])" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.d" format="ms" v-model="filterEnv.d" :syncPath="ks.pathFor(['filterEnv','d'])" @gesture-end="ks.end(['filterEnv','d'])" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.filterEnv.s" format="percent" v-model="filterEnv.s" :syncPath="ks.pathFor(['filterEnv','s'])" @gesture-end="ks.end(['filterEnv','s'])" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.filterEnv.r" format="ms" v-model="filterEnv.r" :syncPath="ks.pathFor(['filterEnv','r'])" @gesture-end="ks.end(['filterEnv','r'])" />
     </div>
   </div>
 
@@ -26,10 +26,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.a" format="ms" v-model="ampEnv.a" />
-      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.d" format="ms" v-model="ampEnv.d" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.ampEnv.s" format="percent" v-model="ampEnv.s" />
-      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.ampEnv.r" format="ms" v-model="ampEnv.r" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.a" format="ms" v-model="ampEnv.a" :syncPath="ks.pathFor(['ampEnv','a'])" @gesture-end="ks.end(['ampEnv','a'])" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.d" format="ms" v-model="ampEnv.d" :syncPath="ks.pathFor(['ampEnv','d'])" @gesture-end="ks.end(['ampEnv','d'])" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.ampEnv.s" format="percent" v-model="ampEnv.s" :syncPath="ks.pathFor(['ampEnv','s'])" @gesture-end="ks.end(['ampEnv','s'])" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.ampEnv.r" format="ms" v-model="ampEnv.r" :syncPath="ks.pathFor(['ampEnv','r'])" @gesture-end="ks.end(['ampEnv','r'])" />
     </div>
   </div>
 </template>
@@ -38,8 +38,10 @@
 import { computed } from 'vue';
 import Knob from './Knob.vue';
 import { SynthEngine } from '../engine/SynthEngine';
+import { useKnobSync } from '../sync/knobSync';
 
 const DEFAULTS = SynthEngine.DEFAULT_PARAMS;
+const ks = useKnobSync('synth');
 
 const props = withDefaults(
   defineProps<{

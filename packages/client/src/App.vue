@@ -199,8 +199,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, provide } from 'vue';
 import { useSynth } from './composables/useSynth';
+import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import {
   clearTrack as clearProjectTrack,
   shiftTrack as shiftProjectTrack,
@@ -267,6 +268,11 @@ const {
   selectTrack,
   getTrackEngineType,
 } = useSynth();
+
+// Hand the focused-track index down to the engine/drum panels so each Knob can
+// build its sync path (['tracks', idx, 'engines', <engine>, <field>]) for the
+// remote-activity ring + gesture-end flush. See sync/knobSync.ts.
+provide(ACTIVE_TRACK_KEY, activeTrackIndex);
 
 const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null

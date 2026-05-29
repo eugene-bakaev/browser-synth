@@ -122,6 +122,14 @@ let wsClient: WsClient | null = null;
 let outbox: Outbox | null = null;
 const fatalError = ref<{ code: string; message: string } | null>(null);
 
+// Flush the outbox entry for `path` immediately — called from a knob's
+// gesture-end (mouseup) so the final drag value goes out without waiting out
+// the 50ms throttle. No-op when sync is off or nothing is pending. Used by the
+// panels via useKnobSync (see sync/knobSync.ts).
+export function endGesture(path: Path): void {
+  outbox?.flushPath(path);
+}
+
 // Tests flip this off so ensureAudio() doesn't open a real socket; production
 // leaves it on. Kept here (not a build-time const) so a test can toggle it on
 // the freshly-imported module instance.
