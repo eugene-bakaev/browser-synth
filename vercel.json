@@ -2,5 +2,8 @@
   "framework": "vite",
   "installCommand": "npm install",
   "buildCommand": "npm run build -w @fiddle/client",
-  "outputDirectory": "packages/client/dist"
+  "outputDirectory": "packages/client/dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
