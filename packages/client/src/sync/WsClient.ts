@@ -216,9 +216,9 @@ export class WsClient {
     this.opts.onStateChange?.(s);
   }
 
-  // === Internal: persistence ===
+  // === Persistence (public so the Outbox + applyOp layers can read/advance them) ===
 
-  private getPersisted(): PersistedSyncState | null {
+  getPersisted(): PersistedSyncState | null {
     const raw = this.storage.getItem(this.storageKey);
     if (!raw) return null;
     try {
@@ -234,7 +234,7 @@ export class WsClient {
 
   // Monotonic: never roll the recorded `opIdLastSeen` backwards (an in-flight
   // duplicate or a misordered replay should not clobber forward progress).
-  private recordOpIdSeen(opId: number): void {
+  recordOpIdSeen(opId: number): void {
     const persisted = this.getPersisted();
     if (!persisted) return;
     if (opId > persisted.opIdLastSeen) {
