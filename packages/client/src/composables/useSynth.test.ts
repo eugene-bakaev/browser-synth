@@ -79,6 +79,9 @@ describe('useSynth narrow watchers (A2)', () => {
     const mod = await import('./useSynth');
     useSynth = mod.useSynth;
     disposeSynth = mod.disposeSynth;
+    // These tests exercise the audio watchers only — keep the WS layer dark so
+    // ensureAudio() doesn't open a real socket.
+    mod.setSyncEnabled(false);
     // Reset audio state between tests so each gets a fresh engine to spy on.
     disposeSynth();
   });
@@ -127,6 +130,92 @@ describe('useSynth narrow watchers (A2)', () => {
     await nextTick();
 
     expect(applySpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('sync integration', () => {
+  // A minimal stand-in for WsClient: records what the Outbox hands it and lets
+  // the test drive inbound messages via the captured onMessage callback. Wired
+  // in through setWsClientFactory so ensureAudio() never opens a real socket.
+  function makeFakeWsClient(opts: any) {
+    let seq = 0;
+    return {
+      _opts: opts,
+      sent: [] as any[],
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      send(op: any) { this.sent.push(op); },
+      isLive: () => true,
+      nextClientSeq: () => ++seq,
+      recordOpIdSeen: vi.fn(),
+      getPersisted: () => null,
+    };
+  }
+
+  async function bootWithFakeSocket() {
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+    const mod = await import('./useSynth');
+    let fake: ReturnType<typeof makeFakeWsClient>;
+    mod.setWsClientFactory((o: any) => { fake = makeFakeWsClient(o); return fake as any; });
+    mod.setSyncEnabled(true);
+    mod.disposeSynth();
+    const synth = mod.useSynth();
+    await synth.ensureAudio();
+    return { mod, synth, fake: fake! };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // buildSyncState resolves the room from window.location and builds a ws://
+    // URL from location — stub both for the node test env.
+    vi.stubGlobal('window', {
+      location: { pathname: '/r/testroom1' },
+      history: { replaceState: vi.fn() },
+    });
+    vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/r/testroom1' });
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('emits a leaf op to the socket when a synth param changes', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth.filterCutoff = 1234;
+    vi.advanceTimersByTime(50); // clear the 50ms throttle window
+    expect(fake.sent.length).toBe(1);
+    expect(fake.sent[0].path).toEqual(['tracks', 0, 'engines', 'synth', 'filterCutoff']);
+    expect(fake.sent[0].value).toBe(1234);
+  });
+
+  it('drills nested ADSR edits to leaf paths (no whole-object writes)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth.filterEnv.a = 0.123;
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.length).toBe(1);
+    expect(fake.sent[0].path).toEqual(['tracks', 0, 'engines', 'synth', 'filterEnv', 'a']);
+    expect(fake.sent[0].value).toBe(0.123);
+  });
+
+  it('applies a remote op without echoing it back out (suppression holds)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 0, 'engines', 'synth', 'filterCutoff'], value: 777,
+    });
+    expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(777);
+    vi.advanceTimersByTime(100);
+    expect(fake.sent.length).toBe(0);
+  });
+
+  it('rolls back the local value on nack', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth.filterCutoff = 1500;
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.length).toBe(1);
+    const clientSeq = fake.sent[0].clientSeq;
+    fake._opts.onMessage({
+      v: 1, type: 'nack', clientSeq, code: 'value.invalid', message: 'too high',
+    });
+    expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(2000); // default restored
   });
 });
 

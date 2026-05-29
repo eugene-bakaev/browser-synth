@@ -13,12 +13,22 @@
 // older op for a path we've already advanced past is dropped rather than
 // allowed to clobber the newer value.
 
-import type { Path, Project, SetOpBroadcast } from '@fiddle/shared';
+import type { Project, SetOpBroadcast } from '@fiddle/shared';
+import { setDeep } from './setDeep.js';
 
-// Module-scope flag: set true while applyOp runs; the per-slice watcher
-// in useSynth.ts checks this and skips calling Outbox.enqueue.
+// Module-scope flag: set true while a programmatic (network-origin) write runs;
+// the sync-participating watchers in useSynth.ts check this and skip calling
+// Outbox.enqueue so an applied remote op doesn't echo straight back out.
+//
+// This only works because those watchers run with `flush: 'sync'` — they fire
+// synchronously inside the suppressed write, while the flag is still held.
+// `enterSuppress`/`exitSuppress` are exported so the Outbox rollback and the
+// snapshot-replace path (which also mutate `project` programmatically) can wrap
+// their writes in the same suppression without going through `applyOp`.
 let applyingFromNetwork = false;
 export function isApplyingFromNetwork(): boolean { return applyingFromNetwork; }
+export function enterSuppress(): void { applyingFromNetwork = true; }
+export function exitSuppress(): void { applyingFromNetwork = false; }
 
 // Track the most recent opId applied to each path so a late echo of an
 // older op cannot overwrite a newer one.
@@ -30,11 +40,11 @@ export function applyOp(project: Project, op: SetOpBroadcast): boolean {
   if (op.opId <= prev) return false;  // stale; ignore
   lastAppliedOpIdForPath.set(key, op.opId);
 
-  applyingFromNetwork = true;
+  enterSuppress();
   try {
     setDeep(project as unknown as Record<string, unknown>, op.path, op.value);
   } finally {
-    applyingFromNetwork = false;
+    exitSuppress();
   }
   return true;
 }
@@ -42,14 +52,4 @@ export function applyOp(project: Project, op: SetOpBroadcast): boolean {
 export function resetApplyOpState(): void {
   // For tests + reconnect.
   lastAppliedOpIdForPath.clear();
-}
-
-function setDeep(obj: Record<string, unknown>, path: Path, value: unknown): void {
-  if (path.length === 0) return;
-  let cursor: any = obj;
-  for (let i = 0; i < path.length - 1; i++) {
-    cursor = cursor[path[i]];
-    if (cursor == null) throw new Error(`applyOp: path break at segment ${i} (${String(path[i])})`);
-  }
-  cursor[path[path.length - 1]] = value;
 }
