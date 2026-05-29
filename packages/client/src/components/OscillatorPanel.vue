@@ -8,9 +8,9 @@
           <option v-for="t in waveforms" :key="t" :value="t">{{ t }}</option>
         </select>
         <div class="osc-knobs">
-          <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc1Coarse" format="octave" v-model="osc1Coarse" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc1Fine" format="cents" v-model="osc1Fine" />
-          <Knob v-if="osc1Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc1PulseWidth" format="percent" v-model="osc1PulseWidth" />
+          <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc1Coarse" format="octave" v-model="osc1Coarse" :syncPath="ks.pathFor('osc1Coarse')" @gesture-end="ks.end('osc1Coarse')" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc1Fine" format="cents" v-model="osc1Fine" :syncPath="ks.pathFor('osc1Fine')" @gesture-end="ks.end('osc1Fine')" />
+          <Knob v-if="osc1Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc1PulseWidth" format="percent" v-model="osc1PulseWidth" :syncPath="ks.pathFor('osc1PulseWidth')" @gesture-end="ks.end('osc1PulseWidth')" />
         </div>
       </div>
       <div class="osc-unit">
@@ -19,9 +19,9 @@
           <option v-for="t in waveforms" :key="t" :value="t">{{ t }}</option>
         </select>
         <div class="osc-knobs">
-          <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc2Coarse" format="octave" v-model="osc2Coarse" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc2Fine" format="cents" v-model="osc2Fine" />
-          <Knob v-if="osc2Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc2PulseWidth" format="percent" v-model="osc2PulseWidth" />
+          <Knob label="Coarse" :min="-3" :max="3" :step="1" :defaultValue="DEFAULTS.osc2Coarse" format="octave" v-model="osc2Coarse" :syncPath="ks.pathFor('osc2Coarse')" @gesture-end="ks.end('osc2Coarse')" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" :defaultValue="DEFAULTS.osc2Fine" format="cents" v-model="osc2Fine" :syncPath="ks.pathFor('osc2Fine')" @gesture-end="ks.end('osc2Fine')" />
+          <Knob v-if="osc2Type === 'square'" label="Pulse" :min="0.05" :max="0.95" :step="0.01" :defaultValue="DEFAULTS.osc2PulseWidth" format="percent" v-model="osc2PulseWidth" :syncPath="ks.pathFor('osc2PulseWidth')" @gesture-end="ks.end('osc2PulseWidth')" />
         </div>
       </div>
     </div>
@@ -31,9 +31,11 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import { SynthEngine } from '../engine/SynthEngine';
+import { useKnobSync } from '../sync/knobSync';
 import type { OscillatorTypeLiteral } from '@fiddle/shared';
 
 const DEFAULTS = SynthEngine.DEFAULT_PARAMS;
+const ks = useKnobSync('synth');
 
 defineProps<{
   // OscillatorTypeLiteral is the 4-waveform union shared with the engine

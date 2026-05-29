@@ -46,6 +46,26 @@ describe('Outbox', () => {
     expect(h.sent[0].value).toBe(130);
   });
 
+  it('flushPath sends the pending throttled entry immediately (gesture end)', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 121, 120, false);
+    h.outbox.enqueue(['bpm'], 144, 120, false); // still within throttle window
+    expect(h.sent.length).toBe(0);
+    h.outbox.flushPath(['bpm']);
+    expect(h.sent.length).toBe(1);
+    expect(h.sent[0].value).toBe(144); // latest value, no extra wait
+    // The timer was cancelled, so advancing past the window sends nothing more.
+    vi.advanceTimersByTime(50);
+    expect(h.sent.length).toBe(1);
+  });
+
+  it('flushPath is a no-op when nothing is pending for the path', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 121, 120, false);
+    h.outbox.flushPath(['tracks', 0, 'mixer', 'volume']); // different path
+    expect(h.sent.length).toBe(0);
+  });
+
   it('coalesces by path while offline', () => {
     const h = harness(false);
     h.outbox.enqueue(['bpm'], 121, 120, false);

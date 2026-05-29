@@ -89,6 +89,21 @@ export class Outbox {
     }
   }
 
+  /**
+   * Flush the pending throttled entry for `path` immediately (gesture end —
+   * e.g. knob mouseup). The final drag value is already sitting in `pending`
+   * with its throttle timer running; this sends it now instead of waiting out
+   * the window. No-op if nothing is pending for the path (e.g. a click with no
+   * change, or already flushed). Offline routing is handled by flushEntry.
+   */
+  flushPath(path: Path): void {
+    const key = pathKey(path);
+    const entry = this.pending.get(key);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    this.flushEntry(key, entry);
+  }
+
   /** Server confirmed our op. Drop the in-flight tracking. */
   onEcho(clientSeq: number): void {
     this.inFlight.delete(clientSeq);
