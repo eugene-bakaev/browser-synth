@@ -20,6 +20,13 @@ async function boot(page: Page, room: string): Promise<void> {
 // exercises the steps → emitLeafDiff → applyOp round trip.
 const firstNote = (page: Page) => page.locator('select:not(.tool-select)').first();
 
+// Focus track 0 (the overview tracker title bar emits select-track) so the
+// engine selector + per-track mixer strips are on screen.
+async function focusTrack0(page: Page): Promise<void> {
+  await page.locator('.tracker-title-bar').first().click();
+  await expect(page.locator('.engine-selector')).toBeVisible();
+}
+
 test('two clients sync roster, bpm, and step edits', async ({ browser }) => {
   const room = freshRoom();
   const ctxA = await browser.newContext();
@@ -45,6 +52,65 @@ test('two clients sync roster, bpm, and step edits', async ({ browser }) => {
 
     // Stable — no echo loop pushed A's bpm back off 143.
     await expect(a.locator('.bpm input')).toHaveValue('143');
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('engine swap and mixer mute sync between clients', async ({ browser }) => {
+  const room = freshRoom();
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+
+  try {
+    await boot(a, room);
+    await boot(b, room);
+    await focusTrack0(a);
+    await focusTrack0(b);
+
+    // engineType round-trip (A → B): the engineType watcher's emit.
+    await a.locator('.engine-selector button', { hasText: 'KICK' }).click();
+    await expect(b.locator('.engine-selector button.active')).toHaveText('KICK');
+
+    // Mixer mute round-trip (A → B): the mixer watcher's emitLeafDiff (discrete
+    // → immediate). Strip 0's mute button reflects tracks[0].mixer.muted.
+    await a.locator('.btn-mute').first().click();
+    await expect(b.locator('.btn-mute').first()).toHaveClass(/active/);
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('reconnects after going offline and flushes the coalesced final value', async ({ browser }) => {
+  const room = freshRoom();
+  const ctxA = await browser.newContext();
+  const ctxB = await browser.newContext();
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+
+  try {
+    await boot(a, room);
+    await boot(b, room);
+    await a.locator('.bpm input').fill('120');
+    await expect(b.locator('.bpm input')).toHaveValue('120');
+
+    // Cut A's network. The WS drops; A's edits queue in the Outbox offline
+    // queue (coalesced per path, last-write-wins) instead of going out.
+    await ctxA.setOffline(true);
+    await a.locator('.bpm input').fill('150');
+    await a.locator('.bpm input').fill('151');
+    await a.locator('.bpm input').fill('152');
+    // B hasn't seen any of them.
+    await expect(b.locator('.bpm input')).toHaveValue('120');
+
+    // Back online → WsClient reconnects (resume) and onLive flushes the single
+    // coalesced final value to the server, which broadcasts it to B.
+    await ctxA.setOffline(false);
+    await expect(b.locator('.bpm input')).toHaveValue('152', { timeout: 20_000 });
   } finally {
     await ctxA.close();
     await ctxB.close();

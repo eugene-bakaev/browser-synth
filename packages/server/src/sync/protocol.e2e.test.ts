@@ -132,6 +132,46 @@ describe('protocol e2e', () => {
     c.close();
   });
 
+  it('reconnect with a known clientId resumes the same identity (no unknown_client)', async () => {
+    const a = connect('e2e-resume');
+    await a.opened;
+    a.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+    const w1 = await a.waitFor((m) => m.type === 'welcome');
+    if (w1.type !== 'welcome') throw new Error('unreachable');
+    const clientId = w1.clientId;
+    a.send({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 130 });
+    await a.waitFor((m) => m.type === 'set');
+    a.close();
+
+    // Reconnect with the same clientId + last opId — the room (and identity)
+    // survive the brief gap, so the server resumes us.
+    const a2 = connect('e2e-resume');
+    await a2.opened;
+    a2.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION, clientId, resumeFromOpId: 1 });
+    const w2 = await a2.waitFor((m) => m.type === 'welcome');
+    await a2.waitFor((m) => m.type === 'sync.complete');
+    if (w2.type !== 'welcome') throw new Error('unreachable');
+    expect(w2.clientId).toBe(clientId);
+    expect(a2.recv.find((m) => m.type === 'error' && m.code === 'resume.unknown_client')).toBeUndefined();
+    a2.close();
+  });
+
+  it('reconnect with an unknown clientId (server lost state) issues a fresh identity + non-fatal resume.unknown_client', async () => {
+    // Models the server-restart case: in-memory room state is gone, so a client
+    // resuming with its old clientId is unknown — gets a new identity and a
+    // non-fatal warning, then a fresh snapshot.
+    const c = connect('e2e-resume-unknown');
+    await c.opened;
+    c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION, clientId: 'c_ghost00', resumeFromOpId: 5 });
+    const welcome = await c.waitFor((m) => m.type === 'welcome');
+    const err = await c.waitFor((m) => m.type === 'error' && m.code === 'resume.unknown_client');
+    await c.waitFor((m) => m.type === 'sync.complete');
+    if (welcome.type !== 'welcome' || err.type !== 'error') throw new Error('unreachable');
+    expect(welcome.clientId).not.toBe('c_ghost00');
+    expect(err.fatal).toBe(false);
+    c.close();
+  });
+
   it('schema version mismatch is fatal', async () => {
     const c = connect('e2e-schema');
     await c.opened;
