@@ -7,7 +7,7 @@ services:
   - type: web
     name: fiddle-server
     runtime: node            # if the validator rejects this, use `env: node`
-    plan: free               # bump to "starter" to avoid idle spin-down (see note)
+    plan: starter            # always-on (no idle spin-down); in-memory rooms survive between connections
     region: oregon           # pick the region closest to your users
     branch: main
     rootDir: .               # monorepo root: build runs across the workspace
