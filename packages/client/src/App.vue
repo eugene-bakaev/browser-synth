@@ -1,10 +1,12 @@
 <template>
+  <ErrorOverlay />
   <div class="synth-container">
     <header>
       <div class="brand">
         <h1>Fiddle Synth</h1>
         <span class="sub-brand">// 4-TRACK SEQUENCER</span>
       </div>
+      <RoomBar />
       <div class="transport">
         <button @click="togglePlay" :class="{ playing: sequencer.isPlaying }">
           {{ sequencer.isPlaying ? 'STOP' : 'PLAY' }}
@@ -214,6 +216,8 @@ import {
   resetEnginePatch,
 } from './project';
 import Tracker from './components/Tracker.vue';
+import RoomBar from './components/RoomBar.vue';
+import ErrorOverlay from './components/ErrorOverlay.vue';
 import SynthPanel from './components/SynthPanel.vue';
 import KickPanel from './components/KickPanel.vue';
 import HatPanel from './components/HatPanel.vue';
