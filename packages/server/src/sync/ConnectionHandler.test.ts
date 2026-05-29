@@ -165,4 +165,156 @@ describe('ConnectionHandler', () => {
     }
     expect(socket.closed).toBe(true);
   });
+
+  describe('set op handling', () => {
+    async function helloOne(): Promise<{
+      socket: MockSocket;
+      pool: FakePool;
+      handler: ConnectionHandler;
+    }> {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      // Drain hello-phase frames so subsequent assertions see only op output.
+      socket.sent.length = 0;
+      return { socket, pool, handler };
+    }
+
+    it('valid set op is appended and broadcast (with clientSeq echo)', async () => {
+      const { socket, handler } = await helloOne();
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['bpm'],
+        value: 140,
+      });
+
+      const set = socket.sent.find((m) => m.type === 'set');
+      expect(set).toBeDefined();
+      if (!set || set.type !== 'set') throw new Error('unreachable');
+      expect(set.opId).toBe(1);
+      expect(set.clientSeq).toBe(1);
+      expect(set.value).toBe(140);
+      expect(set.path).toEqual(['bpm']);
+    });
+
+    it('invalid path is nacked with path.invalid', async () => {
+      const { socket, handler } = await helloOne();
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['schemaVersion'],
+        value: 99,
+      });
+
+      const nack = socket.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+      expect(nack.code).toBe('path.invalid');
+      expect(nack.clientSeq).toBe(1);
+      // And nothing was broadcast.
+      expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
+    });
+
+    it('invalid value is nacked with value.invalid', async () => {
+      const { socket, handler } = await helloOne();
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['bpm'],
+        value: 9999,
+      });
+
+      const nack = socket.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+      expect(nack.code).toBe('value.invalid');
+      expect(nack.clientSeq).toBe(1);
+      expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
+    });
+
+    it('duplicate clientSeq is nacked with op.duplicate', async () => {
+      const { socket, handler } = await helloOne();
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['bpm'],
+        value: 140,
+      });
+      // First one should have broadcast.
+      expect(socket.sent.find((m) => m.type === 'set')).toBeDefined();
+      socket.sent.length = 0;
+
+      await handler.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 1,
+        path: ['bpm'],
+        value: 142,
+      });
+
+      const nack = socket.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+      expect(nack.code).toBe('op.duplicate');
+      expect(nack.clientSeq).toBe(1);
+      // No re-broadcast on dedup.
+      expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
+    });
+
+    it('broadcast hides clientSeq from non-originators', async () => {
+      // Set up two clients in the same room.
+      const sockA = makeMockSocket();
+      const sockB = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sockA);
+      pool.add('room1', sockB);
+
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog);
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog);
+      await handlerA.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      await handlerB.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      sockA.sent.length = 0;
+      sockB.sent.length = 0;
+
+      await handlerA.onMessage({
+        v: 1,
+        type: 'set',
+        clientSeq: 42,
+        path: ['bpm'],
+        value: 132,
+      });
+
+      const setA = sockA.sent.find((m) => m.type === 'set');
+      const setB = sockB.sent.find((m) => m.type === 'set');
+      expect(setA).toBeDefined();
+      expect(setB).toBeDefined();
+      if (!setA || setA.type !== 'set') throw new Error('unreachable');
+      if (!setB || setB.type !== 'set') throw new Error('unreachable');
+      expect(setA.clientSeq).toBe(42);
+      expect(setB.clientSeq).toBeUndefined();
+      // Both should see the same opId + value.
+      expect(setA.opId).toBe(setB.opId);
+      expect(setA.value).toBe(132);
+      expect(setB.value).toBe(132);
+    });
+  });
 });
