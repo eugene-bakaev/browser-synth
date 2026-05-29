@@ -14,7 +14,7 @@ A browser-based **4-track step sequencer + synthesizer** built on Vue 3 + Web Au
 
 All user-editable state lives in a `Project` object that is auto-saved to `localStorage` on every change and restored on page load. See §13 for the project module and [`CODE_REVIEW.md`](./CODE_REVIEW.md) F1 for status.
 
-A **Fastify + WebSocket server** has been scaffolded in `packages/server/` to host a future live-collaboration mode (project state synced over WS while audio stays local in each browser). At time of writing it is a skeleton only — `/health` and a `/ws` placeholder that emits `{ type: 'hello' }`. No sync protocol exists yet; see §14 for the current state and intent.
+A **Fastify WebSocket sync server** in `packages/server/` powers a live multi-user mode: project state is synced over WS between clients (per-field last-write-wins) while audio renders locally in each browser. It's implemented and deployed (client on Vercel, server on Render). See §14–§16 for the backend, sync protocol, and deployment.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -42,28 +42,34 @@ A **Fastify + WebSocket server** has been scaffolded in `packages/server/` to ho
 
 ## 2. Module map
 
-The repo is an **npm workspaces monorepo** with three packages under `packages/`. The client is the Vue/Vite app described throughout this doc; the server is a Fastify + `ws` skeleton being prepared for a future WebSocket-synced project state (see §14); shared holds the symbols that must compile in both Node and the browser.
+The repo is an **npm workspaces monorepo** with three packages under `packages/`. The client is the Vue/Vite app described throughout this doc; the server is a Fastify WebSocket **sync server** that carries real-time project-state mutations between clients (see §14–§16); shared holds the project schema, sync-protocol types, and helpers that must compile in both Node and the browser.
 
 ```
 browser-synth/
 ├── package.json                # workspaces: ["packages/*"]; root scripts fan out via -w
 ├── tsconfig.base.json          # strict TS base; client and server each extend + override
-├── vercel.json                 # Vercel deploys ONLY @fiddle/client (buildCommand -w @fiddle/client)
+├── vercel.json                 # Vercel deploys @fiddle/client; SPA rewrite /(.*) → /index.html (§16)
+├── render.yaml                 # Render Blueprint: @fiddle/server web service (esbuild bundle, §16)
 ├── docker-compose.yml          # local server dev: tsx watch + bind-mounts on packages/server/src + packages/shared/src
-├── docs/                       # this doc, CODE_REVIEW.md, superpowers/specs/, superpowers/plans/
+├── docs/                       # this doc, CODE_REVIEW.md, ROADMAP.md, superpowers/specs/, superpowers/plans/
 └── packages/
-    ├── shared/                 # @fiddle/shared — see §14
-    │   └── src/index.ts        # EngineType, MixerState, DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION
-    ├── server/                 # @fiddle/server — see §14
-    │   ├── Dockerfile          # multi-stage: builder → runtime (node:22-alpine, ~253MB)
-    │   ├── .dockerignore
+    ├── shared/                 # @fiddle/shared — project schema + sync protocol (see §14)
+    │   └── src/
+    │       ├── index.ts        # barrel: EngineType, MixerState, PROJECT_SCHEMA_VERSION, + the below
+    │       ├── engines/        # per-engine param shapes + DEFAULT_PARAMS (portable, no DOM/Audio)
+    │       ├── project/        # Project/ProjectTrack/Step types, freshProject, Zod schema,
+    │       │                   #   accept-list (validatePathAndValue — the writable-path allow-list)
+    │       ├── protocol/       # wire message types + Zod schemas, identity constants, PROTOCOL_VERSION
+    │       └── path.ts         # setDeep(obj, path, value) + pathKey — shared by client + server
+    ├── server/                 # @fiddle/server — Fastify WebSocket sync server (see §14–§15)
+    │   ├── Dockerfile          # multi-stage: builder → runtime (node:22-alpine)
     │   └── src/
     │       ├── index.ts        # listen(host, port) bootstrap; reads PORT/HOST env
-    │       ├── server.ts       # buildServer() — registers @fastify/websocket + routes
-    │       ├── server.test.ts  # smoke test via Fastify .inject()
-    │       └── routes/
-    │           ├── health.ts   # GET /health → { ok: true }
-    │           └── ws.ts       # GET /ws (placeholder; sends { type: 'hello' } on connect)
+    │       ├── server.ts       # buildServer() — registers @fastify/websocket + routes + shared store/pool
+    │       ├── routes/         # health.ts (GET /health), ws.ts (GET /ws/:roomId → ConnectionHandler)
+    │       ├── room/           # RoomStore interface + InMemoryRoomStore, identity assignment, types
+    │       └── sync/           # ConnectionHandler (per-conn lifecycle), ConnectionPool, Heartbeat,
+    │                           #   rate-limit (TokenBucket), protocol.e2e.test.ts (real-socket e2e)
     └── client/                 # @fiddle/client — the Vue/Vite app
         ├── vite.config.ts
         ├── vitest.config.ts
@@ -100,17 +106,27 @@ browser-synth/
             │   ├── preset.ts       # Preset type, makePreset, serializePreset/deserializePreset, applyPreset
             │   ├── preset-file-io.ts # savePresetToFile(), openPresetFromFile()
             │   └── index.ts        # public barrel
-            ├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer, Visualizer
+            ├── sync/                       # real-time collab client (see §15)
+            │   ├── WsClient.ts             # WS state machine + sessionStorage clientId/seq + reconnect
+            │   ├── Outbox.ts               # outbound: 50ms throttle, coalesce, offline queue, nack rollback, flushPath
+            │   ├── applyOp.ts              # inbound deep-set into project + applyingFromNetwork suppression
+            │   ├── messageDispatch.ts      # server-message switch (welcome/snapshot/set/presence/error/…)
+            │   ├── presence.ts             # roster + per-path "touched" map for the activity ring
+            │   ├── knobSync.ts             # useKnobSync(engine): per-knob syncPath + gesture-end (§15)
+            │   └── roomId.ts               # /r/:roomId parsing + random room id generation
+            ├── components/                 # Knob, Tracker, panels (SynthPanel, KickPanel, …), TrackMixer,
+            │                               #   Visualizer, RoomBar (roster chips), ErrorOverlay (fatal sync errors)
             └── utils/                      # noteToFreq, chord resolution, debounce, deepMerge
 ```
 
-**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project module has its own test suite. **183 tests** total at time of writing (182 client + 1 server smoke test).
+**Test layout:** every engine and the sequencer have colocated `.test.ts` files using `vi.stubGlobal` to mock `AudioContext` / `AudioNode` / `AudioParam`. The project, sync, and server modules have their own suites. **278 unit tests** at time of writing (215 client + 34 server + 29 shared), plus **7 server protocol e2e** (`*.e2e.test.ts`, real WebSocket sockets) and **4 Playwright browser e2e** (`e2e/sync.spec.ts`, two-tab collaboration).
 
 **Common commands** (from repo root):
-- `npm run dev` — client (Vite) + server (`tsx watch`) in parallel via `npm-run-all`.
-- `npm run build` — client (`vue-tsc && vite build`) then server (`tsc`). Vercel only runs the client build.
-- `npm test` — fans out to every workspace with a `test` script.
-- `npm run typecheck` — same fan-out for `vue-tsc --noEmit` (client) and `tsc --noEmit` (server).
+- `npm run dev` — client (Vite) + server (`tsx watch`) in parallel via `npm-run-all`. Vite proxies `/ws` → `localhost:8787`, so two browser tabs sync locally with no extra config.
+- `npm run build` — client (`vue-tsc && vite build`) then server (`tsc --noEmit` typecheck **then esbuild bundle** → a single self-contained `dist/index.js`; see §16). Vercel only runs the client build.
+- `npm test` — fans out to every workspace with a `test` script (unit + integration; e2e excluded).
+- `npm run test:e2e:server` — server protocol e2e (boots a real listening socket). `npm run e2e` — Playwright browser e2e (boots dev client + server).
+- `npm run typecheck` — `vue-tsc --noEmit` (client) and `tsc --noEmit` (server + shared).
 - `docker compose up` — server only, port 8787, live-reload on edits to `packages/server/src` or `packages/shared/src`.
 
 ---
@@ -471,11 +487,51 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **Why this shape.** The lazy singleton is the middle ground that wins on every axis: no pre-gesture `AudioContext` creation, idempotent `useSynth()`, explicit teardown via `EffectScope` + `disposeSynth()`, single AudioContext for the page, and `project` survives HMR re-mounts of components (the module is cached). Knob turns before first play still mutate `project.tracks`; `ensureAudio()` builds engines from current state, so pre-play edits are honored on first play.
 
+### D9 — Sync is per-field LWW path ops, not CRDT/OT; transport stays local
+
+**Decision.** Collaboration ships project mutations as `{ path, value }` last-write-wins ops validated against a static accept-list, broadcast through a server op log. Audio and the sequencer playhead stay **local** to each client — only `project` data syncs.
+
+**Rejected alternative.** A CRDT/OT document, or syncing transport (a shared playhead).
+
+**Why.** The state is a small, shallow, JSON object where last-write-wins per leaf is musically acceptable (two people rarely fight over the same knob). LWW path ops are trivially serializable, diffable, and replayable from a ring buffer — orders of magnitude less machinery than a CRDT for this payload. Local transport preserves the "everyone fiddles on the same evolving loop" feel and avoids a shared-clock coordination problem. Breaking that (pattern chaining, timeline) is the explicit fork in [`ROADMAP.md`](./ROADMAP.md) §6.
+
+### D10 — Network-applied writes are suppressed via a sync-flush watcher guard
+
+**Decision.** Inbound ops apply to `project` inside `enterSuppress()`/`exitSuppress()` (module-scope `applyingFromNetwork`), and every sync-participating watcher uses `{ flush: 'sync' }`.
+
+**Rejected alternative.** Default async watcher flush + the same boolean guard.
+
+**Why.** The guard only suppresses the echo if the watcher fires *synchronously inside* the suppressed write. With async flush the guard is already cleared by the time the watcher runs → the applied remote value is re-emitted as a local op → echo loop + snapshot flood. This is the single most load-bearing invariant of the sync layer; see §15 and the `sync_suppression_mechanism` memory.
+
+### D11 — Live presence is tracked separately from the identity registry
+
+**Decision.** The room keeps both an `identities` map (persists for resume) and a `connected` set (clients with a live socket right now). The roster broadcast is built from `connected`, not `identities`.
+
+**Rejected alternative.** Build the roster from the identity registry (the original bug), or delete identities on disconnect.
+
+**Why.** The registry must outlive a socket so a reconnecting client resumes its color/handle — but if the roster reads from it, departed clients linger as phantom chips forever. Deleting identities on leave fixes the roster but breaks resume (and loses color continuity on refresh). Separating the two satisfies both: roster = currently-connected; identities = resumable.
+
+### D12 — The server is bundled with esbuild, not emitted with `tsc`
+
+**Decision.** `npm run build:server` = `tsc --noEmit` (typecheck) then `esbuild … --packages=external --alias:@fiddle/shared=../shared/src/index.ts`, producing one self-contained `dist/index.js`.
+
+**Rejected alternative.** `tsc` emit (the original), or giving `@fiddle/shared` its own build + `dist`.
+
+**Why.** `@fiddle/shared` is source-only (`main` → `src/index.ts`) so dev (tsx/vite/vitest) resolves TS directly. A `tsc`-emitted server kept a bare `@fiddle/shared` import that Node resolved to that `.ts` source at runtime → `ERR_MODULE_NOT_FOUND`. Bundling inlines shared from source while keeping npm deps external, so the server is deployable without changing the zero-friction dev path.
+
+### D13 — Knob `syncPath` is provided from `App.vue`, gesture-end is a direct outbox flush
+
+**Decision.** `App.vue` provides its `activeTrackIndex` ref (`ACTIVE_TRACK_KEY`); `useKnobSync(engine)` builds each knob's path from it. Knob `gesture-end` calls `endGesture(path)` → `Outbox.flushPath(path)`.
+
+**Rejected alternative.** Have panels call `useSynth()` for the track index (each call mints a *fresh* `activeTrackIndex` ref, so they'd read `null`); and the plan's original `gestureEndingForPath` ref read by the watcher.
+
+**Why.** Only `App.vue`'s `useSynth()` instance holds the real focused-track index, so it must be injected. And `gesture-end` fires on pointer-up *after* the final value change — there's no later watcher tick to read a flag — so the final throttled value must be flushed directly from the Outbox's pending map.
+
 ---
 
 ## 13. The Project module
 
-`packages/client/src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md). A small subset of types and constants is re-sourced from `@fiddle/shared` (see §14) so the future WebSocket server can speak the same project schema without pulling in DOM/Audio types.
+`packages/client/src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md). The canonical `Project` schema now lives in `@fiddle/shared` (see §14) so the WebSocket sync server speaks the exact same project shape without pulling in DOM/Audio types; the client re-exports it through the project barrel.
 
 **What lives here and what doesn't.** `Project` holds `bpm`, four `ProjectTrack`s (each with `engineType`, `engines: EngineParamsMap`, `mixer`, and `steps[16]`), and a `schemaVersion` field. Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
 
@@ -502,50 +558,60 @@ pattern as project save/open. Presets carry their own
 
 ---
 
-## 14. The backend scaffolding (`@fiddle/server` and `@fiddle/shared`)
+## 14. The collaboration backend (`@fiddle/shared` and `@fiddle/server`)
 
-The repo became an npm-workspaces monorepo in commit `36eb334` (merge of `feature/backend-scaffolding`) to make room for a future WebSocket-synced multi-user mode. **Audio stays local** in each browser — the server only carries project-state mutations. None of the sync mechanism is implemented yet; what's landed is the surface where it will plug in.
+Real-time multi-user collaboration is **implemented and deployed**. **Audio stays local** in each browser — the server carries only project-state mutations. The detailed design lives in [`docs/superpowers/plans/2026-05-28-websocket-sync-protocol.md`](./superpowers/plans/2026-05-28-websocket-sync-protocol.md); §14–§16 here are the living overview.
 
 ### `@fiddle/shared` (`packages/shared/`)
 
-A tiny, framework-free package that compiles cleanly in both the browser (`moduleResolution: bundler`) and Node (`moduleResolution: NodeNext`). It currently re-exports four symbols:
+A framework-free package that compiles in both the browser (`moduleResolution: bundler`) and Node (`moduleResolution: NodeNext`). It is now the **canonical home of the project schema and the wire protocol** — both client and server import the same definitions so they cannot drift:
 
-- `EngineType` — `'synth' | 'kick' | 'hat' | 'snare' | 'clap'`.
-- `MixerState` — `{ volume; muted; soloed }`.
-- `DEFAULT_MIXER_STATE`.
-- `PROJECT_SCHEMA_VERSION` — the schema literal (currently `1 as const`).
+- `engines/` — per-engine param shapes + `DEFAULT_PARAMS` (moved out of the client engine files so the server can build a default project without DOM/Audio types).
+- `project/` — `Project` / `ProjectTrack` / `Step` types, `freshProject()`, a **Zod schema**, and the **accept-list** (`validatePathAndValue(pathStr, value)` in `accept-list.ts`): the allow-list of writable project paths plus value/range validation (`TRACK_COUNT`/`STEP_COUNT` bounds via `indicesInRange`). This is the server's authorization boundary for inbound ops.
+- `protocol/` — wire message types + Zod schemas, `PROTOCOL_VERSION`, and identity constants (the color `PALETTE`, animal `HANDLES`, `randomBase32`).
+- `path.ts` — `setDeep(obj, path, value)` (throws on a broken path) and `pathKey(path)` (= `JSON.stringify(path)`), shared by the client Outbox/applyOp and the server store.
 
-`packages/client/src/project/types.ts` re-sources those four from `@fiddle/shared` and re-exports them through the project barrel. Other project types (`Project`, `ProjectTrack`, `EngineParamsMap`) stay in the client because they import engine param types from `../engine/...`.
-
-**Constraint:** anything added to `@fiddle/shared` must stay portable — no DOM types, no `AudioContext`, no Vue, no Node-only modules. The litmus test is "could a future Cloudflare Worker or a CLI import this?" If not, it doesn't belong here.
+**Constraint:** anything in `@fiddle/shared` must stay portable — no DOM, no `AudioContext`, no Vue, no Node-only modules. Litmus test: "could a Cloudflare Worker or a CLI import this?"
 
 ### `@fiddle/server` (`packages/server/`)
 
-- **Stack:** Fastify 5 + `@fastify/websocket` 11 (which wraps `ws` underneath). TypeScript with `moduleResolution: NodeNext`, built via `tsc` to `dist/`, started with `node dist/index.js`. Dev runs via `tsx watch src/index.ts`.
-- **Entry layout:** `src/index.ts` reads `PORT` (default `8787`) and `HOST` (default `0.0.0.0`) and calls `app.listen(...)`. `src/server.ts` exports `buildServer()` which constructs the Fastify instance, registers the websocket plugin, and registers the route plugins. This split keeps the construction pure so tests can exercise it via Fastify's `.inject()` HTTP simulator without binding a port.
-- **Routes:**
-  - `GET /health` → `{ ok: true }`. The Render/Docker liveness probe.
-  - `GET /ws` — placeholder. On connect it logs and sends `{ type: 'hello' }`. Incoming messages are typed as `RawData` from `'ws'` (the `@types/ws` devDep is what makes `socket` non-`any`); they're logged but otherwise ignored. **There is no sync protocol yet.** That design lives in a separate spec/plan cycle that hasn't started.
-- **Logger gotcha:** `logger: process.env.NODE_ENV !== 'test'`. The pino JSON output otherwise dominates vitest's reporter and obscures real failures.
-- **Build gotcha:** `tsconfig.json` excludes `**/*.test.ts` from the build so `tsc` doesn't emit `dist/server.test.js` (which vitest would then re-pick-up alongside the source).
+- **Stack:** Fastify 5 + `@fastify/websocket` 11 (wraps `ws`). `moduleResolution: NodeNext`. **Built via esbuild** (not `tsc` emit) — see §16. Dev runs via `tsx watch src/index.ts`.
+- **Entry / construction:** `src/index.ts` reads `PORT` (default `8787`) and `HOST` (default `0.0.0.0`). `src/server.ts` `buildServer()` constructs Fastify, registers the websocket plugin, and wires the route with a shared `InMemoryRoomStore` + `ConnectionPool`. The pure-construction split lets tests use `.inject()` and lets the protocol e2e boot it on an ephemeral port.
+- **Routes:** `GET /health` → `{ ok: true }` (liveness probe); `GET /ws/:roomId` → adapts the raw socket to a `SocketLike`, registers it in the `ConnectionPool`, and delegates frames/close to a per-connection `ConnectionHandler`.
+- **`RoomStore` (`room/`):** the only legal surface for room state. `InMemoryRoomStore` holds, per room: the canonical `Project`, a ring buffer of recent `AppliedOp`s (`RING_BUFFER_CAPACITY=1000`), the identity registry, a **live `connected` set** (presence, distinct from identities — see D11), and a grace timer (`GRACE_MS=5min`). All methods are async so a future Redis-backed sibling can drop in.
+- **`ConnectionHandler` (`sync/`):** per-connection lifecycle — validates every frame with the Zod `ClientMessageSchema`, enforces hello-first ordering, assigns/resumes identity, runs catch-up, validates+appends+broadcasts ops, and fans presence updates. `Heartbeat` (30s ping / 60s pong-timeout) reaps dead sockets; `TokenBucket` rate-limits ops; `ROOM_CAP=4`.
 
-### Docker / local server dev
+## 15. Real-time sync protocol & the client sync layer
 
-- `packages/server/Dockerfile` — multi-stage `node:22-alpine` (`builder` → `runtime`), runtime image ~253 MB. Install uses `npm ci --include-workspace-root` so the workspace symlink to `@fiddle/shared` resolves.
-- `docker-compose.yml` (at repo root) — builds the `builder` target, runs `tsx watch`, bind-mounts `packages/server/src` and `packages/shared/src`, exposes 8787. The bind mounts make local edits hot-reload without rebuilding the image.
+**Model:** per-field **last-write-wins** ops over JSON paths. Audio is local; only `project` mutations cross the wire. There is **no shared transport** — each client runs its own `Sequencer` and PLAY/position are local; only data (steps, bpm, params) syncs.
 
-### Vercel deploy (client) stays working
+**Handshake / lifecycle** (one `ConnectionHandler` per socket):
+1. Client → `hello` (schemaVersion, optional `clientId` + `resumeFromOpId` for reconnect).
+2. Server → `welcome` (assigned `clientId`, color, handle, `opIdHead`, roster) → catch-up (**replay** ops from the ring buffer if the client is close enough, else a full **snapshot**) → `sync.complete`.
+3. Steady state: client → `set` (`clientSeq`, `path`, `value`); server validates against the accept-list, appends with a server `opId`, and broadcasts `set` to the room (echo to the originator carries `clientSeq`; peers don't see it). Rejected ops get a `nack` (`path.invalid` / `value.invalid` / `op.duplicate` / `rate.limited`).
+4. `presence.update` fans the roster on join/leave; `ping`/`pong` heartbeat; `error` (fatal closes the socket — e.g. `room.full`, `schema.version_mismatch`; non-fatal like `resume.unknown_client` does not).
 
-`vercel.json` at the repo root pins the Vite framework preset and forces `buildCommand: npm run build -w @fiddle/client` with `outputDirectory: packages/client/dist`. This is config-as-code on purpose — no dashboard "Root Directory" override is needed, so the workspace move was invisible to the existing Vercel project.
+**Wire path shape:** `Path = ReadonlyArray<string|number>` (array form). The server bridges to the dot-string the accept-list wants via `path.join('.')`.
 
-### Render deploy (server) — planned, not configured
+**Client sync layer (`packages/client/src/sync/`):**
+- **`WsClient`** — connection state machine; persists `clientId` + `nextClientSeq` in `sessionStorage` (per-tab, so two tabs are two clients) and reconnects with `resumeFromOpId`.
+- **`Outbox`** — sits between the watchers and the socket: 50ms per-path **throttle**, path-keyed **coalesce**, an **offline queue** (last-write-wins while disconnected, flushed on reconnect), **nack rollback** (every entry remembers its `priorValue`), and **`flushPath(path)`** for immediate gesture-end flush (§15 knob wiring).
+- **`applyOp`** — deep-sets an inbound op into `project` via shared `setDeep`, guarded by the suppression flag (below).
+- **`presence`** — reactive roster (drives `RoomBar` chips) + a per-path "touched" map that fades the `Knob` activity ring when a peer edits that path.
+- **`knobSync`** (`useKnobSync(engine)`) — builds each knob's `syncPath` (`['tracks', activeTrackIndex, 'engines', engine, field]`, injected from `App.vue` via `ACTIVE_TRACK_KEY`) and routes `gesture-end` → `endGesture` → `Outbox.flushPath`. `TrackMixer` builds `['tracks', i, 'mixer', 'volume']` from its loop index directly.
 
-The server is intended to deploy to Render.com when the sync protocol lands. The Dockerfile is the artifact Render will build; no `render.yaml` is checked in yet.
+**⚠ The suppression mechanism (load-bearing — read before adding a syncable field).** Inbound ops are applied to `project` inside an `enterSuppress()`/`exitSuppress()` window backed by a module-scope `applyingFromNetwork` boolean. This only works because the sync-participating watchers in `useSynth` use Vue **`{ flush: 'sync' }`** — they fire synchronously *inside* the suppressed programmatic write, so the guard is still held and the watcher does not re-enqueue the change as an outbound op. With the default async flush the guard would already be cleared by the time the watcher ran → an echo loop + snapshot flood. New syncable fields must follow this pattern. (Also recorded in the `sync_suppression_mechanism` memory.)
 
-### What's planned next (not implemented)
+**Outbound coverage:** the engine-slice / mixer / steps / bpm watchers in `useSynth` diff their snapshot and emit **leaf** paths (e.g. `filterEnv` → `.a/.d/.s/.r`; whole-object writes are forbidden by the accept-list). Discrete edits (selects, toggles — `engineType`, `muted`, `note`, …) flush immediately; continuous knob drags ride the throttle and flush on gesture-end.
 
-The intent driving all of the above: a JSON-serializable, diff-friendly, versioned project state synced via WebSocket between 2+ clients, no auth, with audio rendered locally in each browser. The `/ws` route is the seam. Until that protocol is designed and implemented, the server is dead code from the user's perspective.
+## 16. Deployment
+
+Two services: **client on Vercel**, **server on Render**. Cross-origin is fine — the client dials the Render `wss://` directly; raw WebSockets need no CORS, and the server doesn't enforce origin.
+
+- **Client (Vercel).** `vercel.json` pins the Vite preset, `buildCommand: npm run build -w @fiddle/client`, `outputDirectory: packages/client/dist`. Two required pieces: (1) env var **`VITE_WS_URL`** = the server **origin only** (e.g. `wss://fiddle-server.onrender.com`) — the client appends `/ws/<roomId>` itself (`buildSyncState` in `useSynth`); compiled in at build time, so changing it needs a redeploy. If unset, the client falls back to same-origin `wss://<host>/ws/...`. (2) An **SPA rewrite** `"/(.*)" → "/index.html"` in `vercel.json` — without it, refreshing or sharing a `/r/<room>` deep link 404s (the monorepo config doesn't get Vite's default SPA fallback).
+- **Server (Render).** `render.yaml` Blueprint: a single-instance web service, `buildCommand: npm ci && npm run build:server`, `startCommand: node packages/server/dist/index.js`, health check `/health`. The build is `tsc --noEmit` (typecheck) **then esbuild** — `esbuild src/index.ts --bundle --format=esm --packages=external --alias:@fiddle/shared=../shared/src/index.ts` — which **inlines `@fiddle/shared` from source** into a single `dist/index.js` while keeping real npm deps external. (Plain `tsc` emitted a bare `@fiddle/shared` import that Node resolved to the package's `.ts` source `main` → `ERR_MODULE_NOT_FOUND` at runtime.)
+- **Constraints that follow from the in-memory store:** keep Render at **one instance** (rooms are per-process; scaling out would split collaborators). Free tier spins down on idle (cold start ~30–60s) and a restart/redeploy wipes rooms — reconnecting clients get a fresh snapshot via the non-fatal `resume.unknown_client` path, so nothing breaks. Persisting rooms / users is the Supabase pivot in [`docs/ROADMAP.md`](./ROADMAP.md).
 
 ---
 
-*Last updated: 2026-05-27 (post-backend-scaffolding: monorepo + Fastify/ws skeleton + Docker). When the contracts in §3 or §11 change, update this doc — the in-repo `CODE_REVIEW.md` and the memory `audio_engine_decisions.md` are the other two places that need to stay in sync. When §14 evolves (sync protocol lands), note the matching commit and update the "placeholder" language.*
+*Last updated: 2026-05-29 (sync protocol implemented + merged; Task 16b knob plumbing; server esbuild packaging; deployed Vercel + Render; presence-roster fix). When the contracts in §3 / §11 change, or the sync model in §15 evolves, update this doc — `CODE_REVIEW.md`, `ROADMAP.md`, and the memories (`audio_engine_decisions`, `sync_suppression_mechanism`, `project_state`) are the other places to keep in sync.*
