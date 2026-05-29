@@ -315,9 +315,17 @@ async function buildAudioState(): Promise<AudioState> {
     for (let i = 0; i < 4; i++) {
       // Engine-type change triggers full sync: dispose old, build new, apply
       // the entire new slice. Slice watchers handle the steady-state case.
+      // Sync-flush + suppression guard so a remote swap doesn't echo back out.
       watch(
         () => project.tracks[i].engineType,
-        () => syncTrackToEngine(i)
+        (newType, oldType) => {
+          syncTrackToEngine(i);
+          if (outbox && !isApplyingFromNetwork()) {
+            // Discrete selection (not a drag) → flush immediately.
+            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, true);
+          }
+        },
+        { flush: 'sync' },
       );
 
       // Per-slice narrow watchers. Wrapping the getter in snapshot() does two
@@ -350,12 +358,61 @@ async function buildAudioState(): Promise<AudioState> {
         );
       }
 
-      // Mixer watcher stays deep: solo logic is global, so any change has to
-      // recompute all 4 track gains via updateMixerGains.
+      // Mixer: any change recomputes all 4 track gains (solo logic is global).
+      // snapshot()+diff (instead of the old deep watch) lets us emit the
+      // individual changed leaf (volume/muted/soloed) outbound. Sync-flush for
+      // the suppression guard, as above.
       watch(
-        () => project.tracks[i].mixer,
-        () => updateMixerGains(),
-        { deep: true }
+        () => snapshot(project.tracks[i].mixer),
+        (newVal, oldVal) => {
+          updateMixerGains();
+          if (!outbox || isApplyingFromNetwork()) return;
+          const changed = diffParams(
+            newVal as unknown as Record<string, unknown>,
+            oldVal as unknown as Record<string, unknown>,
+          );
+          if (!changed) return;
+          for (const [key, value] of Object.entries(changed)) {
+            // volume is a slider (continuous) → throttle; muted/soloed are
+            // toggles (discrete) → flush immediately.
+            outbox.enqueue(
+              ['tracks', i, 'mixer', key],
+              value,
+              (oldVal as unknown as Record<string, unknown>)?.[key],
+              key !== 'volume',
+            );
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      // Steps have no engine reaction (the sequencer reads them each tick), so
+      // this watcher exists purely to sync edits. Diff per-step and emit the
+      // changed leaf for each. Sync-flush + suppression guard, as above.
+      watch(
+        () => snapshot(project.tracks[i].steps),
+        (newSteps, oldSteps) => {
+          if (!outbox || isApplyingFromNetwork() || !oldSteps) return;
+          for (let j = 0; j < newSteps.length; j++) {
+            const changed = diffParams(
+              newSteps[j] as unknown as Record<string, unknown>,
+              oldSteps[j] as unknown as Record<string, unknown>,
+            );
+            if (!changed) continue;
+            for (const [key, value] of Object.entries(changed)) {
+              // length/velocity can be dragged (continuous) → throttle; the
+              // rest (note/octave/muted/isChord/chordType) are discrete.
+              const continuous = key === 'length' || key === 'velocity';
+              outbox.enqueue(
+                ['tracks', i, 'steps', j, key],
+                value,
+                (oldSteps[j] as unknown as Record<string, unknown>)?.[key],
+                !continuous,
+              );
+            }
+          }
+        },
+        { flush: 'sync' },
       );
     }
   });
