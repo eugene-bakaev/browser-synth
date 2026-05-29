@@ -33,4 +33,16 @@ describe('applyOp', () => {
     applyOp(p, { v:1, type:'set', opId: 1, clientId:'x', path:['bpm'], value: 140 });
     expect(isApplyingFromNetwork()).toBe(false); // reset by finally
   });
+
+  it('drops an unresolvable path without throwing and clears the suppression flag', () => {
+    const p = freshProject();
+    // tracks[99] doesn't exist — setDeep would throw; applyOp must swallow it.
+    let ok: boolean | undefined;
+    expect(() => {
+      ok = applyOp(p, { v:1, type:'set', opId: 1, clientId:'x',
+        path: ['tracks', 99, 'engineType'], value: 'synth' });
+    }).not.toThrow();
+    expect(ok).toBe(false);
+    expect(isApplyingFromNetwork()).toBe(false); // finally still ran
+  });
 });

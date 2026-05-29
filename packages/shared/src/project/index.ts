@@ -10,6 +10,7 @@ export { ProjectSchema, Schemas } from './schema.js';
 export {
   PATTERNS,
   pathIsWritable,
+  indicesInRange,
   resolveLeafSchema,
   validatePathAndValue,
 } from './accept-list.js';

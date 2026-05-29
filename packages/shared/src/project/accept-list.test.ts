@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pathIsWritable, validatePathAndValue } from './accept-list.js';
+import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -22,10 +22,29 @@ describe('pathIsWritable', () => {
     expect(pathIsWritable('tracks.0.engines.synth')).toBe(false);
   });
 
-  it('returns true for out-of-bounds indices (server bounds-checks separately)', () => {
-    // Path SHAPE is valid; ConnectionHandler (Task 8) is responsible for
-    // bounds-checking the numeric segments (tracks 0..3, steps 0..15).
+  it('returns true for out-of-bounds indices (shape-only; indicesInRange bounds-checks)', () => {
+    // Path SHAPE is valid; the numeric range is enforced separately by
+    // indicesInRange (and folded into validatePathAndValue).
     expect(pathIsWritable('tracks.99.engineType')).toBe(true);
+  });
+});
+
+describe('indicesInRange', () => {
+  it('accepts in-range track + step indices', () => {
+    expect(indicesInRange('tracks.0.engineType')).toBe(true);
+    expect(indicesInRange('tracks.3.mixer.volume')).toBe(true);
+    expect(indicesInRange('tracks.2.steps.15.note')).toBe(true);
+    expect(indicesInRange('bpm')).toBe(true);
+  });
+
+  it('rejects out-of-range track index', () => {
+    expect(indicesInRange('tracks.4.engineType')).toBe(false);
+    expect(indicesInRange('tracks.99.engineType')).toBe(false);
+  });
+
+  it('rejects out-of-range step index', () => {
+    expect(indicesInRange('tracks.0.steps.16.note')).toBe(false);
+    expect(indicesInRange('tracks.0.steps.99.velocity')).toBe(false);
   });
 });
 
@@ -62,5 +81,17 @@ describe('validatePathAndValue', () => {
     const r = validatePathAndValue('tracks.0.engineType', 'theremin');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('value.invalid');
+  });
+
+  it('rejects an out-of-range track index with path.invalid', () => {
+    const r = validatePathAndValue('tracks.99.engineType', 'synth');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('path.invalid');
+  });
+
+  it('rejects an out-of-range step index with path.invalid', () => {
+    const r = validatePathAndValue('tracks.0.steps.99.note', 'C');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('path.invalid');
   });
 });

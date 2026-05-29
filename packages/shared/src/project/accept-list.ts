@@ -104,6 +104,26 @@ export function pathIsWritable(path: string): boolean {
   return PATTERNS.some(p => matchesPattern(tokens, p));
 }
 
+// A Project has exactly 4 tracks and 16 steps per track. `matchesPattern`'s `*`
+// wildcard only checks that an index *looks* like a non-negative integer, not
+// that it's in range — so `tracks.99.engineType` matches a pattern. This
+// enforces the actual bounds, which both the client (pre-emit) and the server
+// (before appendOp) rely on; without it an out-of-range index reaches the deep
+// writer and throws instead of producing a clean nack.
+const TRACK_COUNT = 4;
+const STEP_COUNT = 16;
+export function indicesInRange(path: string): boolean {
+  const tokens = tokenize(path);
+  if (tokens[0] !== 'tracks') return true; // only `tracks.…` paths carry indices
+  const trackIdx = Number(tokens[1]);
+  if (!Number.isInteger(trackIdx) || trackIdx < 0 || trackIdx >= TRACK_COUNT) return false;
+  if (tokens[2] === 'steps') {
+    const stepIdx = Number(tokens[3]);
+    if (!Number.isInteger(stepIdx) || stepIdx < 0 || stepIdx >= STEP_COUNT) return false;
+  }
+  return true;
+}
+
 // Walk the Project schema tree following `tokens`, descending into the
 // appropriate leaf schema. Numeric tokens descend into array element schemas.
 // Returns the leaf schema, or null if the path doesn't resolve.
@@ -178,6 +198,9 @@ export type ValidatePathResult =
 export function validatePathAndValue(path: string, value: unknown): ValidatePathResult {
   if (!pathIsWritable(path)) {
     return { ok: false, code: 'path.invalid', message: `path not writable: ${path}` };
+  }
+  if (!indicesInRange(path)) {
+    return { ok: false, code: 'path.invalid', message: `index out of range: ${path}` };
   }
   const schema = resolveLeafSchema(path);
   if (!schema) {

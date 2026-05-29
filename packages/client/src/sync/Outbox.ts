@@ -19,6 +19,7 @@
 // rollback (which must run with the watcher's applyingFromNetwork suppression).
 
 import type { Path, SetOpClient } from '@fiddle/shared';
+import { pathKey } from '@fiddle/shared';
 
 interface PendingEntry {
   path: Path;
@@ -55,7 +56,7 @@ export class Outbox {
    * gestureEnd=true forces immediate emission (mouseup, blur, etc.)
    */
   enqueue(path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean): void {
-    const key = JSON.stringify(path);
+    const key = pathKey(path);
 
     // If offline, coalesce by path; do not start timers.
     if (!this.deps.isLive()) {

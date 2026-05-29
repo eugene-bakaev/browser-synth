@@ -2,13 +2,8 @@
 // minting a stable clientId. No I/O, no state — the caller passes in the
 // current roster so this module stays trivially testable.
 
-import { PALETTE, HANDLES } from '@fiddle/shared';
+import { PALETTE, HANDLES, randomBase32 } from '@fiddle/shared';
 import type { Identity, PaletteColor, Handle } from '@fiddle/shared';
-
-// Crockford base32 alphabet (no i, l, o, u — disambiguates 1/I/L and 0/O,
-// and drops u to avoid accidental words). Copy this string verbatim from the
-// plan; do not reorder.
-const CROCKFORD_BASE32 = '0123456789abcdefghjkmnpqrstvwxyz';
 
 /**
  * First PALETTE entry not present in `taken`. Room capacity is bounded by the
@@ -49,11 +44,7 @@ export function assignHandle(taken: ReadonlySet<string>): Handle | string {
  * stronger guarantees should re-check via `RoomStore.getIdentity`.
  */
 export function generateClientId(): string {
-  let out = 'c_';
-  for (let i = 0; i < 7; i++) {
-    out += CROCKFORD_BASE32[Math.floor(Math.random() * CROCKFORD_BASE32.length)];
-  }
-  return out;
+  return `c_${randomBase32(7)}`;
 }
 
 /**

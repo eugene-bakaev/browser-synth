@@ -6,15 +6,12 @@
 // from typing a room into the URL and colliding with someone else's room"
 // without making the URL too long to share verbally.
 
-const CHARS = '0123456789abcdefghjkmnpqrstvwxyz'; // crockford base32
+import { randomBase32 } from '@fiddle/shared';
+
 const ROOM_ID_LEN = 9;
 
 export function generateRoomId(): string {
-  let s = '';
-  for (let i = 0; i < ROOM_ID_LEN; i++) {
-    s += CHARS[Math.floor(Math.random() * CHARS.length)];
-  }
-  return s;
+  return randomBase32(ROOM_ID_LEN);
 }
 
 // Reads the room id from the current URL (`/r/<id>`), or — if the URL has no

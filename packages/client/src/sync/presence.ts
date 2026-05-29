@@ -17,6 +17,7 @@
 
 import { ref, type Ref } from 'vue';
 import type { Identity, Path } from '@fiddle/shared';
+import { pathKey } from '@fiddle/shared';
 
 export interface TouchedRecord {
   clientId: string;
@@ -32,30 +33,55 @@ export const selfClientId: Ref<string | null> = ref(null);
 const touchedMap = ref(new Map<string, TouchedRecord>());
 
 const TOUCH_TTL_MS = 500;
+const SWEEP_MS = 100;
+
+// A single shared interval prunes expired touch records (and reassigns the map
+// to trigger reactivity) instead of a setTimeout per remote op — under a peer
+// dragging a knob that was one timer + one full-map clone per op. The sweeper
+// runs only while there are entries and stops itself when the map empties.
+let sweepTimer: ReturnType<typeof setInterval> | null = null;
+
+function sweep(): void {
+  const now = Date.now();
+  let removed = false;
+  for (const [key, rec] of touchedMap.value) {
+    if (rec.expiresAt <= now) {
+      touchedMap.value.delete(key);
+      removed = true;
+    }
+  }
+  if (removed) {
+    // Reassign so dependents re-evaluate even if Map mutation didn't trigger.
+    touchedMap.value = new Map(touchedMap.value);
+  }
+  if (touchedMap.value.size === 0) stopSweeper();
+}
+
+function ensureSweeper(): void {
+  if (sweepTimer === null) sweepTimer = setInterval(sweep, SWEEP_MS);
+}
+
+function stopSweeper(): void {
+  if (sweepTimer !== null) {
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
+}
 
 export function noteRemoteTouch(path: Path, clientId: string): void {
   if (clientId === selfClientId.value) return;
   const r = roster.value.find(r => r.clientId === clientId);
   if (!r) return;
-  const key = JSON.stringify(path);
-  touchedMap.value.set(key, {
+  touchedMap.value.set(pathKey(path), {
     clientId,
     color: r.color,
     expiresAt: Date.now() + TOUCH_TTL_MS,
   });
-  // Schedule expiry — naive setTimeout per write; fine at our throttle.
-  setTimeout(() => {
-    const cur = touchedMap.value.get(key);
-    if (cur && cur.expiresAt <= Date.now()) {
-      touchedMap.value.delete(key);
-      // Force reactivity by reassigning. (Map mutations don't always trigger.)
-      touchedMap.value = new Map(touchedMap.value);
-    }
-  }, TOUCH_TTL_MS + 50);
+  ensureSweeper();
 }
 
 export function touchedFor(path: Path): TouchedRecord | null {
-  const rec = touchedMap.value.get(JSON.stringify(path));
+  const rec = touchedMap.value.get(pathKey(path));
   if (!rec || rec.expiresAt <= Date.now()) return null;
   return rec;
 }
@@ -64,4 +90,5 @@ export function resetPresence(): void {
   roster.value = [];
   selfClientId.value = null;
   touchedMap.value = new Map();
+  stopSweeper();
 }

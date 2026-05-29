@@ -34,3 +34,6 @@ export * from './project/index.js';
 // WebSocket sync protocol: PROTOCOL_VERSION, identity constants (PALETTE,
 // HANDLES), message type definitions, and Zod schemas for inbound messages.
 export * from './protocol/index.js';
+
+// Wire-path helpers (setDeep, pathKey) shared by client + server.
+export * from './path.js';

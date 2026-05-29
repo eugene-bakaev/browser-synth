@@ -16,3 +16,18 @@ export const HANDLES = [
   'Jay',  'Heron',
 ] as const;
 export type Handle = typeof HANDLES[number];
+
+// Crockford base32 alphabet (no i, l, o, u — disambiguates 1/I/L and 0/O, and
+// drops u to avoid accidental words). Shared so the client's room ids and the
+// server's client ids draw from the same alphabet (do not reorder).
+export const CROCKFORD_BASE32 = '0123456789abcdefghjkmnpqrstvwxyz';
+
+// `len` random Crockford-base32 chars. Not cryptographically strong — callers
+// that need uniqueness guarantees must re-check against existing ids.
+export function randomBase32(len: number): string {
+  let out = '';
+  for (let i = 0; i < len; i++) {
+    out += CROCKFORD_BASE32[Math.floor(Math.random() * CROCKFORD_BASE32.length)];
+  }
+  return out;
+}

@@ -3,7 +3,8 @@
 // interface.
 
 import type { Project } from '@fiddle/shared';
-import type { Identity, Path } from '@fiddle/shared';
+import type { Identity } from '@fiddle/shared';
+import { setDeep } from '@fiddle/shared';
 import type { AppliedOp, RoomState } from './types.js';
 import {
   GRACE_MS,
@@ -52,7 +53,7 @@ export class InMemoryRoomStore implements RoomStore {
       value: input.value,
     };
 
-    setDeep(room.project, op.path, op.value);
+    setDeep(room.project as unknown as Record<string, unknown>, op.path, op.value);
 
     room.opLog.push(op);
     if (room.opLog.length > RING_BUFFER_CAPACITY) {
@@ -141,20 +142,3 @@ export class InMemoryRoomStore implements RoomStore {
   }
 }
 
-// Apply a wire-path mutation to a Project. The accept-list on the
-// ConnectionHandler validates the path before we get here; this defensive
-// throw catches malformed paths that slip through.
-function setDeep(obj: unknown, path: Path, value: unknown): void {
-  if (path.length === 0) return;
-  let cursor: any = obj;
-  for (let i = 0; i < path.length - 1; i++) {
-    const seg = path[i]!;
-    const next = cursor[seg];
-    if (next === null || next === undefined) {
-      throw new Error(`Path break at segment ${i}`);
-    }
-    cursor = next;
-  }
-  const lastSeg = path[path.length - 1]!;
-  cursor[lastSeg] = value;
-}
