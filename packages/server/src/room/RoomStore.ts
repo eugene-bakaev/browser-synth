@@ -46,11 +46,20 @@ export interface RoomStore {
   // evicted from the ring buffer (caller must send a snapshot instead).
   getOpsSince(roomId: string, fromOpId: number): Promise<AppliedOp[] | null>;
 
-  // Identity bookkeeping.
+  // Identity bookkeeping. Identities persist (beyond a socket's lifetime) so a
+  // reconnecting client can resume the same color/handle within the grace window.
   setIdentity(roomId: string, identity: Identity): Promise<void>;
   getIdentity(roomId: string, clientId: string): Promise<Identity | undefined>;
   listIdentities(roomId: string): Promise<Identity[]>;
   removeIdentity(roomId: string, clientId: string): Promise<void>;
+
+  // Live presence: which clients have a socket connected right now. The roster
+  // is derived from this (not the broader identity registry) so a client that
+  // disconnects and doesn't come back stops appearing as a phantom member.
+  markConnected(roomId: string, clientId: string): Promise<void>;
+  markDisconnected(roomId: string, clientId: string): Promise<void>;
+  // Identities of currently-connected clients, in join order.
+  listConnected(roomId: string): Promise<Identity[]>;
 
   // Lifecycle: empty rooms enter a grace window before being pruned so brief
   // disconnects don't wipe state.

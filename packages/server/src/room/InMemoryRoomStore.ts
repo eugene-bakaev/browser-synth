@@ -28,6 +28,7 @@ export class InMemoryRoomStore implements RoomStore {
         opLog: [],
         nextOpId: 1,
         identities: new Map(),
+        connected: new Set(),
         graceTimer: null,
       };
       this.rooms.set(roomId, room);
@@ -107,6 +108,25 @@ export class InMemoryRoomStore implements RoomStore {
   async removeIdentity(roomId: string, clientId: string): Promise<void> {
     const room = this.requireRoom(roomId);
     room.identities.delete(clientId);
+    room.connected.delete(clientId);
+  }
+
+  async markConnected(roomId: string, clientId: string): Promise<void> {
+    const room = this.requireRoom(roomId);
+    room.connected.add(clientId);
+  }
+
+  async markDisconnected(roomId: string, clientId: string): Promise<void> {
+    const room = this.requireRoom(roomId);
+    room.connected.delete(clientId);
+  }
+
+  async listConnected(roomId: string): Promise<Identity[]> {
+    const room = this.requireRoom(roomId);
+    // Preserve identities' insertion order; filter to connected clientIds.
+    return Array.from(room.identities.values()).filter((id) =>
+      room.connected.has(id.clientId),
+    );
   }
 
   async startGrace(roomId: string, onExpire: () => void): Promise<void> {
