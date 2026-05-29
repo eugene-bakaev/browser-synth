@@ -217,6 +217,47 @@ describe('sync integration', () => {
     });
     expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(2000); // default restored
   });
+
+  it('emits engineType swaps immediately (discrete)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engineType = 'kick';
+    // No timer advance: discrete selection flushes immediately (gestureEnd).
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engineType']));
+    expect(op).toBeDefined();
+    expect(op.value).toBe('kick');
+  });
+
+  it('emits mixer volume (throttled) and muted (immediate) as leaf ops', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[1].mixer.muted = true; // toggle → immediate
+    const mutedOp = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'muted']));
+    expect(mutedOp?.value).toBe(true);
+
+    synth.project.tracks[1].mixer.volume = 0.5; // slider → throttled
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']))).toBeUndefined();
+    vi.advanceTimersByTime(50);
+    const volOp = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']));
+    expect(volOp?.value).toBe(0.5);
+  });
+
+  it('emits a step edit as a leaf op', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].steps[3].note = 'C'; // discrete → immediate
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 3, 'note']));
+    expect(op).toBeDefined();
+    expect(op.value).toBe('C');
+  });
+
+  it('applies a remote mixer op without echoing it back out', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 2, 'mixer', 'volume'], value: 0.3,
+    });
+    expect(synth.project.tracks[2].mixer.volume).toBe(0.3);
+    vi.advanceTimersByTime(100);
+    expect(fake.sent.length).toBe(0);
+  });
 });
 
 describe('Project boot integration', () => {
