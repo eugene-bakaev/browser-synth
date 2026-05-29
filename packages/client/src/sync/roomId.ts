@@ -23,8 +23,10 @@ export function generateRoomId(): string {
 // `loc` is injectable for testing the parsing branch without touching
 // jsdom's history mock (which is finicky around replaceState).
 export function resolveRoomIdFromUrl(loc: Location = window.location): string {
+  // Match case-insensitively but normalize to lowercase — the server keys rooms
+  // by exact string, so `/r/ABC` and `/r/abc` must resolve to the same room.
   const m = loc.pathname.match(/^\/r\/([0-9a-z]{6,12})/i);
-  if (m) return m[1];
+  if (m) return m[1].toLowerCase();
   const fresh = generateRoomId();
   window.history.replaceState(null, '', `/r/${fresh}`);
   return fresh;

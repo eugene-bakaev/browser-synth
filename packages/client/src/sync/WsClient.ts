@@ -107,16 +107,15 @@ export class WsClient {
     return this.state === 'live';
   }
 
-  // Outbox uses this to stamp outbound `set` ops. Reads, increments, persists,
-  // and returns the new value. If there's no persisted state yet (we haven't
-  // seen `welcome`), we still bump from 0 — but in practice Outbox waits for
-  // `live` before sending, by which point `welcome` has populated clientId.
+  // Outbox uses this to stamp outbound `set` ops. Throws if called before
+  // `welcome` populated the persisted record: writing a `clientSeq` against
+  // an empty `clientId` would get wiped when the next welcome reset the seq
+  // (clientId-changed guard), silently losing in-flight numbering.
   nextClientSeq(): number {
-    const persisted = this.getPersisted() ?? {
-      clientId: '',
-      opIdLastSeen: 0,
-      clientSeq: 0,
-    };
+    const persisted = this.getPersisted();
+    if (!persisted || !persisted.clientId) {
+      throw new Error('WsClient.nextClientSeq called before welcome');
+    }
     persisted.clientSeq += 1;
     this.savePersisted(persisted);
     return persisted.clientSeq;

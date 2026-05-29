@@ -14,8 +14,8 @@ describe('resolveRoomIdFromUrl', () => {
     expect(resolveRoomIdFromUrl(fakeLoc)).toBe('j7k2mq8n3');
   });
 
-  it('matches case-insensitively (returns the matched substring)', () => {
+  it('matches case-insensitively and normalizes to lowercase', () => {
     const fakeLoc = { pathname: '/r/J7K2MQ8N3' } as Location;
-    expect(resolveRoomIdFromUrl(fakeLoc)).toBe('J7K2MQ8N3');
+    expect(resolveRoomIdFromUrl(fakeLoc)).toBe('j7k2mq8n3');
   });
 });
