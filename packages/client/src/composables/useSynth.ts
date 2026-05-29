@@ -25,6 +25,16 @@ import {
   installAutoSave,
 } from '../project';
 
+// --- Sync layer (WebSocket collaboration) ---
+import { WsClient, type WsClientOptions } from '../sync/WsClient';
+import { Outbox } from '../sync/Outbox';
+import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
+import { setDeep } from '../sync/setDeep';
+import { resolveRoomIdFromUrl } from '../sync/roomId';
+import { dispatchServerMessage } from '../sync/messageDispatch';
+import { roster, selfClientId, resetPresence } from '../sync/presence';
+import type { Path } from '@fiddle/shared';
+
 // === Pure data state — built from localStorage (or fresh) at module init. ===
 
 const project: Project = reactive(loadProject());
@@ -103,6 +113,109 @@ interface AudioState {
 // `let` looks identical here but Vue can't observe the assignment, so the
 // computeds would cache the initial null forever (oscilloscope stays flat).
 const audioState = shallowRef<AudioState | null>(null);
+
+// === Sync state — built alongside audio (see buildSyncState). ===
+//
+// Module-scope (like `project`) because there is exactly one room connection
+// per tab, shared by every useSynth() consumer.
+let wsClient: WsClient | null = null;
+let outbox: Outbox | null = null;
+const fatalError = ref<{ code: string; message: string } | null>(null);
+
+// Tests flip this off so ensureAudio() doesn't open a real socket; production
+// leaves it on. Kept here (not a build-time const) so a test can toggle it on
+// the freshly-imported module instance.
+let syncEnabled = true;
+export function setSyncEnabled(v: boolean): void { syncEnabled = v; }
+
+// Injectable so tests can hand back a WsClient wired to a MockWebSocket +
+// in-memory storage instead of touching the network. Production uses the
+// default real constructor.
+type WsClientFactory = (opts: WsClientOptions) => WsClient;
+let wsClientFactory: WsClientFactory = (opts) => new WsClient(opts);
+export function setWsClientFactory(f: WsClientFactory | null): void {
+  wsClientFactory = f ?? ((opts) => new WsClient(opts));
+}
+
+// Translate one diffed engine slice into leaf-level outbound ops. The
+// accept-list forbids whole-object writes, so nested params (filterEnv/ampEnv)
+// are drilled one level to their changed a/d/s/r leaves; scalar params emit a
+// single op. `priorValue` is the pre-edit value, carried for nack rollback.
+function emitEngineChange(
+  trackIdx: number,
+  slice: EngineType,
+  changed: Record<string, unknown>,
+  oldSlice: Record<string, unknown> | undefined,
+): void {
+  if (!outbox) return;
+  for (const [key, value] of Object.entries(changed)) {
+    if (value !== null && typeof value === 'object') {
+      const oldObj = (oldSlice?.[key] ?? {}) as Record<string, unknown>;
+      const newObj = value as Record<string, unknown>;
+      for (const subKey of Object.keys(newObj)) {
+        if (oldObj[subKey] === newObj[subKey]) continue;
+        outbox.enqueue(
+          ['tracks', trackIdx, 'engines', slice, key, subKey],
+          newObj[subKey],
+          oldObj[subKey],
+          false,
+        );
+      }
+    } else {
+      outbox.enqueue(
+        ['tracks', trackIdx, 'engines', slice, key],
+        value,
+        oldSlice?.[key],
+        false,
+      );
+    }
+  }
+}
+
+// Build the room connection + outbox and start connecting. Idempotent; called
+// from ensureAudio() once the engines exist (the WS doesn't strictly need
+// audio, but ordering them keeps a single teardown path in disposeSynth).
+function buildSyncState(): void {
+  if (wsClient) return;
+  const roomId = resolveRoomIdFromUrl();
+  const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
+    .env?.VITE_WS_URL;
+  const wsUrl = envUrl
+    ? `${envUrl.replace(/\/$/, '')}/ws/${roomId}`
+    : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${roomId}`;
+
+  wsClient = wsClientFactory({
+    url: wsUrl,
+    roomId,
+    onMessage: (msg) => dispatchServerMessage(msg, {
+      project,
+      wsClient: wsClient!,
+      outbox: outbox!,
+      onFatalError: (code, message) => { fatalError.value = { code, message }; },
+    }),
+    onStateChange: (s) => {
+      if (s === 'closed' && outbox) outbox.onClosed();
+    },
+  });
+
+  outbox = new Outbox({
+    nextClientSeq: () => wsClient!.nextClientSeq(),
+    send: (op) => wsClient!.send(op),
+    applyLocal: (path: Path, value: unknown) => {
+      // Rollback write: suppress so the sync watcher reverts the engine without
+      // re-enqueuing the reverted value back to the server.
+      enterSuppress();
+      try {
+        setDeep(project as unknown as Record<string, unknown>, path, value);
+      } finally {
+        exitSuppress();
+      }
+    },
+    isLive: () => !!wsClient?.isLive(),
+  });
+
+  wsClient.connect();
+}
 
 async function buildAudioState(): Promise<AudioState> {
   const ctx = new AudioContext();
@@ -185,6 +298,20 @@ async function buildAudioState(): Promise<AudioState> {
   // via disposeSynth() — without this the original code had no teardown path.
   const scope = effectScope(true);
   scope.run(() => {
+    // BPM is global (not per-track). Sync-flush so the applyingFromNetwork guard
+    // (held synchronously during applyOp/replaceProject) actually covers the
+    // watcher fire — see applyOp.ts. No engine call: the sequencer reads
+    // project.bpm directly each tick.
+    watch(
+      () => project.bpm,
+      (newVal, oldVal) => {
+        if (outbox && !isApplyingFromNetwork()) {
+          outbox.enqueue(['bpm'], newVal, oldVal, false);
+        }
+      },
+      { flush: 'sync' },
+    );
+
     for (let i = 0; i < 4; i++) {
       // Engine-type change triggers full sync: dispose old, build new, apply
       // the entire new slice. Slice watchers handle the steady-state case.
@@ -207,8 +334,19 @@ async function buildAudioState(): Promise<AudioState> {
             // becomes active (the engineType watcher then full-syncs).
             if (project.tracks[i].engineType !== slice) return;
             const changed = diffParams(newVal as unknown as Record<string, unknown>, oldVal as unknown as Record<string, unknown>);
-            if (changed) engines[i].applyParams(changed);
-          }
+            if (!changed) return;
+            engines[i].applyParams(changed);
+            // Outbound sync. Skipped while a network op is being applied (the
+            // sync flush below means this fires inside the suppressed write).
+            if (outbox && !isApplyingFromNetwork()) {
+              emitEngineChange(i, slice, changed, oldVal as unknown as Record<string, unknown>);
+            }
+          },
+          // flush:'sync' so the applyingFromNetwork guard — held synchronously
+          // during applyOp/replaceProject — actually covers this watcher fire.
+          // With the default async flush the guard would already be cleared by
+          // the time the watcher ran, and remote ops would echo back out.
+          { flush: 'sync' },
         );
       }
 
@@ -234,6 +372,9 @@ async function ensureAudio(): Promise<AudioState> {
   if (!bootstrapping) {
     bootstrapping = buildAudioState().then(s => {
       audioState.value = s;
+      // Bring the room connection up once engines exist. Gated so tests can
+      // opt out of opening a socket.
+      if (syncEnabled) buildSyncState();
       return s;
     });
   }
@@ -251,6 +392,16 @@ export function disposeSynth() {
   state.ctx.close().catch(() => { /* ctx may already be closed */ });
   audioState.value = null;
   bootstrapping = null;
+
+  // Tear down the sync layer too so a re-init (or a test) starts clean.
+  if (wsClient) {
+    wsClient.disconnect();
+    wsClient = null;
+  }
+  outbox = null;
+  fatalError.value = null;
+  resetApplyOpState();
+  resetPresence();
 }
 
 export function useSynth() {
@@ -450,5 +601,9 @@ export function useSynth() {
     // Force audio init without playing — needed by tests and any consumer
     // that needs the audio graph up before the first togglePlay.
     ensureAudio,
+    // --- Sync surface (read by RoomBar / ErrorOverlay in Task 16) ---
+    fatalError,       // ref<{code,message}|null> — set on a fatal server error
+    roster,           // ref<Identity[]> — everyone in the room
+    selfClientId,     // ref<string|null> — which roster entry is us
   };
 }
