@@ -144,7 +144,7 @@ describe('ConnectionHandler', () => {
 
   it('room.full fatally rejects 5th client', async () => {
     const pool = new FakePool();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 4; i++) {
       pool.add('room1', makeMockSocket());
     }
     const socket = makeMockSocket();
