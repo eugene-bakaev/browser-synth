@@ -66,8 +66,39 @@ authenticated user id *becomes* the `clientId`.
    path; the step UI gains per-step editing. (Brushes against the "sound-engine
    excluded" note — treat as sequencer work.)
 
+6. **Breaking the 16-step limit** — *direction undecided; analysis below.*
+
+   The real fork is **shared vs. local transport**, not pattern length. Today
+   transport is **local**: each client runs its own `Sequencer` and presses PLAY
+   independently; only data (steps, bpm) syncs, not the playhead — users can be
+   at different loop positions. That locality is core to the "shared evolving
+   loop" feel. The three directions sit differently against it:
+
+   - **(a) Variable-length patterns — recommended first.** Length becomes a field
+     (16/32/64), ideally **per-track** → polymeter/polyrhythm (tracks of
+     different lengths phase into long evolving cycles). Keeps local transport
+     fully intact; tiny sync impact (a `length` field + the steps array grows;
+     `STEP_COUNT` becomes a *max* in the accept-list). Most musical, best fit,
+     no backend pivot. Touches: `Sequencer` loop, project factory/schema +
+     reconciler, accept-list bound, tracker UI (scroll/pages for long patterns).
+   - **(b) Pattern chaining — later, bigger.** Multiple patterns + a chain/song
+     order. Chaining forces **shared transport** ("which pattern is playing now"
+     is shared state) + a decision on *who drives the chain* (a conductor or a
+     shared clock). A coordination step-change that pulls away from free
+     fiddling; pairs naturally with the persistence pivot (songs want saving).
+   - **(c) Timeline — park it.** A linear authored arrangement implies a single
+     shared playhead and composed structure — opposite of a live shared loop.
+     Most complex, least aligned with the multiuser-jam identity. Skip unless the
+     app shifts from "jam together" to "compose together".
+
+   Caveat for (a): with long/polymetric patterns, the existing per-client phase
+   drift gets more audible, raising a *soft* question of whether to add a lightly
+   shared transport (shared downbeat) even without chaining. Note, not blocker.
+
 ## Suggested sequencing (not final)
 
-- **No-pivot track (ship anytime):** more tracks → p-locks → cheap lobby.
+- **No-pivot track (ship anytime):** more tracks → variable-length patterns
+  (6a) → p-locks → cheap lobby.
 - **Foundation track (commit to Supabase):** auth + DB → saved sessions →
-  persistent lobby → per-user track pools.
+  persistent lobby → per-user track pools. Pattern chaining (6b) belongs here
+  too — it needs shared transport and pairs with saving "songs".
