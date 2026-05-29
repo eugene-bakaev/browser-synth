@@ -9,8 +9,6 @@
 //   * On close: trigger the grace timer if this was the last socket; otherwise
 //     fan a fresh roster to remaining peers.
 //
-// Task 8 will fill in `set` op handling; Task 9 will add pong/heartbeat hooks.
-
 import {
   ClientMessageSchema,
   freshProject,
@@ -32,6 +30,7 @@ import type {
 } from '@fiddle/shared';
 import type { RoomStore } from '../room/RoomStore.js';
 import { makeIdentity } from '../room/identity.js';
+import { Heartbeat } from './Heartbeat.js';
 import { TokenBucket } from './rate-limit.js';
 import type { RoomConnectionPool, SocketLike } from './SocketLike.js';
 
@@ -46,6 +45,7 @@ export class ConnectionHandler {
   private identity: Identity | null = null;
   private helloProcessed = false;
   private bucket = new TokenBucket();
+  private readonly heartbeat: Heartbeat;
 
   constructor(
     private readonly roomId: string,
@@ -53,7 +53,10 @@ export class ConnectionHandler {
     private readonly store: RoomStore,
     private readonly pool: RoomConnectionPool,
     private readonly log: Log,
-  ) {}
+    heartbeat?: Heartbeat,
+  ) {
+    this.heartbeat = heartbeat ?? new Heartbeat(socket);
+  }
 
   async onMessage(raw: unknown): Promise<void> {
     const parsed = ClientMessageSchema.safeParse(raw);
@@ -78,7 +81,7 @@ export class ConnectionHandler {
     }
 
     if (msg.type === 'pong') {
-      // Heartbeat (Task 9) will hook in here.
+      this.heartbeat.onPong();
       return;
     }
 
@@ -123,6 +126,11 @@ export class ConnectionHandler {
   }
 
   async onClose(): Promise<void> {
+    // Stop the heartbeat first — the timer must not fire (and trigger
+    // close/send) after the socket has gone away, even if grace-prune below
+    // does more async work.
+    this.heartbeat.stop();
+
     if (!this.clientId) {
       // Hello never completed — nothing to clean up.
       return;
@@ -269,6 +277,8 @@ export class ConnectionHandler {
     for (const peer of this.pool.others(this.roomId, this.socket)) {
       peer.send(presence);
     }
+
+    this.heartbeat.start();
 
     this.log('client live', {
       roomId: this.roomId,
