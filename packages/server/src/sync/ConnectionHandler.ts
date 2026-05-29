@@ -15,12 +15,15 @@ import {
   ClientMessageSchema,
   freshProject,
   PROJECT_SCHEMA_VERSION,
+  validatePathAndValue,
 } from '@fiddle/shared';
 import type {
   ErrorCode,
   ErrorMessage,
   HelloMessage,
   Identity,
+  NackCode,
+  NackMessage,
   PresenceUpdateMessage,
   SetOpBroadcast,
   SnapshotMessage,
@@ -29,6 +32,7 @@ import type {
 } from '@fiddle/shared';
 import type { RoomStore } from '../room/RoomStore.js';
 import { makeIdentity } from '../room/identity.js';
+import { TokenBucket } from './rate-limit.js';
 import type { RoomConnectionPool, SocketLike } from './SocketLike.js';
 
 export const ROOM_CAP = 4;
@@ -41,6 +45,7 @@ export class ConnectionHandler {
   private clientId: string | null = null;
   private identity: Identity | null = null;
   private helloProcessed = false;
+  private bucket = new TokenBucket();
 
   constructor(
     private readonly roomId: string,
@@ -78,12 +83,41 @@ export class ConnectionHandler {
     }
 
     if (msg.type === 'set') {
-      // Op handling (Task 8) will hook in here.
-      this.log('set op received (stub)', {
-        roomId: this.roomId,
+      if (!this.clientId) return;
+      if (!this.bucket.consume()) {
+        this.nack(msg.clientSeq, 'rate.limited', 'op rate limit exceeded');
+        return;
+      }
+      // Wire path is array form; accept-list validator wants dot-separated string.
+      const pathStr = msg.path.join('.');
+      const v = validatePathAndValue(pathStr, msg.value);
+      if (!v.ok) {
+        this.nack(msg.clientSeq, v.code, v.message);
+        return;
+      }
+      const r = await this.store.appendOp(this.roomId, {
         clientId: this.clientId,
         clientSeq: msg.clientSeq,
+        path: msg.path,
+        value: msg.value,
       });
+      if (!r.ok) {
+        this.nack(msg.clientSeq, 'op.duplicate', 'op already in log');
+        return;
+      }
+      for (const sock of this.pool.all(this.roomId)) {
+        const isOrig = sock === this.socket;
+        const broadcast: SetOpBroadcast = {
+          v: 1,
+          type: 'set',
+          opId: r.op.opId,
+          clientId: this.clientId,
+          ...(isOrig ? { clientSeq: msg.clientSeq } : {}),
+          path: msg.path,
+          value: msg.value,
+        };
+        sock.send(broadcast);
+      }
       return;
     }
   }
@@ -266,5 +300,10 @@ export class ConnectionHandler {
     // 1008 = Policy Violation, the closest match in the standard codes for
     // protocol-level rejections.
     this.socket.close(1008, code);
+  }
+
+  private nack(clientSeq: number, code: NackCode, message: string): void {
+    const n: NackMessage = { v: 1, type: 'nack', clientSeq, code, message };
+    this.socket.send(n);
   }
 }
