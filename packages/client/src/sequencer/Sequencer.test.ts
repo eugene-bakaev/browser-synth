@@ -70,4 +70,22 @@ describe('Sequencer', () => {
 
     seq.stop();
   });
+
+  it('emits a monotonically increasing absolute step index (no % 16 wrap)', () => {
+    const seq = new Sequencer();
+    const emitted: number[] = [];
+    let now = 0;
+    const ctx = { get currentTime() { return now; } } as unknown as AudioContext;
+
+    seq.start(ctx, () => 120, (stepIndex) => emitted.push(stepIndex));
+    // Advance enough wall-clock + audio-clock time to schedule > 16 steps.
+    for (let i = 0; i < 40; i++) { now += 0.05; vi.advanceTimersByTime(25); }
+    seq.stop();
+
+    expect(emitted.length).toBeGreaterThan(16);
+    expect(emitted[16]).toBe(16);            // would be 0 under the old % 16
+    for (let i = 1; i < emitted.length; i++) {
+      expect(emitted[i]).toBe(emitted[i - 1] + 1);
+    }
+  });
 });

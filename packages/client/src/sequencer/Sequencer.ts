@@ -9,10 +9,14 @@ export type { Step } from '@fiddle/shared';
 // Touched ~7x per setInterval tick — without markRaw that's ~120ms/min of
 // pointless proxy-trap overhead during playback.
 interface SchedulerInternals {
+  // Monotonic ABSOLUTE step counter (no modulo). Per-track modulo (% patternLength)
+  // is applied by the consumer. JS safe-integer range gives ~35M years of headroom
+  // at typical step rates.
   currentStep: number;
   timer: any;
-  // Absolute count of steps scheduled since the last anchor (lets us compute
-  // step times without floating-point drift over thousands of steps).
+  // Count of steps scheduled since the last anchor, used only for time math
+  // (not emitted to the consumer — that's currentStep). Lets us compute step
+  // times without floating-point drift over thousands of steps.
   nextStepIndex: number;
   // The audio-clock time at which scheduleStartTime + 0*stepTime = step 0.
   scheduleStartTime: number;
@@ -67,7 +71,7 @@ export class Sequencer {
       let nextStepTime = s.scheduleStartTime + s.nextStepIndex * stepTime;
       while (nextStepTime < lookaheadTime) {
         onStep(s.currentStep, nextStepTime);
-        s.currentStep = (s.currentStep + 1) % 16;
+        s.currentStep = s.currentStep + 1;
         s.nextStepIndex += 1;
         nextStepTime = s.scheduleStartTime + s.nextStepIndex * stepTime;
       }
