@@ -461,7 +461,24 @@ const toggleDrumTrigger = (step: Step) => {
      overview grid aligned regardless of per-track patternLength. */
   max-height: calc(16 * 30px + 15 * 2px); /* = 510px */
   overflow-y: auto;
-  scrollbar-gutter: stable; /* avoid horizontal reflow when the scrollbar appears */
+  scrollbar-gutter: stable; /* reserve the bar's column so it never reflows content */
+}
+
+/* Styling ::-webkit-scrollbar also switches Chromium off the OS overlay bar (which
+   paints over content) onto a classic bar that occupies its own 8px column. */
+.tracker-steps::-webkit-scrollbar {
+  width: 8px;
+}
+.tracker-steps::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tracker-steps::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+  border: 2px solid #111; /* inset against the panel bg → ~4px rounded thumb */
+}
+.tracker-steps::-webkit-scrollbar-thumb:hover {
+  background: var(--track-color);
 }
 
 .step-row {
