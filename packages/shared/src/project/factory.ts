@@ -31,7 +31,8 @@ export function freshTrack(): ProjectTrack {
       clap:  structuredClone(DEFAULT_CLAP_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
-    steps: Array.from({ length: 16 }, () => freshStep()),
+    patternLength: 16,
+    steps: Array.from({ length: 64 }, () => freshStep()),
   };
 }
 

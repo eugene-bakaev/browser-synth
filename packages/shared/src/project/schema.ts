@@ -124,11 +124,13 @@ const TrackSchema = z.object({
   engineType: EngineTypeSchema,
   engines: EnginesMapSchema,
   mixer: MixerSchema,
-  steps: z.array(StepSchema).length(16),
+  // Track loop-window length (steps). The buffer below is fixed at 64.
+  patternLength: z.number().int().min(1).max(64),
+  steps: z.array(StepSchema).length(64),
 });
 
 export const ProjectSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   // No engine-level BPM clamp; pick a generous-but-sane range. The sequencer
   // schedules off this directly, so we keep it as an integer.
   bpm: z.number().int().min(40).max(240),
