@@ -497,6 +497,15 @@ export function useSynth() {
     set: (v: number) => { project.bpm = v; },
   });
 
+  // The currently-focused track, or null on the 4-track overview. Panels read
+  // their reactive engine slice from this (e.g. focusedTrack.value.engines.synth);
+  // mutating that slice writes straight through to `project`, driving the
+  // existing slice watchers (audio + outbox). Replaces the per-param trackParam
+  // refs that previously projected each field individually.
+  const focusedTrack = computed(() =>
+    activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value] : null
+  );
+
   // --- Synth params ---
   const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth');
   const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth');
@@ -612,6 +621,7 @@ export function useSynth() {
     trackAnalysers,
     trackGains,
     activeTrackIndex,
+    focusedTrack,
     currentStep,
     waveforms,
     engineType,
