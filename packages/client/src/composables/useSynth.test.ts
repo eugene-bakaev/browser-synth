@@ -258,6 +258,26 @@ describe('sync integration', () => {
     vi.advanceTimersByTime(100);
     expect(fake.sent.length).toBe(0);
   });
+
+  it('emits a patternLength op immediately (discrete — no timer needed)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].patternLength = 8;
+    // No timer advance: patternLength is in DISCRETE_LEAF_FIELDS → flushes immediately.
+    expect(fake.sent.length).toBe(1);
+    expect(fake.sent[0].path).toEqual(['tracks', 0, 'patternLength']);
+    expect(fake.sent[0].value).toBe(8);
+  });
+
+  it('applies a remote patternLength op without echoing it back out', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 0, 'patternLength'], value: 12,
+    });
+    expect(synth.project.tracks[0].patternLength).toBe(12);
+    vi.advanceTimersByTime(100);
+    expect(fake.sent.length).toBe(0);
+  });
 });
 
 describe('Project boot integration', () => {
