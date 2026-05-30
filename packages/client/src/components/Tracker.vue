@@ -65,6 +65,7 @@
     <!-- Step Grid -->
     <div
       class="tracker-steps"
+      :class="{ scrolling: patternLength > 16 }"
       ref="stepsEl"
       @focusin="onStepsActive"
       @focusout="onStepsBlur"
@@ -457,11 +458,19 @@ const toggleDrumTrigger = (step: Step) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* Cap at 16 rows (30px row + 2px gap); longer patterns scroll. Keeps the
-     overview grid aligned regardless of per-track patternLength. */
+  /* Cap at 16 rows (30px row + 2px gap); longer patterns scroll. */
   max-height: calc(16 * 30px + 15 * 2px); /* = 510px */
   overflow-y: auto;
-  scrollbar-gutter: stable; /* reserve the bar's column so it never reflows content */
+}
+
+/* When a track overflows (>16 steps), bleed the scroll container into the
+   panel's right padding (.tracker-container has 10px) so the classic webkit
+   bar sits in that gutter, hard against the inner border. The 8px bar consumes
+   the negative margin and the 2px padding-right keeps the rows the exact same
+   width whether or not the track scrolls (margin = barWidth + padding). */
+.tracker-steps.scrolling {
+  margin-right: -10px;
+  padding-right: 2px;
 }
 
 /* Styling ::-webkit-scrollbar also switches Chromium off the OS overlay bar (which
