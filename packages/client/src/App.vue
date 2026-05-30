@@ -50,42 +50,42 @@
           ← BACK TO OVERVIEW
         </button>
         <h2 :style="{ color: TRACK_COLORS[activeTrackIndex] }">
-          Editing: Track {{ activeTrackIndex + 1 }} ({{ engineType.toUpperCase() }})
+          Editing: Track {{ activeTrackIndex + 1 }} ({{ focusedTrack!.engineType.toUpperCase() }})
         </h2>
         
         <div class="engine-selector">
-          <button 
-            :class="{ active: engineType === 'synth' }" 
-            @click="engineType = 'synth'"
-            :style="engineType === 'synth' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          <button
+            :class="{ active: focusedTrack!.engineType === 'synth' }"
+            @click="focusedTrack!.engineType = 'synth'"
+            :style="focusedTrack!.engineType === 'synth' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
             SYNTH
           </button>
-          <button 
-            :class="{ active: engineType === 'kick' }" 
-            @click="engineType = 'kick'"
-            :style="engineType === 'kick' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          <button
+            :class="{ active: focusedTrack!.engineType === 'kick' }"
+            @click="focusedTrack!.engineType = 'kick'"
+            :style="focusedTrack!.engineType === 'kick' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
             KICK
           </button>
-          <button 
-            :class="{ active: engineType === 'hat' }" 
-            @click="engineType = 'hat'"
-            :style="engineType === 'hat' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          <button
+            :class="{ active: focusedTrack!.engineType === 'hat' }"
+            @click="focusedTrack!.engineType = 'hat'"
+            :style="focusedTrack!.engineType === 'hat' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
             HAT
           </button>
-          <button 
-            :class="{ active: engineType === 'snare' }" 
-            @click="engineType = 'snare'"
-            :style="engineType === 'snare' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          <button
+            :class="{ active: focusedTrack!.engineType === 'snare' }"
+            @click="focusedTrack!.engineType = 'snare'"
+            :style="focusedTrack!.engineType === 'snare' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
             SNARE
           </button>
-          <button 
-            :class="{ active: engineType === 'clap' }" 
-            @click="engineType = 'clap'"
-            :style="engineType === 'clap' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+          <button
+            :class="{ active: focusedTrack!.engineType === 'clap' }"
+            @click="focusedTrack!.engineType = 'clap'"
+            :style="focusedTrack!.engineType === 'clap' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
           >
             CLAP
           </button>
@@ -109,7 +109,7 @@
               :color="TRACK_COLORS[activeTrackIndex]"
               :isFocused="true"
               :trackId="activeTrackIndex"
-              :engineType="engineType"
+              :engineType="focusedTrack!.engineType"
               :mode="focusedTrack!.engines.synth.mode"
               @clear="onClear"
               @shift="onShift"
@@ -118,7 +118,7 @@
           </section>
 
           <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
-            <template v-if="engineType === 'synth'">
+            <template v-if="focusedTrack!.engineType === 'synth'">
               <SynthPanel
                 :params="focusedTrack!.engines.synth"
                 :waveforms="waveforms"
@@ -128,7 +128,7 @@
               />
             </template>
             
-            <template v-else-if="engineType === 'kick'">
+            <template v-else-if="focusedTrack!.engineType === 'kick'">
               <KickPanel
                 :params="focusedTrack!.engines.kick"
                 :analyser="activeAnalyser"
@@ -136,7 +136,7 @@
               />
             </template>
 
-            <template v-else-if="engineType === 'hat'">
+            <template v-else-if="focusedTrack!.engineType === 'hat'">
               <HatPanel
                 :params="focusedTrack!.engines.hat"
                 :analyser="activeAnalyser"
@@ -144,7 +144,7 @@
               />
             </template>
 
-            <template v-else-if="engineType === 'snare'">
+            <template v-else-if="focusedTrack!.engineType === 'snare'">
               <SnarePanel
                 :params="focusedTrack!.engines.snare"
                 :analyser="activeAnalyser"
@@ -152,7 +152,7 @@
               />
             </template>
 
-            <template v-else-if="engineType === 'clap'">
+            <template v-else-if="focusedTrack!.engineType === 'clap'">
               <ClapPanel
                 :params="focusedTrack!.engines.clap"
                 :analyser="activeAnalyser"
@@ -212,7 +212,6 @@ const {
   focusedTrack,
   currentStep,
   waveforms,
-  engineType,
   shortestActiveNoteDuration,
   togglePlay,
   selectTrack,

@@ -458,13 +458,6 @@ export function useSynth() {
 
   const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
-  const engineType = computed({
-    get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].engineType : 'synth' as EngineType,
-    set: (val: EngineType) => {
-      if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].engineType = val;
-    }
-  });
-
   const bpm = computed({
     get: () => project.bpm,
     set: (v: number) => { project.bpm = v; },
@@ -560,7 +553,6 @@ export function useSynth() {
     focusedTrack,
     currentStep,
     waveforms,
-    engineType,
     shortestActiveNoteDuration,
     togglePlay,
     selectTrack,
