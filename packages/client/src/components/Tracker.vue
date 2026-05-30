@@ -22,11 +22,11 @@
       <input
         type="number"
         class="tool-len"
-        :value="patternLength"
+        v-model.number="lengthDraft"
         min="1"
         max="64"
         title="Pattern length (steps)"
-        @change="onLengthChange"
+        @change="commitLength"
       />
     </div>
 
@@ -63,7 +63,14 @@
     </div>
     
     <!-- Step Grid -->
-    <div class="tracker-steps">
+    <div
+      class="tracker-steps"
+      ref="stepsEl"
+      @focusin="onStepsActive"
+      @focusout="onStepsBlur"
+      @wheel="markManualScroll"
+      @touchmove="markManualScroll"
+    >
       <div
         v-for="(step, i) in visibleSteps"
         :key="i"
@@ -169,7 +176,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
@@ -202,15 +209,46 @@ const fillSelectRef = ref<HTMLSelectElement | null>(null);
 // reactive Step references, so in-place edits still write through to `project`.
 const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
 
-const onLengthChange = (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  const raw = parseInt(input.value, 10);
-  const length = Math.max(1, Math.min(64, Number.isFinite(raw) ? raw : props.patternLength));
-  emit('set-length', { trackId: props.trackId, length });
-  // Force the field to show the clamped value even when state didn't change
-  // (e.g. typing 99 while already at 64 emits 64 → no reactive diff → no re-patch).
-  input.value = String(length);
+// The length field is v-model'd to a local draft (not the prop directly) so that the
+// ~8/sec re-renders during playback — which re-apply value bindings on every patch —
+// can't clobber what the user is mid-typing: the draft tracks the DOM value keystroke
+// by keystroke, so the patched value always equals the typed value. Resync from the
+// prop when it changes externally (remote sync op, or our own clamp).
+const lengthDraft = ref(props.patternLength);
+watch(() => props.patternLength, (v) => { lengthDraft.value = v; });
+
+const commitLength = () => {
+  const n = Math.round(Number(lengthDraft.value));
+  const clamped = Math.max(1, Math.min(64, Number.isFinite(n) && n > 0 ? n : props.patternLength));
+  lengthDraft.value = clamped; // reflect the clamp in the field
+  emit('set-length', { trackId: props.trackId, length: clamped });
 };
+
+// Smart playhead auto-follow. The step list is height-capped at 16 rows; longer
+// patterns scroll. We follow the playhead, but suspend while the user is editing a step
+// (focus inside the list) or has just scrolled it manually — so it never fights them.
+const stepsEl = ref<HTMLElement | null>(null);
+const FOLLOW_GRACE_MS = 2000;
+let editingInSteps = false;
+let lastManualScrollAt = 0;
+const onStepsActive = () => { editingInSteps = true; };
+const onStepsBlur = () => { editingInSteps = false; };
+const markManualScroll = () => { lastManualScrollAt = Date.now(); };
+
+watch(() => props.currentStep, (cs) => {
+  if (cs < 0 || props.patternLength <= 16) return; // not playing / no overflow → 0 cost
+  if (editingInSteps) return;
+  if (Date.now() - lastManualScrollAt < FOLLOW_GRACE_MS) return;
+  const el = stepsEl.value;
+  if (!el) return;
+  const row = el.children[cs % props.patternLength] as HTMLElement | undefined;
+  if (!row) return;
+  // Contained scrollTop adjustment (never scrollIntoView, which can scroll the window).
+  const e = el.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  if (r.top < e.top) el.scrollTop -= (e.top - r.top);
+  else if (r.bottom > e.bottom) el.scrollTop += (r.bottom - e.bottom);
+});
 
 const onFillChange = (event: Event) => {
   const select = event.target as HTMLSelectElement;
@@ -419,6 +457,11 @@ const toggleDrumTrigger = (step: Step) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Cap at 16 rows (30px row + 2px gap); longer patterns scroll. Keeps the
+     overview grid aligned regardless of per-track patternLength. */
+  max-height: calc(16 * 30px + 15 * 2px); /* = 510px */
+  overflow-y: auto;
+  scrollbar-gutter: stable; /* avoid horizontal reflow when the scrollbar appears */
 }
 
 .step-row {
