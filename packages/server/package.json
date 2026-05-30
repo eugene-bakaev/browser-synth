@@ -16,7 +16,8 @@
     "@fastify/websocket": "^11.0.0",
     "@fiddle/shared": "*",
     "fastify": "^5.0.0",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
