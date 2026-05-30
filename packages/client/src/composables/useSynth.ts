@@ -523,11 +523,6 @@ export function useSynth() {
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
-  // --- Snare params ---
-  const snareTune = trackParam('snare', 'tune', 180);
-  const snareDecay = trackParam('snare', 'decay', 0.25);
-  const snareSnappy = trackParam('snare', 'snappy', 0.5);
-
   // --- Clap params ---
   const clapDecay = trackParam('clap', 'decay', 0.25);
   const clapTone = trackParam('clap', 'tone', 1000);
@@ -632,9 +627,6 @@ export function useSynth() {
     filterEnv,
     ampEnv,
     shortestActiveNoteDuration,
-    snareTune,
-    snareDecay,
-    snareSnappy,
     clapDecay,
     clapTone,
     clapSloppy,

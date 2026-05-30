@@ -161,9 +161,7 @@
 
             <template v-else-if="engineType === 'snare'">
               <SnarePanel
-                v-model:tune="snareTune"
-                v-model:decay="snareDecay"
-                v-model:snappy="snareSnappy"
+                :params="focusedTrack!.engines.snare"
                 :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -249,9 +247,6 @@ const {
   filterEnv,
   ampEnv,
   shortestActiveNoteDuration,
-  snareTune,
-  snareDecay,
-  snareSnappy,
   clapDecay,
   clapTone,
   clapSloppy,

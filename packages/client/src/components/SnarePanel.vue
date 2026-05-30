@@ -5,9 +5,9 @@
       <div class="module-group snare-panel">
         <h3>Snare Machine</h3>
         <div class="knob-row">
-          <Knob label="Tune" :min="100" :max="250" :step="1" :defaultValue="DEFAULTS.tune" format="hz" v-model="tune" :syncPath="ks.pathFor('tune')" @gesture-end="ks.end('tune')" />
-          <Knob label="Decay" :min="0.05" :max="0.8" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" v-model="decay" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
-          <Knob label="Snappy" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.snappy" format="percent" v-model="snappy" :syncPath="ks.pathFor('snappy')" @gesture-end="ks.end('snappy')" />
+          <Knob label="Tune" :min="100" :max="250" :step="1" :defaultValue="DEFAULTS.tune" format="hz" v-model="params.tune" :syncPath="ks.pathFor('tune')" @gesture-end="ks.end('tune')" />
+          <Knob label="Decay" :min="0.05" :max="0.8" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" v-model="params.decay" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
+          <Knob label="Snappy" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.snappy" format="percent" v-model="params.snappy" :syncPath="ks.pathFor('snappy')" @gesture-end="ks.end('snappy')" />
         </div>
       </div>
     </div>
@@ -24,18 +24,16 @@ import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
 import { SnareEngine } from '../engine/SnareEngine';
 import { useKnobSync } from '../sync/knobSync';
+import type { EngineParamsMap } from '../project';
 
 const DEFAULTS = SnareEngine.DEFAULT_PARAMS;
 const ks = useKnobSync('snare');
 
 defineProps<{
+  params: EngineParamsMap['snare'];
   analyser: AnalyserNode | null;
   color: string;
 }>();
-
-const tune = defineModel<number>('tune', { required: true });
-const decay = defineModel<number>('decay', { required: true });
-const snappy = defineModel<number>('snappy', { required: true });
 </script>
 
 
