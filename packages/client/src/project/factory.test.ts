@@ -42,9 +42,9 @@ describe('freshTrack', () => {
     expect(b.engines.synth.filterEnv.a).toBe(SynthEngine.DEFAULT_PARAMS.filterEnv.a);
   });
 
-  it('has 16 fresh steps', () => {
+  it('has 64 fresh steps (fixed buffer, v2 schema)', () => {
     const t = freshTrack();
-    expect(t.steps).toHaveLength(16);
+    expect(t.steps).toHaveLength(64);
     for (const s of t.steps) {
       expect(s).toEqual(freshStep());
     }

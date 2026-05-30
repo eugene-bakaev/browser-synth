@@ -44,6 +44,7 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
       clap:  deepMerge(ClapEngine.DEFAULT_PARAMS,  loadedEngines.clap),
     },
     mixer: deepMerge(DEFAULT_MIXER_STATE, t.mixer),
+    patternLength: typeof t.patternLength === 'number' ? t.patternLength : fresh.patternLength,
     steps: reconcileSteps(t.steps, fresh.steps),
   };
 
@@ -153,6 +154,7 @@ export function replaceProject(target: Project, source: Project): void {
     const s = source.tracks[i];
 
     t.engineType = s.engineType;
+    t.patternLength = s.patternLength;
 
     for (const engine of ENGINE_KEYS) {
       Object.assign(t.engines[engine], s.engines[engine]);
@@ -160,7 +162,7 @@ export function replaceProject(target: Project, source: Project): void {
 
     Object.assign(t.mixer, s.mixer);
 
-    for (let j = 0; j < 16; j++) {
+    for (let j = 0; j < 64; j++) {
       Object.assign(t.steps[j], s.steps[j]);
     }
   }

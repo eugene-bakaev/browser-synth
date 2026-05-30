@@ -32,23 +32,23 @@ describe('shiftTrack', () => {
     track.steps[1].note = 'B';
     shiftTrack(track, 'left');
     expect(track.steps[0].note).toBe('B');
-    expect(track.steps[15].note).toBe('A');
+    expect(track.steps[63].note).toBe('A');
   });
 
   it('shifts right: last → first', () => {
     const track = freshTrack();
-    track.steps[15].note = 'Z';
+    track.steps[63].note = 'Z';
     shiftTrack(track, 'right');
     expect(track.steps[0].note).toBe('Z');
-    expect(track.steps[15].note).toBeNull();
+    expect(track.steps[63].note).toBeNull();
   });
 
-  it('preserves step length (still 16 after shift)', () => {
+  it('preserves step length (still 64 after shift)', () => {
     const track = freshTrack();
     shiftTrack(track, 'left');
-    expect(track.steps).toHaveLength(16);
+    expect(track.steps).toHaveLength(64);
     shiftTrack(track, 'right');
-    expect(track.steps).toHaveLength(16);
+    expect(track.steps).toHaveLength(64);
   });
 });
 
