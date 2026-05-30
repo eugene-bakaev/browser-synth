@@ -153,9 +153,7 @@
 
             <template v-else-if="engineType === 'hat'">
               <HatPanel
-                v-model:decay="hatDecay"
-                v-model:tone="hatTone"
-                v-model:metallic="hatMetallic"
+                :params="focusedTrack!.engines.hat"
                 :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -251,9 +249,6 @@ const {
   filterEnv,
   ampEnv,
   shortestActiveNoteDuration,
-  hatDecay,
-  hatTone,
-  hatMetallic,
   snareTune,
   snareDecay,
   snareSnappy,

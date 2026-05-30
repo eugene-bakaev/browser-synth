@@ -523,11 +523,6 @@ export function useSynth() {
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
-  // --- Hat params ---
-  const hatDecay = trackParam('hat', 'decay', 0.15);
-  const hatTone = trackParam('hat', 'tone', 8000);
-  const hatMetallic = trackParam('hat', 'metallic', 0.5);
-
   // --- Snare params ---
   const snareTune = trackParam('snare', 'tune', 180);
   const snareDecay = trackParam('snare', 'decay', 0.25);
@@ -637,9 +632,6 @@ export function useSynth() {
     filterEnv,
     ampEnv,
     shortestActiveNoteDuration,
-    hatDecay,
-    hatTone,
-    hatMetallic,
     snareTune,
     snareDecay,
     snareSnappy,
