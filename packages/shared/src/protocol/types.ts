@@ -19,6 +19,11 @@ export interface Identity {
   clientId: string;
   color: PaletteColor;
   handle: Handle;
+  // Present for authenticated (Google) users; absent/false for guests. clientId
+  // stays per-connection-unique — userId is the stable account id carried
+  // alongside it (the hook for future per-user features).
+  userId?: string | null;
+  authenticated?: boolean;
 }
 
 // === Client → Server ===
@@ -29,6 +34,7 @@ export interface HelloMessage {
   schemaVersion: number;
   clientId?: string;       // present on resume
   resumeFromOpId?: number; // present on resume
+  token?: string;          // present when the user is logged in (Supabase JWT)
 }
 
 export interface SetOpClient {
@@ -54,6 +60,8 @@ export interface WelcomeMessage {
   clientId: string;
   color: PaletteColor;
   handle: Handle;
+  userId?: string | null;
+  authenticated?: boolean;
   opIdHead: number;
   schemaVersion: number;
   roster: Identity[];
@@ -101,6 +109,7 @@ export type ErrorCode =
   | 'schema.version_mismatch'
   | 'protocol.version_mismatch'
   | 'hello.invalid'
+  | 'auth.invalid'
   | 'room.full'
   | 'resume.unknown_client'
   | 'resume.client_ahead'
