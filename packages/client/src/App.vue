@@ -169,9 +169,7 @@
 
             <template v-else-if="engineType === 'clap'">
               <ClapPanel
-                v-model:decay="clapDecay"
-                v-model:tone="clapTone"
-                v-model:sloppy="clapSloppy"
+                :params="focusedTrack!.engines.clap"
                 :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -247,9 +245,6 @@ const {
   filterEnv,
   ampEnv,
   shortestActiveNoteDuration,
-  clapDecay,
-  clapTone,
-  clapSloppy,
   togglePlay,
   selectTrack,
   getTrackEngineType,

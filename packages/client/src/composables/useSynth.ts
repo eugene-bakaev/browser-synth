@@ -523,11 +523,6 @@ export function useSynth() {
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
-  // --- Clap params ---
-  const clapDecay = trackParam('clap', 'decay', 0.25);
-  const clapTone = trackParam('clap', 'tone', 1000);
-  const clapSloppy = trackParam('clap', 'sloppy', 0.015);
-
   const shortestActiveNoteDuration = computed<number | null>(() => {
     if (activeTrackIndex.value === null) return null;
     const track = project.tracks[activeTrackIndex.value];
@@ -627,9 +622,6 @@ export function useSynth() {
     filterEnv,
     ampEnv,
     shortestActiveNoteDuration,
-    clapDecay,
-    clapTone,
-    clapSloppy,
     togglePlay,
     selectTrack,
     getTrackEngineType,
