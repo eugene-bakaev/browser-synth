@@ -6,6 +6,7 @@ import {
   assignHandle,
   generateClientId,
   makeIdentity,
+  makeAuthenticatedIdentity,
 } from './identity.js';
 
 describe('assignColor', () => {
@@ -45,5 +46,25 @@ describe('makeIdentity', () => {
     const next = makeIdentity(existing);
     expect(next.color).toBe(PALETTE[2]);
     expect(next.handle).toBe(HANDLES[2]);
+  });
+});
+
+describe('makeAuthenticatedIdentity', () => {
+  it('uses the supplied handle + userId and marks authenticated', () => {
+    const id = makeAuthenticatedIdentity([], { userId: 'user-9', handle: 'DJ Eugene' });
+    expect(id.handle).toBe('DJ Eugene');
+    expect(id.userId).toBe('user-9');
+    expect(id.authenticated).toBe(true);
+    expect(id.clientId).toMatch(/^c_/);
+  });
+
+  it('assigns a color not already taken by present peers', () => {
+    const present = [
+      { clientId: 'c_a', color: PALETTE[0], handle: 'Owl' },
+      { clientId: 'c_b', color: PALETTE[1], handle: 'Fox' },
+    ];
+    const id = makeAuthenticatedIdentity(present, { userId: 'u', handle: 'Name' });
+    expect(id.color).not.toBe(PALETTE[0]);
+    expect(id.color).not.toBe(PALETTE[1]);
   });
 });
