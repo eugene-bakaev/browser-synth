@@ -19,6 +19,15 @@
           <option value="8">8TH</option>
         </select>
       </div>
+      <input
+        type="number"
+        class="tool-len"
+        :value="patternLength"
+        min="1"
+        max="64"
+        title="Pattern length (steps)"
+        @change="onLengthChange"
+      />
     </div>
 
     <!-- Grid Header -->
@@ -56,14 +65,14 @@
     <!-- Step Grid -->
     <div class="tracker-steps">
       <div
-        v-for="(step, i) in steps"
+        v-for="(step, i) in visibleSteps"
         :key="i"
         class="tracker-row step-row"
         :class="[
           engineType === 'synth'
             ? (mode === 'poly' ? 'chord-row' : 'synth-row')
             : 'drum-row',
-          { active: currentStep === i, 'step-muted': step.muted, 'with-vel': isFocused && engineType === 'synth' }
+          { active: currentStep >= 0 && (currentStep % patternLength) === i, 'step-muted': step.muted, 'with-vel': isFocused && engineType === 'synth' }
         ]"
       >
         <!-- Step Mute Column -->
@@ -160,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
@@ -174,6 +183,7 @@ const props = withDefaults(defineProps<{
   trackId: number;
   engineType: string;
   mode?: 'mono' | 'poly';
+  patternLength: number;
 }>(), {
   mode: 'mono'
 });
@@ -183,9 +193,24 @@ const emit = defineEmits<{
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
   (e: 'fill', payload: { trackId: number; interval: number }): void;
+  (e: 'set-length', payload: { trackId: number; length: number }): void;
 }>();
 
 const fillSelectRef = ref<HTMLSelectElement | null>(null);
+
+// Only the [0, patternLength) window plays/renders. slice() keeps the underlying
+// reactive Step references, so in-place edits still write through to `project`.
+const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
+
+const onLengthChange = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const raw = parseInt(input.value, 10);
+  const length = Math.max(1, Math.min(64, Number.isFinite(raw) ? raw : props.patternLength));
+  emit('set-length', { trackId: props.trackId, length });
+  // Force the field to show the clamped value even when state didn't change
+  // (e.g. typing 99 while already at 64 emits 64 → no reactive diff → no re-patch).
+  input.value = String(length);
+};
 
 const onFillChange = (event: Event) => {
   const select = event.target as HTMLSelectElement;
@@ -323,6 +348,26 @@ const toggleDrumTrigger = (step: Step) => {
   background: #222;
   color: var(--track-color);
   border-color: var(--track-color);
+}
+
+.tool-len {
+  flex: 1;
+  height: 24px;
+  min-width: 0;
+  background: #181818;
+  color: #aaa;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-align: center;
+  padding: 0 4px;
+}
+.tool-len:focus {
+  outline: none;
+  border-color: var(--track-color);
+  color: var(--track-color);
 }
 
 /* Grid Layouts */

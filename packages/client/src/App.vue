@@ -35,10 +35,12 @@
           :trackId="index"
           :engineType="getTrackEngineType(index)"
           :mode="project.tracks[index].engines.synth.mode"
+          :patternLength="track.patternLength"
           @select-track="selectTrack(index)"
           @clear="onClear"
           @shift="onShift"
           @fill="onFill"
+          @set-length="onSetLength"
         />
       </div>
     </div>
@@ -111,9 +113,11 @@
               :trackId="activeTrackIndex"
               :engineType="focusedTrack!.engineType"
               :mode="focusedTrack!.engines.synth.mode"
+              :patternLength="focusedTrack!.patternLength"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
+              @set-length="onSetLength"
             />
           </section>
 
@@ -233,6 +237,9 @@ const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 
   shiftProjectTrack(project.tracks[trackId], direction, project.tracks[trackId].patternLength);
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
   fillProjectTrack(project.tracks[trackId], interval, project.tracks[trackId].patternLength);
+const onSetLength = ({ trackId, length }: { trackId: number; length: number }) => {
+  project.tracks[trackId].patternLength = Math.max(1, Math.min(64, length));
+};
 
 const onNew = () => {
   if (confirm('Discard current project and start fresh?')) {
