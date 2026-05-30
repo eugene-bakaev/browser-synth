@@ -61,8 +61,8 @@ describe('loadProject', () => {
     // Engines filled in from defaults
     expect(p.tracks[0].engines.synth).toBeDefined();
     expect(p.tracks[0].engines.kick).toBeDefined();
-    // 16 steps materialized
-    expect(p.tracks[0].steps).toHaveLength(16);
+    // 64-step buffer materialized (v2 schema)
+    expect(p.tracks[0].steps).toHaveLength(64);
   });
 });
 
@@ -138,7 +138,7 @@ describe('serializeProject', () => {
     const parsed = JSON.parse(json);
     expect(parsed.bpm).toBe(144);
     expect(parsed.tracks[0].engines.synth.filterCutoff).toBe(1234);
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(2);
   });
 
   it('strips Vue reactive proxies (uses toRaw under the hood)', () => {
@@ -171,7 +171,7 @@ describe('deserializeProject', () => {
     });
     const restored = deserializeProject(partial);
     expect(restored.tracks[0].engines.synth).toBeDefined();
-    expect(restored.tracks[0].steps).toHaveLength(16);
+    expect(restored.tracks[0].steps).toHaveLength(64);
   });
 
   it('returns freshProject (with warn) on malformed JSON', () => {
@@ -214,7 +214,7 @@ describe('replaceProject', () => {
     source.bpm = 77;
     replaceProject(target, source);
     expect(target.bpm).toBe(77);
-    expect(target.schemaVersion).toBe(1);
+    expect(target.schemaVersion).toBe(2);
   });
 
   it('mutates engine slot fields without rebinding the slot object', () => {

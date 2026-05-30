@@ -17,6 +17,15 @@ export function migrateToLatest(raw: unknown): Project {
 
   if (v === PROJECT_SCHEMA_VERSION) return raw as Project;
 
+  if (v === 1) {
+    // v1 -> v2 is purely additive: the 16-step buffer is padded to 64 and
+    // patternLength is defaulted, both completed by reconcileWithDefaults
+    // downstream. We only need to let the doc past the version gate and stamp
+    // the new version so this function's contract (returns a doc at the current
+    // version) holds.
+    return { ...(raw as object), schemaVersion: PROJECT_SCHEMA_VERSION } as unknown as Project;
+  }
+
   if (typeof v === 'number') {
     throw new Error(
       `Unknown project schemaVersion: ${v}. App may be older than this save.`

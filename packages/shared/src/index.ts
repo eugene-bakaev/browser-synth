@@ -19,7 +19,7 @@ export const DEFAULT_MIXER_STATE: MixerState = {
 
 // Bump only on breaking schema changes. Additive changes are handled by the
 // client-side reconcileWithDefaults at load time.
-export const PROJECT_SCHEMA_VERSION = 1 as const;
+export const PROJECT_SCHEMA_VERSION = 2 as const;
 
 // Engine param shapes + defaults (per-engine modules under ./engines/).
 // Moved out of the client `engine/*Engine.ts` files so the server can construct

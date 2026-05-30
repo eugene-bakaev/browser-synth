@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { freshProject } from './factory.js';
-import { ProjectSchema } from './schema.js';
+import { ProjectSchema, Schemas } from './schema.js';
 
 describe('ProjectSchema', () => {
   it('accepts freshProject()', () => {
@@ -38,5 +38,28 @@ describe('ProjectSchema', () => {
       ],
     } as unknown;
     expect(ProjectSchema.safeParse(broken).success).toBe(false);
+  });
+
+  it('parses a fresh v2 project with 64-step buffers and patternLength', () => {
+    const p = freshProject();
+    expect(p.schemaVersion).toBe(2);
+    expect(p.tracks[0].steps).toHaveLength(64);
+    expect(p.tracks[0].patternLength).toBe(16);
+    expect(Schemas.Project.safeParse(p).success).toBe(true);
+  });
+
+  it('rejects a project whose steps buffer is not exactly 64', () => {
+    const p = freshProject();
+    p.tracks[0].steps = p.tracks[0].steps.slice(0, 16);
+    expect(Schemas.Project.safeParse(p).success).toBe(false);
+  });
+
+  it('rejects a patternLength outside 1..64', () => {
+    const p = freshProject();
+    p.tracks[0].patternLength = 65;
+    expect(Schemas.Project.safeParse(p).success).toBe(false);
+    // Lower bound matters too: patternLength 0 would cause modulo-by-zero at playback.
+    p.tracks[0].patternLength = 0;
+    expect(Schemas.Project.safeParse(p).success).toBe(false);
   });
 });

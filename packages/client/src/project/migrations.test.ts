@@ -20,9 +20,20 @@ describe('migrateToLatest', () => {
     expect(migrateToLatest(42).schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
-  it('passes a valid V1 doc through unchanged', () => {
-    const p = freshProject();
+  it('passes a valid current-version doc through unchanged', () => {
+    const p = freshProject(); // v2
     expect(migrateToLatest(p)).toBe(p);
+  });
+
+  it('upgrades a v1 doc past the version gate without throwing', () => {
+    const v1 = { schemaVersion: 1, bpm: 120, tracks: [] };
+    const out = migrateToLatest(v1);
+    expect(out.schemaVersion).toBe(PROJECT_SCHEMA_VERSION); // 2
+  });
+
+  it('still throws for an unknown future schemaVersion', () => {
+    expect(() => migrateToLatest({ schemaVersion: 99, bpm: 100, tracks: [] }))
+      .toThrowError(/Unknown project schemaVersion: 99/);
   });
 
   it('warns and returns fresh when schemaVersion is missing', () => {
@@ -31,10 +42,5 @@ describe('migrateToLatest', () => {
     expect(out.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
-  });
-
-  it('throws for an unknown future schemaVersion', () => {
-    expect(() => migrateToLatest({ schemaVersion: 99, bpm: 100, tracks: [] }))
-      .toThrowError(/Unknown project schemaVersion: 99/);
   });
 });

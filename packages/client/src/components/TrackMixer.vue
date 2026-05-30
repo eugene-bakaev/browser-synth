@@ -90,7 +90,7 @@ const isTrackTriggered = (index: number) => {
   if (!props.sequencer.isPlaying || props.currentStep < 0) return false;
   const track = props.trackStates[index];
   if (!track) return false;
-  const step = track.steps[props.currentStep];
+  const step = track.steps[props.currentStep % track.patternLength];
   if (!step || step.note === null || step.muted) return false;
 
   const mixer = track.mixer;

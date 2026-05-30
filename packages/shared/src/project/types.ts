@@ -32,11 +32,15 @@ export interface ProjectTrack {
   engineType: EngineType;
   engines: EngineParamsMap;
   mixer: MixerState;
+  // `steps` is always a fixed 64-element buffer. `patternLength` (1..64) is the
+  // play/render window; steps at indices >= patternLength keep their data but
+  // do not play or render. Shrinking the window is therefore non-destructive.
+  patternLength: number;
   steps: Step[];
 }
 
 export interface Project {
-  schemaVersion: 1;
+  schemaVersion: 2;
   bpm: number;
   tracks: [ProjectTrack, ProjectTrack, ProjectTrack, ProjectTrack];
 }

@@ -150,7 +150,7 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
 // re-derived inline in each watcher. Keyed by leaf field name — unambiguous
 // across the accept-list (no continuous and discrete field share a name).
 const DISCRETE_LEAF_FIELDS = new Set<string>([
-  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType',
+  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength',
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {
   return DISCRETE_LEAF_FIELDS.has(leafKey);
@@ -405,6 +405,19 @@ async function buildAudioState(): Promise<AudioState> {
         },
         { flush: 'sync' },
       );
+
+      // patternLength has no engine reaction (the sequencer reads it each tick
+      // via the playback loop's modulo). This watcher exists purely to sync the
+      // edit. Sync-flush + suppression guard, as with the other leaf watchers.
+      watch(
+        () => project.tracks[i].patternLength,
+        (newVal, oldVal) => {
+          if (outbox && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'patternLength'], newVal, oldVal, gestureEndForLeaf('patternLength'));
+          }
+        },
+        { flush: 'sync' },
+      );
     }
   });
 
@@ -476,7 +489,10 @@ export function useSynth() {
     if (activeTrackIndex.value === null) return null;
     const track = project.tracks[activeTrackIndex.value];
     if (!track) return null;
-    const activeSteps = track.steps.filter(s => s.note !== null && !s.muted);
+    // Only the active window contributes — steps beyond patternLength don't play.
+    const activeSteps = track.steps
+      .slice(0, track.patternLength)
+      .filter(s => s.note !== null && !s.muted);
     if (activeSteps.length === 0) return null;
     const tickDuration = (60 / project.bpm) / 4;
     const minTicks = Math.min(...activeSteps.map(s => s.length));
@@ -508,7 +524,7 @@ export function useSynth() {
 
         for (let i = 0; i < 4; i++) {
           const track = project.tracks[i];
-          const step = track.steps[stepIndex];
+          const step = track.steps[stepIndex % track.patternLength];
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
             if (engineTypeI === 'synth') {
