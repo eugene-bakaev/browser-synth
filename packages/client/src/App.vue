@@ -110,7 +110,7 @@
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="engineType"
-              :mode="synthMode"
+              :mode="focusedTrack!.engines.synth.mode"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
@@ -120,23 +120,8 @@
           <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
             <template v-if="engineType === 'synth'">
               <SynthPanel
-                v-model:osc1Type="osc1Type"
-                v-model:osc1Coarse="osc1Coarse"
-                v-model:osc1Fine="osc1Fine"
-                v-model:osc1PulseWidth="osc1PulseWidth"
-                v-model:osc2Type="osc2Type"
-                v-model:osc2Coarse="osc2Coarse"
-                v-model:osc2Fine="osc2Fine"
-                v-model:osc2PulseWidth="osc2PulseWidth"
-                v-model:osc1Level="osc1Level"
-                v-model:osc2Level="osc2Level"
-                v-model:filterCutoff="filterCutoff"
-                v-model:filterRes="filterRes"
-                v-model:filterEnvAmount="filterEnvAmount"
-                v-model:mode="synthMode"
+                :params="focusedTrack!.engines.synth"
                 :waveforms="waveforms"
-                :filterEnv="filterEnv"
-                :ampEnv="ampEnv"
                 :shortestActiveNoteDuration="shortestActiveNoteDuration"
                 :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
@@ -228,22 +213,6 @@ const {
   currentStep,
   waveforms,
   engineType,
-  synthMode,
-  osc1Type,
-  osc2Type,
-  osc1Coarse,
-  osc1Fine,
-  osc1PulseWidth,
-  osc2Coarse,
-  osc2Fine,
-  osc2PulseWidth,
-  osc1Level,
-  osc2Level,
-  filterCutoff,
-  filterRes,
-  filterEnvAmount,
-  filterEnv,
-  ampEnv,
   shortestActiveNoteDuration,
   togglePlay,
   selectTrack,

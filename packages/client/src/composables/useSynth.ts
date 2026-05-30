@@ -1,4 +1,4 @@
-import { ref, reactive, watch, computed, effectScope, shallowRef, type WritableComputedRef, type EffectScope, type ComputedRef } from 'vue';
+import { ref, reactive, watch, computed, effectScope, shallowRef, type EffectScope, type ComputedRef } from 'vue';
 import type { OscillatorTypeLiteral } from '@fiddle/shared';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
@@ -20,7 +20,6 @@ import {
   type Project,
   type ProjectTrack,
   type EngineType,
-  type EngineParamsMap,
   loadProject,
   installAutoSave,
 } from '../project';
@@ -459,36 +458,10 @@ export function useSynth() {
 
   const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
-  function trackParam<K extends keyof EngineParamsMap, P extends keyof EngineParamsMap[K]>(
-    engine: K, param: P, fallback: EngineParamsMap[K][P]
-  ): WritableComputedRef<EngineParamsMap[K][P]> {
-    return computed({
-      get: () => activeTrackIndex.value !== null
-        ? project.tracks[activeTrackIndex.value].engines[engine][param]
-        : fallback,
-      set: (val: EngineParamsMap[K][P]) => {
-        if (activeTrackIndex.value !== null) {
-          project.tracks[activeTrackIndex.value].engines[engine][param] = val;
-        }
-      }
-    });
-  }
-
   const engineType = computed({
     get: () => activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].engineType : 'synth' as EngineType,
     set: (val: EngineType) => {
       if (activeTrackIndex.value !== null) project.tracks[activeTrackIndex.value].engineType = val;
-    }
-  });
-
-  const synthMode = computed({
-    get: () => activeTrackIndex.value !== null
-      ? project.tracks[activeTrackIndex.value].engines.synth.mode
-      : 'mono' as const,
-    set: (val: 'mono' | 'poly') => {
-      if (activeTrackIndex.value !== null) {
-        project.tracks[activeTrackIndex.value].engines.synth.mode = val;
-      }
     }
   });
 
@@ -505,23 +478,6 @@ export function useSynth() {
   const focusedTrack = computed(() =>
     activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value] : null
   );
-
-  // --- Synth params ---
-  const osc1Type = trackParam('synth', 'osc1Type', 'sawtooth');
-  const osc2Type = trackParam('synth', 'osc2Type', 'sawtooth');
-  const osc1Coarse = trackParam('synth', 'osc1Coarse', 0);
-  const osc1Fine = trackParam('synth', 'osc1Fine', 0);
-  const osc2Coarse = trackParam('synth', 'osc2Coarse', 0);
-  const osc2Fine = trackParam('synth', 'osc2Fine', 0);
-  const osc1Level = trackParam('synth', 'osc1Level', 0.5);
-  const osc2Level = trackParam('synth', 'osc2Level', 0.5);
-  const osc1PulseWidth = trackParam('synth', 'osc1PulseWidth', 0.5);
-  const osc2PulseWidth = trackParam('synth', 'osc2PulseWidth', 0.5);
-  const filterCutoff = trackParam('synth', 'filterCutoff', 2000);
-  const filterRes = trackParam('synth', 'filterRes', 1);
-  const filterEnvAmount = trackParam('synth', 'filterEnvAmount', 2.4);
-  const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
-  const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
   const shortestActiveNoteDuration = computed<number | null>(() => {
     if (activeTrackIndex.value === null) return null;
@@ -605,22 +561,6 @@ export function useSynth() {
     currentStep,
     waveforms,
     engineType,
-    synthMode,
-    osc1Type,
-    osc2Type,
-    osc1Coarse,
-    osc1Fine,
-    osc2Coarse,
-    osc2Fine,
-    osc1Level,
-    osc2Level,
-    osc1PulseWidth,
-    osc2PulseWidth,
-    filterCutoff,
-    filterRes,
-    filterEnvAmount,
-    filterEnv,
-    ampEnv,
     shortestActiveNoteDuration,
     togglePlay,
     selectTrack,
