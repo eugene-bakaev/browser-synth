@@ -489,7 +489,10 @@ export function useSynth() {
     if (activeTrackIndex.value === null) return null;
     const track = project.tracks[activeTrackIndex.value];
     if (!track) return null;
-    const activeSteps = track.steps.filter(s => s.note !== null && !s.muted);
+    // Only the active window contributes — steps beyond patternLength don't play.
+    const activeSteps = track.steps
+      .slice(0, track.patternLength)
+      .filter(s => s.note !== null && !s.muted);
     if (activeSteps.length === 0) return null;
     const tickDuration = (60 / project.bpm) / 4;
     const minTicks = Math.min(...activeSteps.map(s => s.length));

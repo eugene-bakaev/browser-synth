@@ -44,7 +44,12 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
       clap:  deepMerge(ClapEngine.DEFAULT_PARAMS,  loadedEngines.clap),
     },
     mixer: deepMerge(DEFAULT_MIXER_STATE, t.mixer),
-    patternLength: typeof t.patternLength === 'number' ? t.patternLength : fresh.patternLength,
+    // Clamp on load: a corrupted/hand-edited save with patternLength 0 (or out of
+    // range) would otherwise cause `stepIndex % 0 = NaN` at playback. The UI path
+    // clamps too; this hardens the persistence path.
+    patternLength: typeof t.patternLength === 'number'
+      ? Math.max(1, Math.min(64, t.patternLength))
+      : fresh.patternLength,
     steps: reconcileSteps(t.steps, fresh.steps),
   };
 

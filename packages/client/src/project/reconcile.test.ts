@@ -93,4 +93,11 @@ describe('reconcileWithDefaults', () => {
     const out = reconcileWithDefaults({ schemaVersion: 2, bpm: 120, tracks: [{ patternLength: 7 }] });
     expect(out.tracks[0].patternLength).toBe(7);
   });
+
+  it('clamps an out-of-range patternLength on load (guards modulo-by-zero)', () => {
+    const lo = reconcileWithDefaults({ schemaVersion: 2, bpm: 120, tracks: [{ patternLength: 0 }] });
+    expect(lo.tracks[0].patternLength).toBe(1);
+    const hi = reconcileWithDefaults({ schemaVersion: 2, bpm: 120, tracks: [{ patternLength: 999 }] });
+    expect(hi.tracks[0].patternLength).toBe(64);
+  });
 });
