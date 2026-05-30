@@ -14,7 +14,7 @@
 // numeric indices are in range. A path like `tracks.99.engineType` will pass
 // because the pattern allows `tracks.*.engineType`. The server-side
 // ConnectionHandler (Task 8) is responsible for additionally bounds-checking
-// track indices (0..3) and step indices (0..15) before applying the op.
+// track indices (0..3) and step indices (0..63) before applying the op.
 
 import { z } from 'zod';
 import { Schemas } from './schema.js';
@@ -23,6 +23,7 @@ import { Schemas } from './schema.js';
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ['bpm'],
   ['tracks', '*', 'engineType'],
+  ['tracks', '*', 'patternLength'],
   // Synth params (leaves only — no whole-object writes).
   ['tracks', '*', 'engines', 'synth', 'osc1Type'],
   ['tracks', '*', 'engines', 'synth', 'osc2Type'],
@@ -104,14 +105,15 @@ export function pathIsWritable(path: string): boolean {
   return PATTERNS.some(p => matchesPattern(tokens, p));
 }
 
-// A Project has exactly 4 tracks and 16 steps per track. `matchesPattern`'s `*`
+// A Project has exactly 4 tracks and a fixed 64-step buffer per track (the
+// track's patternLength bounds the active window). `matchesPattern`'s `*`
 // wildcard only checks that an index *looks* like a non-negative integer, not
 // that it's in range — so `tracks.99.engineType` matches a pattern. This
 // enforces the actual bounds, which both the client (pre-emit) and the server
 // (before appendOp) rely on; without it an out-of-range index reaches the deep
 // writer and throws instead of producing a clean nack.
 const TRACK_COUNT = 4;
-const STEP_COUNT = 16;
+const STEP_COUNT = 64;
 export function indicesInRange(path: string): boolean {
   const tokens = tokenize(path);
   if (tokens[0] !== 'tracks') return true; // only `tracks.…` paths carry indices
@@ -150,6 +152,10 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
 
   if (trackKey === 'engineType' && tokens.length === 3) {
     return trackShape.engineType;
+  }
+
+  if (trackKey === 'patternLength' && tokens.length === 3) {
+    return trackShape.patternLength;
   }
 
   if (trackKey === 'mixer' && tokens.length === 4) {

@@ -43,8 +43,13 @@ describe('indicesInRange', () => {
   });
 
   it('rejects out-of-range step index', () => {
-    expect(indicesInRange('tracks.0.steps.16.note')).toBe(false);
+    expect(indicesInRange('tracks.0.steps.64.note')).toBe(false);
     expect(indicesInRange('tracks.0.steps.99.velocity')).toBe(false);
+  });
+
+  it('allows step indices up to 63', () => {
+    expect(indicesInRange('tracks.0.steps.63.note')).toBe(true);
+    expect(indicesInRange('tracks.0.steps.64.note')).toBe(false);
   });
 });
 
@@ -93,5 +98,17 @@ describe('validatePathAndValue', () => {
     const r = validatePathAndValue('tracks.0.steps.99.note', 'C');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('path.invalid');
+  });
+
+  it('accepts a writable patternLength path with an in-range value', () => {
+    expect(validatePathAndValue('tracks.0.patternLength', 32)).toEqual({ ok: true });
+  });
+
+  it('rejects patternLength out of range (both bounds) with value.invalid', () => {
+    for (const bad of [65, 0, 1.5]) {
+      const r = validatePathAndValue('tracks.0.patternLength', bad);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('value.invalid');
+    }
   });
 });
