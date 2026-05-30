@@ -227,11 +227,12 @@ const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
 );
 
-const onClear = (trackId: number) => clearProjectTrack(project.tracks[trackId]);
+const onClear = (trackId: number) =>
+  clearProjectTrack(project.tracks[trackId], project.tracks[trackId].patternLength);
 const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) =>
-  shiftProjectTrack(project.tracks[trackId], direction);
+  shiftProjectTrack(project.tracks[trackId], direction, project.tracks[trackId].patternLength);
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
-  fillProjectTrack(project.tracks[trackId], interval);
+  fillProjectTrack(project.tracks[trackId], interval, project.tracks[trackId].patternLength);
 
 const onNew = () => {
   if (confirm('Discard current project and start fresh?')) {
