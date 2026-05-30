@@ -5,13 +5,13 @@
       <div class="module-group kick-panel">
         <h3>Kick Machine</h3>
         <div class="knob-row">
-          <Knob label="Tune" :min="40" :max="120" :step="1" :defaultValue="DEFAULTS.tune" format="hz" v-model="tune" :syncPath="ks.pathFor('tune')" @gesture-end="ks.end('tune')" />
-          <Knob label="Decay" :min="0.05" :max="1.5" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" v-model="decay" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
-          <Knob label="Click" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.click" format="percent" v-model="click" :syncPath="ks.pathFor('click')" @gesture-end="ks.end('click')" />
+          <Knob label="Tune" :min="40" :max="120" :step="1" :defaultValue="DEFAULTS.tune" format="hz" v-model="params.tune" :syncPath="ks.pathFor('tune')" @gesture-end="ks.end('tune')" />
+          <Knob label="Decay" :min="0.05" :max="1.5" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" v-model="params.decay" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
+          <Knob label="Click" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.click" format="percent" v-model="params.click" :syncPath="ks.pathFor('click')" @gesture-end="ks.end('click')" />
         </div>
       </div>
     </div>
-    
+
     <!-- Column 2: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
@@ -24,18 +24,16 @@ import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
 import { KickEngine } from '../engine/KickEngine';
 import { useKnobSync } from '../sync/knobSync';
+import type { EngineParamsMap } from '../project';
 
 const DEFAULTS = KickEngine.DEFAULT_PARAMS;
 const ks = useKnobSync('kick');
 
 defineProps<{
+  params: EngineParamsMap['kick'];
   analyser: AnalyserNode | null;
   color: string;
 }>();
-
-const tune = defineModel<number>('tune', { required: true });
-const decay = defineModel<number>('decay', { required: true });
-const click = defineModel<number>('click', { required: true });
 </script>
 
 

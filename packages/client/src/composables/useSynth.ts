@@ -523,11 +523,6 @@ export function useSynth() {
   const filterEnv = trackParam('synth', 'filterEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   const ampEnv = trackParam('synth', 'ampEnv', { a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
 
-  // --- Kick params ---
-  const kickTune = trackParam('kick', 'tune', 55);
-  const kickDecay = trackParam('kick', 'decay', 0.3);
-  const kickClick = trackParam('kick', 'click', 0.5);
-
   // --- Hat params ---
   const hatDecay = trackParam('hat', 'decay', 0.15);
   const hatTone = trackParam('hat', 'tone', 8000);
@@ -642,9 +637,6 @@ export function useSynth() {
     filterEnv,
     ampEnv,
     shortestActiveNoteDuration,
-    kickTune,
-    kickDecay,
-    kickClick,
     hatDecay,
     hatTone,
     hatMetallic,

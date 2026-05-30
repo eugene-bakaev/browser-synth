@@ -145,9 +145,7 @@
             
             <template v-else-if="engineType === 'kick'">
               <KickPanel
-                v-model:tune="kickTune"
-                v-model:decay="kickDecay"
-                v-model:click="kickClick"
+                :params="focusedTrack!.engines.kick"
                 :analyser="activeAnalyser"
                 :color="TRACK_COLORS[activeTrackIndex]"
               />
@@ -232,6 +230,7 @@ const {
   sequencer,
   bpm,
   activeTrackIndex,
+  focusedTrack,
   currentStep,
   waveforms,
   engineType,
@@ -252,9 +251,6 @@ const {
   filterEnv,
   ampEnv,
   shortestActiveNoteDuration,
-  kickTune,
-  kickDecay,
-  kickClick,
   hatDecay,
   hatTone,
   hatMetallic,
