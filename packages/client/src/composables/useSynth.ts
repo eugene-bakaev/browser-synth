@@ -591,7 +591,7 @@ export function useSynth() {
     // Force audio init without playing — needed by tests and any consumer
     // that needs the audio graph up before the first togglePlay.
     ensureAudio,
-    // --- Sync surface (read by RoomBar / ErrorOverlay in Task 16) ---
+    // --- Sync surface (read by Sidebar / AccountView / ErrorOverlay) ---
     fatalError,       // ref<{code,message}|null> — set on a fatal server error
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
