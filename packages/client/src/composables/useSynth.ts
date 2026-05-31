@@ -32,6 +32,7 @@ import { setDeep } from '@fiddle/shared';
 import { resolveRoomIdFromUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
+import { useAuth } from '../auth/useAuth';
 import type { Path } from '@fiddle/shared';
 
 // === Pure data state — built from localStorage (or fresh) at module init. ===
@@ -193,9 +194,11 @@ function buildSyncState(): void {
     ? `${envUrl.replace(/\/$/, '')}/ws/${roomId}`
     : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${roomId}`;
 
+  const auth = useAuth();
   wsClient = wsClientFactory({
     url: wsUrl,
     roomId,
+    getToken: () => auth.accessToken.value,
     onMessage: (msg) => dispatchServerMessage(msg, {
       project,
       wsClient: wsClient!,
@@ -224,6 +227,18 @@ function buildSyncState(): void {
   });
 
   wsClient.connect();
+
+  // Re-handshake when the user logs in/out so the server re-derives identity
+  // from the (now present/absent) token. Watch the user id, not the token —
+  // Supabase silently refreshes the token periodically and we don't want to
+  // bounce the socket on every refresh.
+  watch(
+    () => auth.session.value?.user.id ?? null,
+    (next, prev) => {
+      if (next === prev) return;
+      wsClient?.reconnect();
+    },
+  );
 }
 
 async function buildAudioState(): Promise<AudioState> {

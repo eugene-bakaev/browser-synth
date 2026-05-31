@@ -144,6 +144,7 @@ describe('sync integration', () => {
       sent: [] as any[],
       connect: vi.fn(),
       disconnect: vi.fn(),
+      reconnect: vi.fn(),
       send(op: any) { this.sent.push(op); },
       isLive: () => true,
       nextClientSeq: () => ++seq,
@@ -277,6 +278,23 @@ describe('sync integration', () => {
     expect(synth.project.tracks[0].patternLength).toBe(12);
     vi.advanceTimersByTime(100);
     expect(fake.sent.length).toBe(0);
+  });
+
+  it('passes getToken to the WsClient factory', async () => {
+    const { fake } = await bootWithFakeSocket();
+    expect(typeof fake._opts.getToken).toBe('function');
+  });
+
+  it('reconnects the WsClient when the auth session changes', async () => {
+    const { fake } = await bootWithFakeSocket();
+    // Import the same useAuth module instance the composable wired its watcher
+    // against (resetModules already ran inside bootWithFakeSocket).
+    const { useAuth } = await import('../auth/useAuth');
+    const auth = useAuth();
+    expect(fake.reconnect).not.toHaveBeenCalled();
+    auth.session.value = { user: { id: 'u-1' }, access_token: 'tok-1' };
+    await nextTick();
+    expect(fake.reconnect).toHaveBeenCalled();
   });
 });
 
