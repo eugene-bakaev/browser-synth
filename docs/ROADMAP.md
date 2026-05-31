@@ -66,7 +66,24 @@ authenticated user id *becomes* the `clientId`.
    path; the step UI gains per-step editing. (Brushes against the "sound-engine
    excluded" note — treat as sequencer work.)
 
-6. **Breaking the 16-step limit** — *direction undecided; analysis below.*
+6. **Session version history (restore points)** — deferred follow-up to the
+   persistent-lobby work (#1–2). Once sessions persist as a latest-snapshot in
+   Postgres, keep the last ~10 *meaningful* versions per session — captured on
+   **session-boundary flushes** (a user leaves / the room empties), NOT on the
+   periodic 60s autosave (otherwise "10 versions" only spans ~10 minutes). Lets a
+   user roll a session back to an earlier state. Implementation sketch: a
+   `session_versions` table (`session_id, version_no, project jsonb, created_at`),
+   insert-on-boundary, prune to the 10 most recent. Design the lobby/persistence
+   flush path so this slots in without rework. Explicitly out of scope for the
+   initial persistent-lobby slice.
+
+7. **Project templates** — deferred extension to the create-session flow. The
+   initial persistent-lobby slice lets a creator seed a new session from a blank
+   default project or an imported `.json`. Later, offer a curated set of starter
+   templates (e.g. genre/beat starting points) as a third seed option in the
+   create form. Small, additive; no schema change beyond a template catalog.
+
+8. **Breaking the 16-step limit** — *direction undecided; analysis below.*
 
    The real fork is **shared vs. local transport**, not pattern length. Today
    transport is **local**: each client runs its own `Sequencer` and presses PLAY
