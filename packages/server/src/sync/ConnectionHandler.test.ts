@@ -1,9 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PROJECT_SCHEMA_VERSION } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, HANDLES } from '@fiddle/shared';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
+import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
 import { ConnectionHandler } from './ConnectionHandler.js';
 import type { RoomConnectionPool, SocketLike } from './SocketLike.js';
+
+function fakeVerify(map: Record<string, { userId: string; googleName: string }>) {
+  return async (token: string) => map[token] ?? null;
+}
+
+const rejectAll = async () => null;
 
 type MockSocket = SocketLike & { sent: ServerMessage[]; closed: boolean };
 
@@ -56,7 +63,7 @@ describe('ConnectionHandler', () => {
     const socket = makeMockSocket();
     const pool = new FakePool();
     pool.add('room1', socket);
-    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
 
     await handler.onMessage({
       v: 1,
@@ -85,7 +92,7 @@ describe('ConnectionHandler', () => {
     const socket = makeMockSocket();
     const pool = new FakePool();
     pool.add('room1', socket);
-    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
 
     await handler.onMessage({
       v: 1,
@@ -106,7 +113,7 @@ describe('ConnectionHandler', () => {
     const socket = makeMockSocket();
     const pool = new FakePool();
     pool.add('room1', socket);
-    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
 
     await handler.onMessage({ banana: true });
 
@@ -122,7 +129,7 @@ describe('ConnectionHandler', () => {
     const socket = makeMockSocket();
     const pool = new FakePool();
     pool.add('room1', socket);
-    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
 
     await handler.onMessage({
       v: 1,
@@ -154,7 +161,7 @@ describe('ConnectionHandler', () => {
     const socket = makeMockSocket();
     pool.add('room1', socket);
 
-    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
     await handler.onMessage({
       v: 1,
       type: 'hello',
@@ -183,8 +190,8 @@ describe('ConnectionHandler', () => {
       const pool = new FakePool();
       pool.add('room1', sockA);
       pool.add('room1', sockB);
-      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog);
-      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
       await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
       await handlerB.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
 
@@ -222,8 +229,8 @@ describe('ConnectionHandler', () => {
       const pool = new FakePool();
       pool.add('room1', sockA);
       pool.add('room1', sockB);
-      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog);
-      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
       await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
       await handlerB.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
       const aId = clientIdOf(sockA);
@@ -235,7 +242,7 @@ describe('ConnectionHandler', () => {
       // A reconnects on a new socket with its stored clientId.
       const sockA2 = makeMockSocket();
       pool.add('room1', sockA2);
-      const handlerA2 = new ConnectionHandler('room1', sockA2, store, pool, noopLog);
+      const handlerA2 = new ConnectionHandler('room1', sockA2, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
       await handlerA2.onMessage({
         v: 1,
         type: 'hello',
@@ -263,7 +270,7 @@ describe('ConnectionHandler', () => {
       const socket = makeMockSocket();
       const pool = new FakePool();
       pool.add('room1', socket);
-      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog);
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
       await handler.onMessage({
         v: 1,
         type: 'hello',
@@ -387,8 +394,8 @@ describe('ConnectionHandler', () => {
       pool.add('room1', sockA);
       pool.add('room1', sockB);
 
-      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog);
-      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
       await handlerA.onMessage({
         v: 1,
         type: 'hello',
@@ -422,6 +429,153 @@ describe('ConnectionHandler', () => {
       expect(setA.opId).toBe(setB.opId);
       expect(setA.value).toBe(132);
       expect(setB.value).toBe(132);
+    });
+  });
+
+  describe('hello auth', () => {
+    function welcomeOf(sock: MockSocket) {
+      const w = sock.sent.find((m) => m.type === 'welcome');
+      if (!w || w.type !== 'welcome') throw new Error('no welcome');
+      return w;
+    }
+
+    it('uses the stored username as the handle for an authenticated user', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const profiles = new InMemoryProfileStore({ 'user-1': 'DJ Eugene' });
+      const verify = fakeVerify({ 'good-token': { userId: 'user-1', googleName: 'Eugene B' } });
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, verify, profiles);
+
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        token: 'good-token',
+      });
+
+      const welcome = welcomeOf(socket);
+      expect(welcome.handle).toBe('DJ Eugene');
+      expect(welcome.authenticated).toBe(true);
+      expect(welcome.userId).toBe('user-1');
+    });
+
+    it('falls back to the Google name when no username is stored', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const profiles = new InMemoryProfileStore(); // empty
+      const verify = fakeVerify({ 'good-token': { userId: 'user-1', googleName: 'Eugene B' } });
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, verify, profiles);
+
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        token: 'good-token',
+      });
+
+      const welcome = welcomeOf(socket);
+      expect(welcome.handle).toBe('Eugene B');
+      expect(welcome.authenticated).toBe(true);
+    });
+
+    it('rejects an invalid token fatally with auth.invalid and no welcome', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const handler = new ConnectionHandler(
+        'room1',
+        socket,
+        store,
+        pool,
+        noopLog,
+        rejectAll,
+        new InMemoryProfileStore(),
+      );
+
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        token: 'bad',
+      });
+
+      const err = socket.sent.find((m) => m.type === 'error');
+      expect(err).toBeDefined();
+      if (err && err.type === 'error') {
+        expect(err.code).toBe('auth.invalid');
+        expect(err.fatal).toBe(true);
+      }
+      expect(socket.closed).toBe(true);
+      expect(socket.sent.find((m) => m.type === 'welcome')).toBeUndefined();
+    });
+
+    it('leaves the guest path unchanged when no token is supplied', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const verify = fakeVerify({ 'good-token': { userId: 'user-1', googleName: 'Eugene B' } });
+      const handler = new ConnectionHandler(
+        'room1',
+        socket,
+        store,
+        pool,
+        noopLog,
+        verify,
+        new InMemoryProfileStore({ 'user-1': 'DJ Eugene' }),
+      );
+
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+
+      const welcome = welcomeOf(socket);
+      expect(welcome.authenticated).toBeFalsy();
+      expect((HANDLES as readonly string[]).includes(welcome.handle)).toBe(true);
+    });
+
+    it('mints a per-connection-unique clientId for multi-tab same-user sessions', async () => {
+      const verify = fakeVerify({ 'good-token': { userId: 'user-1', googleName: 'Eugene B' } });
+      const profiles = new InMemoryProfileStore({ 'user-1': 'DJ Eugene' });
+
+      const sockA = makeMockSocket();
+      const sockB = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sockA);
+      pool.add('room1', sockB);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, verify, profiles);
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, verify, profiles);
+
+      await handlerA.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        token: 'good-token',
+      });
+      await handlerB.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        token: 'good-token',
+      });
+
+      const aId = welcomeOf(sockA).clientId;
+      const bId = welcomeOf(sockB).clientId;
+      expect(aId).not.toBe(bId);
+
+      const connected = await store.listConnected('room1');
+      expect(connected.map((i) => i.clientId).sort()).toEqual([aId, bId].sort());
+      // Both carry the same account.
+      expect(connected.every((i) => i.userId === 'user-1')).toBe(true);
+
+      // Closing one tab leaves the other live.
+      pool.remove('room1', sockA);
+      await handlerA.onClose();
+      const stillConnected = await store.listConnected('room1');
+      expect(stillConnected.map((i) => i.clientId)).toEqual([bId]);
     });
   });
 });
