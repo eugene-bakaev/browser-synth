@@ -1,10 +1,11 @@
 <template>
   <ErrorOverlay />
-  <nav class="temp-nav">
-    <RouterLink to="/studio">Studio</RouterLink>
-    <RouterLink to="/account">Account</RouterLink>
-  </nav>
-  <router-view />
+  <div class="app-shell">
+    <Sidebar />
+    <main class="app-main">
+      <router-view />
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -13,6 +14,7 @@ import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
 import ErrorOverlay from './components/ErrorOverlay.vue';
+import Sidebar from './components/Sidebar.vue';
 
 // useSynth() is called exactly once here, in the never-unmounting shell, so its
 // per-call currentStep/activeTrackIndex are stable and audio/WS (module-scope)
@@ -109,11 +111,13 @@ h1 {
 </style>
 
 <style scoped>
-.temp-nav {
-  display: flex;
-  gap: 16px;
-  padding: 8px 20px;
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
 }
-.temp-nav a { color: #00f0ff; text-decoration: none; font-family: monospace; }
-.temp-nav a.router-link-active { text-decoration: underline; }
+.app-main {
+  min-width: 0;
+  overflow-x: hidden;
+}
 </style>

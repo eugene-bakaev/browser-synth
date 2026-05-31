@@ -1,11 +1,6 @@
 <template>
   <div class="synth-container">
     <header>
-      <div class="brand">
-        <h1>Fiddle Synth</h1>
-        <span class="sub-brand">// 4-TRACK SEQUENCER</span>
-      </div>
-      <RoomBar />
       <div class="transport">
         <button @click="togglePlay" :class="{ playing: sequencer.isPlaying }">
           {{ sequencer.isPlaying ? 'STOP' : 'PLAY' }}
@@ -196,7 +191,6 @@ import {
   resetEnginePatch,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
-import RoomBar from '../components/RoomBar.vue';
 import SynthPanel from '../components/SynthPanel.vue';
 import KickPanel from '../components/KickPanel.vue';
 import HatPanel from '../components/HatPanel.vue';
@@ -297,24 +291,12 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
 }
 header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-bottom: 30px;
   flex-shrink: 0;
   border-bottom: 1px solid #222;
   padding-bottom: 20px;
-}
-.brand {
-  display: flex;
-  flex-direction: column;
-}
-.sub-brand {
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: #666;
-  font-weight: bold;
-  letter-spacing: 0.1em;
-  margin-top: 2px;
 }
 .transport {
   display: flex;
