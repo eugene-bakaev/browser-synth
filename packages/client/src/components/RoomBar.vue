@@ -35,7 +35,7 @@
 <script setup lang="ts">
 // roster / selfClientId are module-scope presence refs, written by the message
 // dispatcher (welcome + presence.update). Read directly — no props needed.
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
 
@@ -44,6 +44,22 @@ const draftName = ref('');
 const saving = ref(false);
 const status = ref<'' | 'ok' | 'taken'>('');
 const statusText = ref('');
+
+// Our current handle as the server resolved it (the saved username, or the
+// Google name until one is set). Pre-fill the input with it so a reload shows
+// the current name instead of a blank field — but never clobber what the user
+// is actively typing (only seed when empty or still equal to the prior handle).
+const selfHandle = computed(
+  () => roster.value.find((r) => r.clientId === selfClientId.value)?.handle ?? '',
+);
+watch(
+  selfHandle,
+  (next, prev) => {
+    if (!next) return;
+    if (draftName.value === '' || draftName.value === prev) draftName.value = next;
+  },
+  { immediate: true },
+);
 
 async function save() {
   if (!draftName.value.trim()) return;
