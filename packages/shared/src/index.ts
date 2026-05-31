@@ -40,3 +40,6 @@ export * from './path.js';
 
 // Session settings shape + defaults, shared by the lobby UI and the server.
 export * from './session/settings.js';
+
+// Lobby list entry wire shape (GET /api/sessions response).
+export * from './session/lobby.js';
