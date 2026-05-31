@@ -112,10 +112,10 @@
               </select>
             </div>
             <div class="col-oct">
-              <input type="number" v-model.number="step.octave" :disabled="step.note === null" min="0" max="8" title="Octave">
+              <StepNumberInput v-model="step.octave" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
             </div>
             <div class="col-len">
-              <input type="number" v-model.number="step.length" :disabled="step.note === null" min="1" max="16" title="Length (ticks)">
+              <StepNumberInput v-model="step.length" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
             </div>
           </template>
           <template v-else>
@@ -126,10 +126,10 @@
               </select>
             </div>
             <div class="col-oct">
-              <input type="number" v-model.number="step.octave" :disabled="step.note === null" min="0" max="8" title="Octave">
+              <StepNumberInput v-model="step.octave" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
             </div>
             <div class="col-len">
-              <input type="number" v-model.number="step.length" :disabled="step.note === null" min="1" max="16" title="Length (ticks)">
+              <StepNumberInput v-model="step.length" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
             </div>
           </template>
           <div v-if="isFocused" class="col-vel">
@@ -181,6 +181,7 @@ import { ref, computed, watch } from 'vue';
 import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
+import StepNumberInput from './StepNumberInput.vue';
 
 const props = withDefaults(defineProps<{
   steps: Step[];
