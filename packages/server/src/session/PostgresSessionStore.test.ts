@@ -67,6 +67,12 @@ maybe('PostgresSessionStore (integration)', () => {
     expect((await store.getSnapshot('s1'))?.bpm).toBe(150);
   });
 
+  it('saveSnapshot on a missing session is a no-op (no FK violation)', async () => {
+    // Mirrors InMemorySessionStore: a flush racing a delete/prune must not throw.
+    await store.saveSnapshot('ghost', freshProject());
+    expect(await store.getSnapshot('ghost')).toBeNull();
+  });
+
   it('updateMeta changes only provided fields', async () => {
     await store.create({
       id: 's1', name: 'Jam', description: 'orig',

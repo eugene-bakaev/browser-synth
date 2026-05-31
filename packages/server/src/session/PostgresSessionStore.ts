@@ -82,9 +82,15 @@ export class PostgresSessionStore implements SessionStore {
   }
 
   async saveSnapshot(id: string, project: Project): Promise<void> {
+    // No-op if the session row is gone (matches InMemorySessionStore and the
+    // interface contract). The `insert … select … where exists` guard means a
+    // flush for a just-deleted/pruned session inserts nothing rather than
+    // raising a foreign-key violation — important for the autosave sweep, which
+    // can race a delete. When the session exists this behaves as a plain upsert.
     await this.sql`
       insert into session_snapshots (session_id, project, updated_at)
-      values (${id}, ${this.sql.json(project as unknown as JsonArg)}, now())
+      select ${id}, ${this.sql.json(project as unknown as JsonArg)}, now()
+      where exists (select 1 from sessions where id = ${id})
       on conflict (session_id) do update
         set project = excluded.project, updated_at = now()
     `;
