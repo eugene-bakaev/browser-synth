@@ -27,3 +27,17 @@ same approach already used for the pattern-length field via `lengthDraft` /
 
 Pre-existing — not introduced by the UI shell/sidebar/account refactor (that branch did
 not touch Tracker/sequencer files).
+
+### Joining a fresh room replaces the local project with an empty snapshot
+**Reported:** 2026-05-31 · **Status:** open · **Area:** `sync/messageDispatch.ts`, server room init
+
+On first PLAY, `buildSyncState()` joins the room from the URL. The server answers with a
+`snapshot`, which `dispatchServerMessage` applies via `replaceProject()` — overwriting the
+local (localStorage-autosaved) project. For a brand-new/empty room the snapshot is empty,
+so the locally-built pattern is wiped the first time you ever play in that room.
+
+This is independent of the UI router work (the `createMemoryHistory` fix makes room URLs
+stable again, so it only bites once per new room instead of on every reload). The real fix
+is to **seed a new room from the joining client's local state** when the server has no
+state for that room (first joiner uploads their project), rather than handing back an empty
+snapshot that clobbers local work. SAVE/OPEN file persistence is unaffected.
