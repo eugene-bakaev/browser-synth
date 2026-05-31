@@ -23,4 +23,19 @@ describe('server', () => {
     expect(routes).toContain(':roomId');
     await app.close();
   });
+
+  it('boots with no Supabase env (guest-only) and serves /health', async () => {
+    const { SUPABASE_JWKS_URL, DATABASE_URL } = process.env;
+    delete process.env.SUPABASE_JWKS_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const app = buildServer();
+      const res = await app.inject({ method: 'GET', url: '/health' });
+      expect(res.statusCode).toBe(200);
+      await app.close();
+    } finally {
+      if (SUPABASE_JWKS_URL !== undefined) process.env.SUPABASE_JWKS_URL = SUPABASE_JWKS_URL;
+      if (DATABASE_URL !== undefined) process.env.DATABASE_URL = DATABASE_URL;
+    }
+  });
 });

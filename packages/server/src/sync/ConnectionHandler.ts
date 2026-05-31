@@ -29,7 +29,9 @@ import type {
   WelcomeMessage,
 } from '@fiddle/shared';
 import type { RoomStore } from '../room/RoomStore.js';
-import { makeIdentity } from '../room/identity.js';
+import { makeIdentity, makeAuthenticatedIdentity } from '../room/identity.js';
+import type { ProfileStore } from '../profile/ProfileStore.js';
+import type { VerifiedClaims } from '../auth/verifyToken.js';
 import { Heartbeat } from './Heartbeat.js';
 import { TokenBucket } from './rate-limit.js';
 import type { RoomConnectionPool, SocketLike } from './SocketLike.js';
@@ -53,6 +55,8 @@ export class ConnectionHandler {
     private readonly store: RoomStore,
     private readonly pool: RoomConnectionPool,
     private readonly log: Log,
+    private readonly verify: (token: string) => Promise<VerifiedClaims | null>,
+    private readonly profiles: ProfileStore,
     heartbeat?: Heartbeat,
   ) {
     this.heartbeat = heartbeat ?? new Heartbeat(socket);
@@ -182,21 +186,37 @@ export class ConnectionHandler {
     let identity: Identity | null = null;
     let resumeIdentityWarning: 'unknown_client' | null = null;
 
-    if (msg.clientId) {
-      const existing = await this.store.getIdentity(this.roomId, msg.clientId);
-      if (existing) {
-        identity = existing;
-      } else {
-        resumeIdentityWarning = 'unknown_client';
+    if (msg.token) {
+      const claims = await this.verify(msg.token);
+      if (!claims) {
+        this.fatal('auth.invalid', 'invalid or expired auth token');
+        return;
       }
-    }
-
-    if (!identity) {
-      // Assign a color/handle distinct from currently-connected peers (departed
-      // members free their color for reuse).
       const present = await this.store.listConnected(this.roomId);
-      identity = makeIdentity(present);
+      const username = await this.profiles.getUsername(claims.userId);
+      identity = makeAuthenticatedIdentity(present, {
+        userId: claims.userId,
+        handle: username ?? claims.googleName,
+      });
       await this.store.setIdentity(this.roomId, identity);
+    } else {
+      // Guest path (unchanged): resume an existing identity if the client
+      // presented a known clientId, else mint a fresh one. Assign a
+      // color/handle distinct from currently-connected peers (departed members
+      // free their color for reuse).
+      if (msg.clientId) {
+        const existing = await this.store.getIdentity(this.roomId, msg.clientId);
+        if (existing) {
+          identity = existing;
+        } else {
+          resumeIdentityWarning = 'unknown_client';
+        }
+      }
+      if (!identity) {
+        const present = await this.store.listConnected(this.roomId);
+        identity = makeIdentity(present);
+        await this.store.setIdentity(this.roomId, identity);
+      }
     }
 
     this.clientId = identity.clientId;
@@ -213,6 +233,8 @@ export class ConnectionHandler {
       clientId: identity.clientId,
       color: identity.color,
       handle: identity.handle,
+      userId: identity.userId ?? null,
+      authenticated: identity.authenticated ?? false,
       opIdHead,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       roster,

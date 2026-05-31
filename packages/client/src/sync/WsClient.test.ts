@@ -61,6 +61,7 @@ function makeClient(opts?: {
   onMessage?: (m: ServerMessage) => void;
   onStateChange?: (s: string) => void;
   roomId?: string;
+  getToken?: () => string | undefined;
 }) {
   const storage = opts?.storage ?? memoryStorage();
   const client = new WsClient({
@@ -70,8 +71,27 @@ function makeClient(opts?: {
     storage,
     onMessage: opts?.onMessage ?? (() => {}),
     onStateChange: opts?.onStateChange,
+    getToken: opts?.getToken,
   });
   return { client, storage };
+}
+
+// Drive a client to the 'live' state: open, welcome, sync.complete.
+function driveLive(client: WsClient, sock: MockWebSocket) {
+  sock._open();
+  sock._msg(
+    JSON.stringify({
+      v: 1,
+      type: 'welcome',
+      clientId: 'c_1',
+      color: '#fff',
+      handle: 'kangaroo',
+      opIdHead: 0,
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      roster: [],
+    }),
+  );
+  sock._msg(JSON.stringify({ v: 1, type: 'sync.complete', opId: 0 }));
 }
 
 describe('WsClient', () => {
@@ -191,5 +211,43 @@ describe('WsClient', () => {
     expect(client.nextClientSeq()).toBe(3);
     const persisted = JSON.parse(storage.getItem('fiddle:sync:room')!);
     expect(persisted.clientSeq).toBe(3);
+  });
+
+  it('includes the token from getToken in the hello frame', () => {
+    const { client } = makeClient({ getToken: () => 'tok-abc' });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello.token).toBe('tok-abc');
+  });
+
+  it('omits token when getToken returns undefined (guest)', () => {
+    const { client } = makeClient({ getToken: () => undefined });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello.token).toBeUndefined();
+    expect('token' in hello).toBe(false);
+  });
+
+  it('reconnect() closes and reopens, re-sending hello', () => {
+    const { client } = makeClient({ getToken: () => 'tok-1' });
+    client.connect();
+    const first = MockWebSocket.instances[0];
+    driveLive(client, first);
+    expect(client.isLive()).toBe(true);
+
+    client.reconnect();
+    // Old socket was closed.
+    expect(first.readyState).toBe(3);
+    // A fresh socket was opened.
+    expect(MockWebSocket.instances).toHaveLength(2);
+    const second = MockWebSocket.instances[1];
+    second._open();
+    const hello = JSON.parse(second.sent[0]);
+    expect(hello.type).toBe('hello');
+    expect(hello.token).toBe('tok-1');
   });
 });

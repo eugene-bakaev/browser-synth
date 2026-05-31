@@ -24,3 +24,9 @@ services:
       - key: NODE_VERSION
         value: "22"
       # PORT is injected by Render automatically; the server reads process.env.PORT.
+      # Auth + persistence (Milestone 1). Set the values in the Render dashboard
+      # (sync: false keeps secrets out of the repo). Absent → guest-only.
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false

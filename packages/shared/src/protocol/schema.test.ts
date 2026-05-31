@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ClientMessageSchema } from './schema.js';
+import { ClientMessageSchema, HelloSchema } from './schema.js';
 
 describe('ClientMessageSchema', () => {
   it('accepts a fresh hello', () => {
@@ -57,5 +57,24 @@ describe('ClientMessageSchema', () => {
     expect(
       ClientMessageSchema.safeParse({ v: 1, type: 'gibberish' }).success,
     ).toBe(false);
+  });
+});
+
+describe('HelloSchema token field', () => {
+  it('accepts a hello with a token', () => {
+    const r = HelloSchema.safeParse({ v: 1, type: 'hello', schemaVersion: 2, token: 'jwt.abc.def' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.token).toBe('jwt.abc.def');
+  });
+
+  it('accepts a hello without a token (guest)', () => {
+    const r = HelloSchema.safeParse({ v: 1, type: 'hello', schemaVersion: 2 });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.token).toBeUndefined();
+  });
+
+  it('rejects a non-string token', () => {
+    const r = HelloSchema.safeParse({ v: 1, type: 'hello', schemaVersion: 2, token: 123 });
+    expect(r.success).toBe(false);
   });
 });

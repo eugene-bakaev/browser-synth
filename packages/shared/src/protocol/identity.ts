@@ -15,7 +15,10 @@ export const HANDLES = [
   'Stoat','Crane','Raven','Newt', 'Marten','Vole',
   'Jay',  'Heron',
 ] as const;
-export type Handle = typeof HANDLES[number];
+// Custom usernames (authenticated users) can be any string; guest handles are
+// still drawn from HANDLES below. The type is open so an account-supplied name
+// is assignable to Identity.handle.
+export type Handle = string;
 
 // Crockford base32 alphabet (no i, l, o, u — disambiguates 1/I/L and 0/O, and
 // drops u to avoid accidental words). Shared so the client's room ids and the

@@ -13,6 +13,7 @@ export const HelloSchema = VersionEnvelope.extend({
   schemaVersion: z.number().int(),
   clientId: z.string().optional(),
   resumeFromOpId: z.number().int().nonnegative().optional(),
+  token: z.string().optional(),
 });
 
 export const SetOpClientSchema = VersionEnvelope.extend({

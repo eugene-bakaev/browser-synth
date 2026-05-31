@@ -22,7 +22,7 @@ export function assignColor(taken: ReadonlySet<string>): PaletteColor {
  * exceeds the room cap), append an ascending digit suffix (`Owl2`, `Owl3`, …).
  * An absurdity guard returns a timestamped fallback so the function is total.
  */
-export function assignHandle(taken: ReadonlySet<string>): Handle | string {
+export function assignHandle(taken: ReadonlySet<string>): Handle {
   for (const handle of HANDLES) {
     if (!taken.has(handle)) return handle;
   }
@@ -48,10 +48,9 @@ export function generateClientId(): string {
 }
 
 /**
- * Compose a fresh Identity from the current roster. The `as Handle` coercion
- * is acceptable: the suffix-fallback branch produces a `string` rather than a
- * literal HANDLES entry, but Identity.handle is the contract the server
- * promises and the absurdity guard is unreachable in practice.
+ * Compose a fresh guest Identity from the current roster. Color and handle are
+ * assigned to avoid collisions with present peers; userId and authenticated are
+ * set to their guest defaults (null / false).
  */
 export function makeIdentity(existing: readonly Identity[]): Identity {
   const takenColors = new Set<string>(existing.map((i) => i.color));
@@ -59,6 +58,27 @@ export function makeIdentity(existing: readonly Identity[]): Identity {
   return {
     clientId: generateClientId(),
     color: assignColor(takenColors),
-    handle: assignHandle(takenHandles) as Handle,
+    handle: assignHandle(takenHandles),
+    userId: null,
+    authenticated: false,
+  };
+}
+
+/**
+ * Identity for an authenticated (Google) user. clientId is still per-connection
+ * unique; the account is carried via userId. Handle comes from the account
+ * (custom username or Google name); color is assigned to avoid present peers.
+ */
+export function makeAuthenticatedIdentity(
+  existing: readonly Identity[],
+  account: { userId: string; handle: string },
+): Identity {
+  const takenColors = new Set<string>(existing.map((i) => i.color));
+  return {
+    clientId: generateClientId(),
+    color: assignColor(takenColors),
+    handle: account.handle,
+    userId: account.userId,
+    authenticated: true,
   };
 }

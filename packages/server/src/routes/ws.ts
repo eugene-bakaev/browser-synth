@@ -17,10 +17,14 @@ import type { SocketLike } from '../sync/SocketLike.js';
 import type { ServerMessage } from '@fiddle/shared';
 import type { RoomStore } from '../room/RoomStore.js';
 import type { ConnectionPool } from '../sync/ConnectionPool.js';
+import type { ProfileStore } from '../profile/ProfileStore.js';
+import type { VerifiedClaims } from '../auth/verifyToken.js';
 
 interface Deps {
   store: RoomStore;
   pool: ConnectionPool;
+  verify: (token: string) => Promise<VerifiedClaims | null>;
+  profiles: ProfileStore;
 }
 
 function adaptSocket(ws: WebSocket): SocketLike {
@@ -49,6 +53,8 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       deps.store,
       deps.pool,
       (msg, fields) => app.log.info(fields ?? {}, msg),
+      deps.verify,
+      deps.profiles,
     );
 
     socket.on('message', (raw: RawData) => {
