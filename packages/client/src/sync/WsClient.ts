@@ -37,6 +37,9 @@ export interface WsClientOptions {
   socketCtor?: typeof WebSocket;
   // Injectable for tests; defaults to sessionStorage.
   storage?: Storage;
+  // Returns the current Supabase access token, or undefined for a guest.
+  // Read fresh on every hello so a reconnect after login carries the token.
+  getToken?: () => string | undefined;
 }
 
 interface PersistedSyncState {
@@ -83,6 +86,13 @@ export class WsClient {
     // Errors fire before close; the close handler is where the real fallout
     // (reconnect, state transitions) lives, so onerror just absorbs.
     socket.onerror = () => {};
+  }
+
+  // Force a fresh connection — used when auth state changes so the server
+  // re-derives identity from the (now present/absent) token.
+  reconnect(): void {
+    this.disconnect();
+    this.connect();
   }
 
   disconnect(): void {
@@ -138,6 +148,8 @@ export class WsClient {
           type: 'hello',
           schemaVersion: PROJECT_SCHEMA_VERSION,
         };
+    const token = this.opts.getToken?.();
+    if (token) hello.token = token;
     this.socket?.send(JSON.stringify(hello));
   }
 
