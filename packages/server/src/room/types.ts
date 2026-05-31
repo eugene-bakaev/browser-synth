@@ -29,4 +29,7 @@ export interface RoomState {
   // When the last connection drops the room enters a grace window before GC.
   // Cleared when a new client joins; fires `pruneRoom` on expiry.
   graceTimer: NodeJS.Timeout | null;
+  // Set true by appendOp on every accepted op; cleared by the autosave flusher
+  // after it persists the project. Lets the 60s sweep skip rooms with no edits.
+  dirty: boolean;
 }

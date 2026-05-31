@@ -30,6 +30,7 @@ export class InMemoryRoomStore implements RoomStore {
         identities: new Map(),
         connected: new Set(),
         graceTimer: null,
+        dirty: false,
       };
       this.rooms.set(roomId, room);
     }
@@ -61,6 +62,7 @@ export class InMemoryRoomStore implements RoomStore {
       room.opLog.splice(0, room.opLog.length - RING_BUFFER_CAPACITY);
     }
     room.nextOpId += 1;
+    room.dirty = true;
 
     return { ok: true, op };
   }
@@ -151,6 +153,31 @@ export class InMemoryRoomStore implements RoomStore {
       clearTimeout(room.graceTimer);
     }
     this.rooms.delete(roomId);
+  }
+
+  async peekProject(roomId: string): Promise<Project | null> {
+    return this.rooms.get(roomId)?.project ?? null;
+  }
+
+  async listDirtyRoomIds(): Promise<string[]> {
+    const ids: string[] = [];
+    for (const [roomId, room] of this.rooms) {
+      if (room.dirty) ids.push(roomId);
+    }
+    return ids;
+  }
+
+  async clearDirty(roomId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (room) room.dirty = false;
+  }
+
+  async roomMemberCounts(): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    for (const [roomId, room] of this.rooms) {
+      counts.set(roomId, room.connected.size);
+    }
+    return counts;
   }
 
   private requireRoom(roomId: string): RoomState {
