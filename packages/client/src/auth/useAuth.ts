@@ -5,13 +5,32 @@ import { ref, computed, type Ref } from 'vue';
 import { supabase } from './supabase.js';
 
 interface SessionLike {
-  user: { id: string };
+  user: {
+    id: string;
+    email?: string;
+    user_metadata?: { name?: string; avatar_url?: string };
+  };
   access_token: string;
 }
 
 const session: Ref<SessionLike | null> = ref(null);
 
 export type SetUsernameResult = { ok: true } | { ok: false; reason: 'taken' | 'not-authed' };
+
+export interface UserProfile {
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+// Pure projection of a session into display fields. Exported for unit testing.
+export function userProfileFromSession(s: SessionLike | null): UserProfile {
+  return {
+    email: s?.user.email ?? null,
+    name: s?.user.user_metadata?.name ?? null,
+    avatarUrl: s?.user.user_metadata?.avatar_url ?? null,
+  };
+}
 
 // Resolves once the initial getSession + listener are wired, so callers (and
 // tests) can await a known starting point.
@@ -26,6 +45,7 @@ const ready: Promise<void> = (async () => {
 
 const isAuthenticated = computed(() => session.value !== null);
 const accessToken = computed(() => session.value?.access_token);
+const userProfile = computed(() => userProfileFromSession(session.value));
 
 async function signInWithGoogle(): Promise<void> {
   if (!supabase) return;
@@ -56,5 +76,5 @@ async function setUsername(username: string): Promise<SetUsernameResult> {
 }
 
 export function useAuth() {
-  return { ready, isAuthenticated, accessToken, session, signInWithGoogle, signOut, setUsername };
+  return { ready, isAuthenticated, accessToken, userProfile, session, signInWithGoogle, signOut, setUsername };
 }

@@ -25,7 +25,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('./supabase', () => ({ supabase: h.fakeClient }));
 
-import { useAuth } from './useAuth';
+import { useAuth, userProfileFromSession } from './useAuth';
 
 beforeEach(() => {
   h.authState.current = null;
@@ -70,5 +70,42 @@ describe('useAuth', () => {
     h.cb.current?.('SIGNED_IN', { user: { id: 'u-1' }, access_token: 'tok-1' });
     const res = await auth.setUsername('taken-name');
     expect(res).toEqual({ ok: false, reason: 'taken' });
+  });
+
+  it('userProfileFromSession extracts email/name/avatar, null when absent', () => {
+    expect(userProfileFromSession(null)).toEqual({
+      email: null,
+      name: null,
+      avatarUrl: null,
+    });
+    expect(
+      userProfileFromSession({
+        user: {
+          id: 'u-1',
+          email: 'a@b.com',
+          user_metadata: { name: 'Ada', avatar_url: 'http://x/a.png' },
+        },
+        access_token: 'tok',
+      }),
+    ).toEqual({ email: 'a@b.com', name: 'Ada', avatarUrl: 'http://x/a.png' });
+  });
+
+  it('exposes a reactive userProfile from the session', async () => {
+    const auth = useAuth();
+    await auth.ready;
+    expect(auth.userProfile.value).toEqual({ email: null, name: null, avatarUrl: null });
+    h.cb.current?.('SIGNED_IN', {
+      user: {
+        id: 'u-1',
+        email: 'a@b.com',
+        user_metadata: { name: 'Ada', avatar_url: 'http://x/a.png' },
+      },
+      access_token: 'tok-1',
+    });
+    expect(auth.userProfile.value).toEqual({
+      email: 'a@b.com',
+      name: 'Ada',
+      avatarUrl: 'http://x/a.png',
+    });
   });
 });
