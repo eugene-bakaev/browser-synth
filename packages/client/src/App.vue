@@ -1,7 +1,23 @@
 <template>
   <ErrorOverlay />
+  <header class="app-bar">
+    <button
+      class="hamburger"
+      :aria-expanded="sidebarOpen"
+      aria-label="Open navigation"
+      @click="sidebarOpen = true"
+    >
+      ☰
+    </button>
+    <!-- Per-page actions (e.g. StudioView's transport) teleport in here, so the
+         top bar spans the full width with the hamburger left and page controls right. -->
+    <div id="app-bar-actions" class="app-bar-actions"></div>
+  </header>
   <div class="app-shell">
-    <Sidebar />
+    <transition name="backdrop">
+      <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false" />
+    </transition>
+    <Sidebar class="sidebar-drawer" :class="{ open: sidebarOpen }" @close="sidebarOpen = false" />
     <main class="app-main">
       <router-view />
     </main>
@@ -9,7 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { provide } from 'vue';
+import { onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
@@ -22,6 +39,18 @@ import Sidebar from './components/Sidebar.vue';
 const synth = useSynth();
 provide(SYNTH_CONTEXT, synth);
 provide(ACTIVE_TRACK_KEY, synth.activeTrackIndex);
+
+// The sidebar is an off-canvas drawer, toggled by the hamburger. Closed by
+// default. Auto-close after navigating, and on Escape.
+const sidebarOpen = ref(false);
+const route = useRoute();
+watch(() => route.fullPath, () => { sidebarOpen.value = false; });
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') sidebarOpen.value = false;
+}
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>
 
 <!--
@@ -111,13 +140,87 @@ h1 {
 </style>
 
 <style scoped>
+/* Full-width top app-bar: hamburger on the left, page actions (teleported) on
+   the right. Sticky so it stays put while the studio content scrolls. */
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 56px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: #111;
+  border-bottom: 1px solid #222;
+}
+.app-bar-actions {
+  display: flex;
+  align-items: center;
+}
+
 .app-shell {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  min-height: 100vh;
+  min-height: calc(100vh - 56px);
 }
 .app-main {
   min-width: 0;
   overflow-x: hidden;
+}
+
+.hamburger {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.hamburger:hover {
+  color: #fff;
+  border-color: #444;
+}
+
+/* Off-canvas drawer. The classes land on Sidebar's root <aside> (Vue applies
+   the parent scope id to a child component's root), so these style it directly. */
+/* The drawer sits ABOVE the top bar (z 50 > bar z 40) so, when open, it covers
+   the bar and shows its own close button. The backdrop (z 45) dims everything
+   including the bar. */
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  width: 240px;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  will-change: transform;
+}
+.sidebar-drawer.open {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+}
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0, 0, 0, 0.5);
+}
+.backdrop-enter-active,
+.backdrop-leave-active {
+  transition: opacity 0.2s ease;
+}
+.backdrop-enter-from,
+.backdrop-leave-to {
+  opacity: 0;
 }
 </style>

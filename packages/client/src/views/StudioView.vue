@@ -1,20 +1,21 @@
 <template>
-  <div class="synth-container">
-    <header>
-      <div class="transport">
-        <button @click="togglePlay" :class="{ playing: sequencer.isPlaying }">
-          {{ sequencer.isPlaying ? 'STOP' : 'PLAY' }}
-        </button>
-        <div class="bpm">
-          <label>BPM</label>
-          <input type="number" v-model.number="bpm" min="40" max="240">
-        </div>
-        <button @click="onNew" title="Discard current project and start fresh">NEW</button>
-        <button @click="onSave" title="Save project to a file">SAVE</button>
-        <button @click="onOpen" title="Open a project from a file">OPEN</button>
+  <!-- Transport lives in the shell's top app-bar (right side). -->
+  <Teleport defer to="#app-bar-actions">
+    <div class="transport">
+      <button @click="togglePlay" :class="{ playing: sequencer.isPlaying }">
+        {{ sequencer.isPlaying ? 'STOP' : 'PLAY' }}
+      </button>
+      <div class="bpm">
+        <label>BPM</label>
+        <input type="number" v-model.number="bpm" min="40" max="240">
       </div>
-    </header>
+      <button @click="onNew" title="Discard current project and start fresh">NEW</button>
+      <button @click="onSave" title="Save project to a file">SAVE</button>
+      <button @click="onOpen" title="Open a project from a file">OPEN</button>
+    </div>
+  </Teleport>
 
+  <div class="synth-container">
     <!-- 4-Track Overview Screen -->
     <div v-if="activeTrackIndex === null" class="overview-container">
       <div class="tracks-grid">
@@ -288,15 +289,6 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-}
-header {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: 30px;
-  flex-shrink: 0;
-  border-bottom: 1px solid #222;
-  padding-bottom: 20px;
 }
 .transport {
   display: flex;

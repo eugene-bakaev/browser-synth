@@ -1,8 +1,11 @@
 <template>
   <aside class="sidebar">
-    <div class="brand">
-      <h1>Fiddle Synth</h1>
-      <span class="sub-brand">// 4-TRACK SEQUENCER</span>
+    <div class="sidebar-head">
+      <div class="brand">
+        <h1>Fiddle Synth</h1>
+        <span class="sub-brand">// 4-TRACK SEQUENCER</span>
+      </div>
+      <button class="close-btn" aria-label="Close navigation" @click="emit('close')">✕</button>
     </div>
 
     <nav class="nav">
@@ -44,6 +47,8 @@ import { computed } from 'vue';
 import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
 
+const emit = defineEmits<{ (e: 'close'): void }>();
+
 const auth = useAuth();
 
 const selfEntry = computed(() =>
@@ -68,7 +73,33 @@ const others = computed(() =>
   border-right: 1px solid #222;
   overflow-y: auto;
 }
+.sidebar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
 .brand { display: flex; flex-direction: column; }
+.close-btn {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.close-btn:hover {
+  color: #fff;
+  border-color: #444;
+}
 .sub-brand {
   font-family: monospace;
   font-size: 0.7rem;
