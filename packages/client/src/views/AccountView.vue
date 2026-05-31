@@ -28,7 +28,7 @@
           <img v-if="profile.avatarUrl" :src="profile.avatarUrl" class="avatar" alt="" />
           <span class="swatch" :style="{ background: selfColor }" />
           <div class="identity-text">
-            <div class="name">{{ profile.name ?? selfHandle ?? '—' }}</div>
+            <div class="name">{{ profile.name || selfHandle || '—' }}</div>
             <div class="email">{{ profile.email ?? '' }}</div>
           </div>
         </div>
