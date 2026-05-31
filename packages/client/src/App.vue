@@ -1,6 +1,10 @@
 <template>
   <ErrorOverlay />
-  <StudioView />
+  <nav class="temp-nav">
+    <RouterLink to="/studio">Studio</RouterLink>
+    <RouterLink to="/account">Account</RouterLink>
+  </nav>
+  <router-view />
 </template>
 
 <script setup lang="ts">
@@ -9,7 +13,6 @@ import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
 import ErrorOverlay from './components/ErrorOverlay.vue';
-import StudioView from './views/StudioView.vue';
 
 // useSynth() is called exactly once here, in the never-unmounting shell, so its
 // per-call currentStep/activeTrackIndex are stable and audio/WS (module-scope)
@@ -103,4 +106,14 @@ h1 {
 .engine-section .module-group:hover {
   border-color: var(--track-glow);
 }
+</style>
+
+<style scoped>
+.temp-nav {
+  display: flex;
+  gap: 16px;
+  padding: 8px 20px;
+}
+.temp-nav a { color: #00f0ff; text-decoration: none; font-family: monospace; }
+.temp-nav a.router-link-active { text-decoration: underline; }
 </style>
