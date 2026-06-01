@@ -38,4 +38,39 @@ describe('server', () => {
       if (DATABASE_URL !== undefined) process.env.DATABASE_URL = DATABASE_URL;
     }
   });
+
+  it('GET /api/sessions returns a sessions array', async () => {
+    const { SUPABASE_JWKS_URL, DATABASE_URL } = process.env;
+    delete process.env.SUPABASE_JWKS_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const app = buildServer();
+      const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+      expect(res.statusCode).toBe(200);
+      expect(Array.isArray((res.json() as { sessions: unknown[] }).sessions)).toBe(true);
+      await app.close();
+    } finally {
+      if (SUPABASE_JWKS_URL !== undefined) process.env.SUPABASE_JWKS_URL = SUPABASE_JWKS_URL;
+      if (DATABASE_URL !== undefined) process.env.DATABASE_URL = DATABASE_URL;
+    }
+  });
+
+  it('POST /api/sessions creates a guest session (clientId required)', async () => {
+    const { SUPABASE_JWKS_URL, DATABASE_URL } = process.env;
+    delete process.env.SUPABASE_JWKS_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const app = buildServer();
+      // Guest-only (no JWKS) → verify() returns null → guest path.
+      const noClient = await app.inject({ method: 'POST', url: '/api/sessions', payload: { name: 'jam' } });
+      expect(noClient.statusCode).toBe(400);
+      const res = await app.inject({ method: 'POST', url: '/api/sessions', payload: { name: 'jam', clientId: 'c1' } });
+      expect(res.statusCode).toBe(201);
+      expect((res.json() as { id: string }).id).toHaveLength(9);
+      await app.close();
+    } finally {
+      if (SUPABASE_JWKS_URL !== undefined) process.env.SUPABASE_JWKS_URL = SUPABASE_JWKS_URL;
+      if (DATABASE_URL !== undefined) process.env.DATABASE_URL = DATABASE_URL;
+    }
+  });
 });
