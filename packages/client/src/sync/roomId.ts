@@ -1,30 +1,34 @@
 // Room IDs are short, URL-safe identifiers used both as the routing token
 // (`/r/<roomId>`) and as the key under which the server stores room state.
 //
-// We use Crockford Base32 (no I/L/O/U to avoid ambiguity) at length 9 — that
-// gives us roughly 35 bits of entropy, which is plenty for "stop the player
-// from typing a room into the URL and colliding with someone else's room"
-// without making the URL too long to share verbally.
+// Plan 3: rooms are created only via the lobby (POST /api/sessions returns the
+// id), so the client no longer mints ids from the URL. These helpers are pure
+// URL plumbing: read the current room, set it when entering a session, clear it
+// when leaving.
 
-import { randomBase32 } from '@fiddle/shared';
+const ROOM_RE = /^\/r\/([0-9a-z]{6,12})/i;
 
-const ROOM_ID_LEN = 9;
-
-export function generateRoomId(): string {
-  return randomBase32(ROOM_ID_LEN);
+// The room id in the current URL (`/r/<id>`), or null if none. Case-insensitive,
+// normalized to lowercase (the server keys rooms by exact string). `loc` is
+// injectable for testing without touching jsdom's history mock.
+export function readRoomIdFromUrl(loc: Location = window.location): string | null {
+  const m = loc.pathname.match(ROOM_RE);
+  return m ? m[1].toLowerCase() : null;
 }
 
-// Reads the room id from the current URL (`/r/<id>`), or — if the URL has no
-// room — mints a fresh one and rewrites the URL via `history.replaceState`.
-//
-// `loc` is injectable for testing the parsing branch without touching
-// jsdom's history mock (which is finicky around replaceState).
-export function resolveRoomIdFromUrl(loc: Location = window.location): string {
-  // Match case-insensitively but normalize to lowercase — the server keys rooms
-  // by exact string, so `/r/ABC` and `/r/abc` must resolve to the same room.
-  const m = loc.pathname.match(/^\/r\/([0-9a-z]{6,12})/i);
-  if (m) return m[1].toLowerCase();
-  const fresh = generateRoomId();
-  window.history.replaceState(null, '', `/r/${fresh}`);
-  return fresh;
+// Which in-app view a fresh load lands on, derived from the URL: a `/r/<id>`
+// deep-link opens the studio; anything else opens the lobby.
+export function resolveInitialView(loc: Location = window.location): 'studio' | 'lobby' {
+  return readRoomIdFromUrl(loc) ? 'studio' : 'lobby';
+}
+
+// Rewrite the address bar to `/r/<id>` without a navigation (memory-history
+// router handles view switching; the URL is just the shareable session token).
+export function setRoomInUrl(roomId: string): void {
+  window.history.replaceState(null, '', `/r/${roomId}`);
+}
+
+// Drop the room from the address bar when returning to the lobby.
+export function clearRoomFromUrl(): void {
+  window.history.replaceState(null, '', '/');
 }
