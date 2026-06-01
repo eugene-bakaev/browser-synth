@@ -37,6 +37,25 @@ export async function sessionsRoute(app: FastifyInstance, deps: Deps) {
     return { sessions: buildLobbyList(records, counts) };
   });
 
+  // Single session metadata (no project blob). Public; powers the studio's
+  // session-settings panel + deep-link ownership checks.
+  app.get('/api/sessions/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const record = await deps.sessions.get(id);
+    if (!record) return reply.code(404).send({ error: 'not found' });
+    return {
+      id: record.id,
+      name: record.name,
+      description: record.description,
+      ownerUserId: record.ownerUserId,
+      ownerClientId: record.ownerClientId,
+      isGuestOwned: record.ownerUserId === null,
+      settings: record.settings,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+    };
+  });
+
   // Create. Bearer JWT → logged-in owner; otherwise guest (needs clientId).
   app.post('/api/sessions', async (req, reply) => {
     const parsed = CreateSessionBodySchema.safeParse(req.body);
