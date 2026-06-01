@@ -79,6 +79,32 @@ describe('SessionSync', () => {
     await expect(sync.flushRoom('ghost')).resolves.toBeUndefined();
   });
 
+  it('flushAllDirty leaves the dirty flag set (and continues) when saveSnapshot fails', async () => {
+    const rooms = new InMemoryRoomStore();
+    // Real store, but saveSnapshot rejects only for the failing room (r1).
+    const sessions = new InMemorySessionStore();
+    const realSave = sessions.saveSnapshot.bind(sessions);
+    sessions.saveSnapshot = vi.fn(async (id: string, project) => {
+      if (id === 'r1') throw new Error('boom');
+      return realSave(id, project);
+    });
+
+    await sessions.create(sessionInput({ id: 'r1' }));
+    await sessions.create(sessionInput({ id: 'r2' }));
+    await rooms.getOrCreate('r1', freshProject);
+    await rooms.getOrCreate('r2', freshProject);
+    await rooms.appendOp('r1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 77 });
+    await rooms.appendOp('r2', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 66 });
+
+    const sync = new SessionSync(rooms, sessions);
+    // Does not throw — the error is caught inside flushRoom.
+    await expect(sync.flushAllDirty()).resolves.toBeUndefined();
+
+    // r1 stays dirty so the next sweep retries; r2 flushed past the failure.
+    expect(await rooms.listDirtyRoomIds()).toEqual(['r1']);
+    expect((await sessions.getSnapshot('r2'))?.bpm).toBe(66);
+  });
+
   it('start schedules the sweep; stop clears it', () => {
     vi.useFakeTimers();
     try {

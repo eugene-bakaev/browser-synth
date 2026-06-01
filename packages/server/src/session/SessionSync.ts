@@ -17,6 +17,7 @@ export const FLUSH_INTERVAL_MS = 60_000;
 // flushing an auto-minted room that has no session row is harmless.
 export class SessionSync {
   private timer: NodeJS.Timeout | null = null;
+  private isFlushing = false;
 
   constructor(
     private readonly rooms: RoomStore,
@@ -26,6 +27,17 @@ export class SessionSync {
 
   // Persist one room's current project. Clears the dirty flag on success; on
   // failure the flag is left set so the next sweep retries.
+  //
+  // Known limitation (deferred): the peekProject → saveSnapshot → clearDirty
+  // sequence has a lost-update window against an async store. With the current
+  // in-memory store the project is a shared mutable reference, so any edit that
+  // lands mid-flush is already part of what we persist and nothing is lost.
+  // Against a future Postgres store the save is a real async write: an op
+  // applied between saveSnapshot and clearDirty would have its dirty flag
+  // cleared here without that op having been persisted. The proper fix is a
+  // versioned/conditional clearDirty on the RoomStore interface (clear only if
+  // the version is unchanged since peek); deferred until the Postgres write path
+  // is load-bearing.
   async flushRoom(roomId: string): Promise<void> {
     const project = await this.rooms.peekProject(roomId);
     if (!project) return; // room gone (pruned) — nothing to persist
@@ -33,7 +45,7 @@ export class SessionSync {
       await this.sessions.saveSnapshot(roomId, project);
       await this.rooms.clearDirty(roomId);
     } catch (err) {
-      this.log('session flush failed', { roomId, err: String(err) });
+      this.log('session flush failed', { roomId, err });
     }
   }
 
@@ -59,10 +71,24 @@ export class SessionSync {
     }
   }
 
+  // Timer wrapper around flushAllDirty: skips the tick if a sweep is still in
+  // progress (a slow sweep must not overlap the next interval) and always
+  // resets the guard via finally. flushAllDirty stays directly callable (the
+  // onClose shutdown hook calls it) — the guard lives here, not in the sweep.
+  private async runSweep(): Promise<void> {
+    if (this.isFlushing) return;
+    this.isFlushing = true;
+    try {
+      await this.flushAllDirty();
+    } finally {
+      this.isFlushing = false;
+    }
+  }
+
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      void this.flushAllDirty();
+      this.runSweep().catch((err) => this.log('session flush sweep failed', { err }));
     }, FLUSH_INTERVAL_MS);
     // Don't keep the event loop alive solely for the sweep (matters for clean
     // shutdown and for any test that builds a server without closing it).
