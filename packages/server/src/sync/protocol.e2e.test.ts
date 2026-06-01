@@ -26,6 +26,16 @@ afterAll(async () => {
   await app.close();
 });
 
+async function createSession(): Promise<string> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/sessions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'e2e', clientId: 'e2e-client' }),
+  });
+  if (res.status !== 201) throw new Error(`createSession failed: ${res.status}`);
+  return ((await res.json()) as { id: string }).id;
+}
+
 // A small WS client wrapper that records inbound messages and lets a test await
 // the first message matching a predicate (with a timeout so a hang fails loud).
 function connect(roomId: string) {
@@ -53,7 +63,8 @@ function connect(roomId: string) {
 
 describe('protocol e2e', () => {
   it('fresh hello → welcome + snapshot + sync.complete', async () => {
-    const c = connect('e2e-handshake');
+    const room = await createSession();
+    const c = connect(room);
     await c.opened;
     c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
 
@@ -71,12 +82,13 @@ describe('protocol e2e', () => {
   });
 
   it('op from one client echoes to sender and broadcasts to peer (clientSeq hidden)', async () => {
-    const a = connect('e2e-broadcast');
+    const room = await createSession();
+    const a = connect(room);
     await a.opened;
     a.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
     await a.waitFor((m) => m.type === 'sync.complete');
 
-    const b = connect('e2e-broadcast');
+    const b = connect(room);
     await b.opened;
     b.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
     const bWelcome = await b.waitFor((m) => m.type === 'welcome');
@@ -101,7 +113,8 @@ describe('protocol e2e', () => {
   });
 
   it('out-of-range index is nacked path.invalid (no crash, no broadcast)', async () => {
-    const c = connect('e2e-bounds');
+    const room = await createSession();
+    const c = connect(room);
     await c.opened;
     c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
     await c.waitFor((m) => m.type === 'sync.complete');
@@ -117,7 +130,8 @@ describe('protocol e2e', () => {
   });
 
   it('duplicate clientSeq is nacked op.duplicate', async () => {
-    const c = connect('e2e-dup');
+    const room = await createSession();
+    const c = connect(room);
     await c.opened;
     c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
     await c.waitFor((m) => m.type === 'sync.complete');
@@ -133,7 +147,8 @@ describe('protocol e2e', () => {
   });
 
   it('reconnect with a known clientId resumes the same identity (no unknown_client)', async () => {
-    const a = connect('e2e-resume');
+    const room = await createSession();
+    const a = connect(room);
     await a.opened;
     a.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
     const w1 = await a.waitFor((m) => m.type === 'welcome');
@@ -145,7 +160,7 @@ describe('protocol e2e', () => {
 
     // Reconnect with the same clientId + last opId — the room (and identity)
     // survive the brief gap, so the server resumes us.
-    const a2 = connect('e2e-resume');
+    const a2 = connect(room);
     await a2.opened;
     a2.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION, clientId, resumeFromOpId: 1 });
     const w2 = await a2.waitFor((m) => m.type === 'welcome');
@@ -160,7 +175,8 @@ describe('protocol e2e', () => {
     // Models the server-restart case: in-memory room state is gone, so a client
     // resuming with its old clientId is unknown — gets a new identity and a
     // non-fatal warning, then a fresh snapshot.
-    const c = connect('e2e-resume-unknown');
+    const room = await createSession();
+    const c = connect(room);
     await c.opened;
     c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION, clientId: 'c_ghost00', resumeFromOpId: 5 });
     const welcome = await c.waitFor((m) => m.type === 'welcome');
@@ -173,12 +189,24 @@ describe('protocol e2e', () => {
   });
 
   it('schema version mismatch is fatal', async () => {
-    const c = connect('e2e-schema');
+    const room = await createSession();
+    const c = connect(room);
     await c.opened;
     c.send({ v: 1, type: 'hello', schemaVersion: 9999 });
     const err = await c.waitFor((m) => m.type === 'error');
     if (err.type !== 'error') throw new Error('unreachable');
     expect(err.code).toBe('schema.version_mismatch');
+    expect(err.fatal).toBe(true);
+    c.close();
+  });
+
+  it('rejects a hello for a session that was never created', async () => {
+    const c = connect('never-created-x');
+    await c.opened;
+    c.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+    const err = await c.waitFor((m) => m.type === 'error');
+    if (err.type !== 'error') throw new Error('unreachable');
+    expect(err.code).toBe('session.not_found');
     expect(err.fatal).toBe(true);
     c.close();
   });

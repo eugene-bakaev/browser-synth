@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import postgres from 'postgres';
+import { freshProject } from '@fiddle/shared';
 import { healthRoute } from './routes/health.js';
 import { wsRoute } from './routes/ws.js';
 import { InMemoryRoomStore } from './room/InMemoryRoomStore.js';
@@ -50,12 +51,22 @@ export function buildServer(): FastifyInstance {
     (msg, fields) => app.log.info(fields ?? {}, msg),
   );
 
+  // Production session loader: a room exists iff it has a session row. Seed its
+  // in-memory project from the durable snapshot (falling back to a fresh project
+  // for a session whose snapshot hasn't been flushed yet).
+  const loadSession = async (roomId: string) => {
+    const record = await sessions.get(roomId);
+    if (!record) return null;
+    const project = await sessions.getSnapshot(roomId);
+    return { project: project ?? freshProject() };
+  };
+
   app.register(websocket);
   app.register(healthRoute);
   app.register(async (a) =>
     sessionsRoute(a, { sessions, verify, liveCounts: () => store.roomMemberCounts() }),
   );
-  app.register(async (a) => wsRoute(a, { store, pool, verify, profiles, sessionSync }));
+  app.register(async (a) => wsRoute(a, { store, pool, verify, profiles, sessionSync, loadSession }));
 
   // Autosave: periodic sweep of dirty rooms + a final flush on graceful shutdown
   // (SIGTERM → app.close() → onClose). stop() first so no sweep races the flush.

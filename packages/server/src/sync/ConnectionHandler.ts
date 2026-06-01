@@ -23,6 +23,7 @@ import type {
   NackCode,
   NackMessage,
   PresenceUpdateMessage,
+  Project,
   SetOpBroadcast,
   SnapshotMessage,
   SyncCompleteMessage,
@@ -42,6 +43,18 @@ export const ROOM_CAP = 4;
 // Fastify's pino logger.
 export type Log = (message: string, ctx?: Record<string, unknown>) => void;
 
+// Resolves the durable project for a room on first join. Returns null when no
+// such session exists, which the handler turns into a fatal session.not_found.
+// The default is permissive (every room "exists" with a fresh project) so unit
+// tests that don't care about session lookup keep their pre-cutover behavior;
+// production injects a SessionStore-backed loader (see server.ts).
+export interface LoadedSession {
+  project: Project;
+}
+export type SessionLoader = (roomId: string) => Promise<LoadedSession | null>;
+
+const permissiveLoader: SessionLoader = async () => ({ project: freshProject() });
+
 export class ConnectionHandler {
   private clientId: string | null = null;
   private identity: Identity | null = null;
@@ -57,6 +70,7 @@ export class ConnectionHandler {
     private readonly log: Log,
     private readonly verify: (token: string) => Promise<VerifiedClaims | null>,
     private readonly profiles: ProfileStore,
+    private readonly loadSession: SessionLoader = permissiveLoader,
     heartbeat?: Heartbeat,
   ) {
     this.heartbeat = heartbeat ?? new Heartbeat(socket);
@@ -180,7 +194,21 @@ export class ConnectionHandler {
       return;
     }
 
-    const { opIdHead } = await this.store.getOrCreate(this.roomId, freshProject);
+    // Session-scoped room init (Plan 3): a room is materialised only for a real
+    // session. If it isn't already live in memory, load its durable project; a
+    // null result means "no such session" — reject so the client bounces to the
+    // lobby. Auto-mint is gone.
+    let seed: () => Project = freshProject;
+    const alreadyLive = (await this.store.peekProject(this.roomId)) !== null;
+    if (!alreadyLive) {
+      const loaded = await this.loadSession(this.roomId);
+      if (!loaded) {
+        this.fatal('session.not_found', `session ${this.roomId} does not exist`);
+        return;
+      }
+      seed = () => loaded.project;
+    }
+    const { opIdHead } = await this.store.getOrCreate(this.roomId, seed);
     await this.store.cancelGrace(this.roomId);
 
     let identity: Identity | null = null;
