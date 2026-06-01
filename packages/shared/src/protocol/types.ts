@@ -111,6 +111,7 @@ export type ErrorCode =
   | 'hello.invalid'
   | 'auth.invalid'
   | 'room.full'
+  | 'session.not_found'
   | 'resume.unknown_client'
   | 'resume.client_ahead'
   | 'overloaded'
