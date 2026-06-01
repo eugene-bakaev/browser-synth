@@ -31,8 +31,8 @@ const message = computed(() => fatalError.value?.message ?? '');
 const canNewRoom = computed(() => fatalError.value?.code === 'room.full');
 
 function goToNewRoom() {
-  // Navigating to `/` drops the room from the URL; resolveRoomIdFromUrl mints a
-  // fresh one on the next load and reconnects.
+  // Navigating to `/` drops the room from the URL and lands on the lobby, where
+  // the user can pick or create another session (auto-mint is gone).
   window.location.pathname = '/';
 }
 function reload() { window.location.reload(); }

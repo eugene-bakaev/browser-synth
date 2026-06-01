@@ -26,10 +26,11 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
+import { readRoomIdFromUrl } from './sync/roomId';
 import ErrorOverlay from './components/ErrorOverlay.vue';
 import Sidebar from './components/Sidebar.vue';
 
@@ -44,13 +45,38 @@ provide(ACTIVE_TRACK_KEY, synth.activeTrackIndex);
 // default. Auto-close after navigating, and on Escape.
 const sidebarOpen = ref(false);
 const route = useRoute();
+const router = useRouter();
 watch(() => route.fullPath, () => { sidebarOpen.value = false; });
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') sidebarOpen.value = false;
 }
-onMounted(() => window.addEventListener('keydown', onKeydown));
+
+// Decide the landing view from the URL: a `/r/<id>` deep-link opens the studio
+// and connects to that session; anything else opens the lobby. Connection is
+// independent of audio (which still boots lazily on first PLAY).
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown);
+  const roomId = readRoomIdFromUrl();
+  if (roomId) {
+    synth.connectToSession(roomId);
+    router.replace({ name: 'studio' });
+  } else {
+    router.replace({ name: 'lobby' });
+  }
+});
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+
+// A fatal session.not_found (unknown / pruned session) bounces to the lobby.
+watch(
+  () => synth.fatalError.value,
+  (err) => {
+    if (err?.code === 'session.not_found') {
+      synth.leaveSession();
+      router.replace({ name: 'lobby' });
+    }
+  },
+);
 </script>
 
 <!--
