@@ -43,3 +43,6 @@ export * from './session/settings.js';
 
 // Lobby list entry wire shape (GET /api/sessions response).
 export * from './session/lobby.js';
+
+// Session HTTP API request schemas (create/patch bodies).
+export * from './session/api.js';
