@@ -18,6 +18,13 @@
   </Teleport>
 
   <div class="synth-container">
+    <!-- Catch-up loader: covers the (blank, just-reset) studio until this
+         session's snapshot has been applied locally. -->
+    <div v-if="roomLoading" class="session-loader" role="status" aria-live="polite">
+      <div class="session-loader-spinner" aria-hidden="true"></div>
+      <p>Loading session…</p>
+    </div>
+
     <!-- 4-Track Overview Screen -->
     <div v-if="activeTrackIndex === null" class="overview-container">
       <div class="tracks-grid">
@@ -245,6 +252,7 @@ const {
   togglePlay,
   selectTrack,
   getTrackEngineType,
+  roomLoading,
 } = synth;
 
 const router = useRouter();
@@ -377,6 +385,7 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
 /* === StudioView layout — scoped === */
 
 .synth-container {
+  position: relative;
   max-width: 1450px;
   margin: 0 auto;
   padding: 30px 20px;
@@ -384,6 +393,38 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+}
+
+/* Session catch-up loader — overlays the studio while the snapshot loads. */
+.session-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #111;
+}
+.session-loader p {
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #888;
+}
+.session-loader-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid #222;
+  border-top-color: #00f0ff;
+  border-radius: 50%;
+  animation: session-loader-spin 0.8s linear infinite;
+}
+@keyframes session-loader-spin {
+  to { transform: rotate(360deg); }
 }
 .transport {
   display: flex;

@@ -358,6 +358,29 @@ describe('session-scoped connection', () => {
     expect(synth.currentRoomId.value).toBe('room-a');
   });
 
+  it('toggles roomLoading: true while catching up, false on sync.complete', async () => {
+    const { mod, synth, built } = await boot();
+    expect(synth.roomLoading.value).toBe(false); // lobby — nothing loading
+    mod.connectToSession('room-a');
+    expect(synth.roomLoading.value).toBe(true); // connect → loader on
+
+    // Snapshot alone doesn't clear it (a resumed connection has no snapshot);
+    // the loader stays until the room reaches live on sync.complete.
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    expect(synth.roomLoading.value).toBe(true);
+
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+    expect(synth.roomLoading.value).toBe(false); // caught up → loader off
+  });
+
+  it('clears roomLoading on leaveSession', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a');
+    expect(synth.roomLoading.value).toBe(true);
+    mod.leaveSession();
+    expect(synth.roomLoading.value).toBe(false);
+  });
+
   it('is idempotent for the same room', async () => {
     const { mod, built } = await boot();
     mod.connectToSession('room-a');
