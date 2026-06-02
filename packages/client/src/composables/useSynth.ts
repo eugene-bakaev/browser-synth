@@ -143,12 +143,14 @@ export function endGesture(path: Path): void {
 let syncEnabled = true;
 export function setSyncEnabled(v: boolean): void { syncEnabled = v; }
 
-// True once the CURRENT room's initial snapshot has been applied. Outbound sync
-// is gated on this so pre-snapshot / stale content is never written up into the
+// True once the CURRENT room has reached the live / caught-up state. Outbound
+// sync is gated on this so pre-load / stale content is never written up into the
 // room — the cause of cross-session content bleed when switching sessions.
-// Reset to false on every new room connection (buildSyncState); set true when
-// the snapshot lands (onSnapshotApplied). NOT reset on transient reconnects, so
-// the offline queue still flushes correctly after a mid-session drop.
+// Reset to false on every new room connection (buildSyncState); set true on
+// sync.complete (onSyncLive) — NOT on snapshot, because a resumed connection
+// catches up via op replay with no snapshot, and that path must open the gate
+// too (otherwise edits would be silently dropped). NOT reset on transient
+// reconnects, so the offline queue still flushes correctly after a mid-session drop.
 let syncReady = false;
 
 // Injectable so tests can hand back a WsClient wired to a MockWebSocket +
@@ -219,7 +221,7 @@ function buildSyncState(roomId: string): void {
       wsClient: wsClient!,
       outbox: outbox!,
       onFatalError: (code, message) => { fatalError.value = { code, message }; },
-      onSnapshotApplied: () => { syncReady = true; },
+      onSyncLive: () => { syncReady = true; },
     }),
     onStateChange: (s) => {
       if (s === 'closed' && outbox) outbox.onClosed();
@@ -287,7 +289,10 @@ export function connectToSession(roomId: string): void {
   currentRoomId.value = roomId;
   installAuthReconnectWatcher();
   buildSyncState(roomId);
-  wsClient!.connect();
+  // Force a full snapshot: we just reset the local project, so a resume delta
+  // (op replay since opIdLastSeen) would apply onto an empty project and leave
+  // the room blank. forceSnapshot keeps our identity but pulls the whole room.
+  wsClient!.connect({ forceSnapshot: true });
 }
 
 // Reset local project state to a neutral fresh project. Shared by leaveSession

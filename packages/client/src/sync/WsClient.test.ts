@@ -135,6 +135,47 @@ describe('WsClient', () => {
     });
   });
 
+  it('keeps clientId but omits resumeFromOpId on connect({ forceSnapshot: true })', () => {
+    // A deliberate (re)entry resets local project state, so a resume delta would
+    // leave the room blank — forceSnapshot must pull a full snapshot while still
+    // preserving guest identity/ownership (clientId).
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_old', opIdLastSeen: 42, clientSeq: 7 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect({ forceSnapshot: true });
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello).toEqual({
+      v: 1,
+      type: 'hello',
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+      clientId: 'c_old',
+    });
+    expect('resumeFromOpId' in hello).toBe(false);
+  });
+
+  it('resumes (does not force snapshot) on a plain auto-reconnect connect()', () => {
+    // The forceSnapshot flag is per-connect; an auto-reconnect calls connect()
+    // with no args and must keep resuming so transient blips don't re-snapshot.
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_old', opIdLastSeen: 42, clientSeq: 7 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect({ forceSnapshot: true });
+    client.disconnect();
+    client.connect();
+    const sock = MockWebSocket.instances.at(-1)!;
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello.resumeFromOpId).toBe(42);
+  });
+
   it('transitions to live on sync.complete', () => {
     const { client } = makeClient();
     client.connect();
