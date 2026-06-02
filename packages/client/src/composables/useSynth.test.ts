@@ -287,6 +287,20 @@ describe('sync integration', () => {
     expect(fake.sent.length).toBe(0);
   });
 
+  it('stopPlayback halts a running sequencer and resets the step cursor', async () => {
+    const { synth } = await bootWithFakeSocket();
+    await synth.togglePlay();
+    expect(synth.sequencer.isPlaying).toBe(true);
+
+    synth.stopPlayback();
+    expect(synth.sequencer.isPlaying).toBe(false);
+    expect(synth.currentStep.value).toBe(-1);
+
+    // No-op when already stopped (e.g. navigating to the lobby twice).
+    expect(() => synth.stopPlayback()).not.toThrow();
+    expect(synth.sequencer.isPlaying).toBe(false);
+  });
+
   it('passes getToken to the WsClient factory', async () => {
     const { fake } = await bootWithFakeSocket();
     expect(typeof fake._opts.getToken).toBe('function');

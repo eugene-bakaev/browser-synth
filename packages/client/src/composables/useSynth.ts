@@ -622,6 +622,18 @@ export function useSynth() {
     }
   };
 
+  // Stop the sequencer if it's running. Used when leaving the studio for the
+  // lobby (a non-playback context): there's nothing to play there, and after a
+  // leave the project is reset to empty, so a running transport would just loop
+  // silence. No-op if audio never booted or playback is already stopped; the
+  // audio graph stays up so the next PLAY is instant.
+  const stopPlayback = () => {
+    if (sequencer.isPlaying) {
+      sequencer.stop();
+      currentStep.value = -1;
+    }
+  };
+
   const selectTrack = (index: number | null) => {
     activeTrackIndex.value = index;
   };
@@ -642,6 +654,7 @@ export function useSynth() {
     waveforms,
     shortestActiveNoteDuration,
     togglePlay,
+    stopPlayback,
     selectTrack,
     getTrackEngineType,
     // Force audio init without playing — needed by tests and any consumer

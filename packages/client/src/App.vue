@@ -48,6 +48,11 @@ const route = useRoute();
 const router = useRouter();
 watch(() => route.fullPath, () => { sidebarOpen.value = false; });
 
+// The lobby is not a playback context (and after a Leave the project is reset),
+// so stop the transport whenever we land there — covers Leave, session switches,
+// and the plain Lobby nav link, since every one of those routes through /lobby.
+watch(() => route.name, (name) => { if (name === 'lobby') synth.stopPlayback(); });
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') sidebarOpen.value = false;
 }
