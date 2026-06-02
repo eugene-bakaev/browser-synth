@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.0.0",
     "@fiddle/shared": "*",
     "fastify": "^5.0.0",

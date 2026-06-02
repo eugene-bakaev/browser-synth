@@ -55,6 +55,27 @@ describe('server', () => {
     }
   });
 
+  it('sets Access-Control-Allow-Origin on /api responses (cross-origin prod)', async () => {
+    const { SUPABASE_JWKS_URL, DATABASE_URL, CORS_ORIGIN } = process.env;
+    delete process.env.SUPABASE_JWKS_URL;
+    delete process.env.DATABASE_URL;
+    delete process.env.CORS_ORIGIN;
+    try {
+      const app = buildServer();
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/sessions',
+        headers: { origin: 'https://fiddle-client.vercel.app' },
+      });
+      expect(res.headers['access-control-allow-origin']).toBe('https://fiddle-client.vercel.app');
+      await app.close();
+    } finally {
+      if (SUPABASE_JWKS_URL !== undefined) process.env.SUPABASE_JWKS_URL = SUPABASE_JWKS_URL;
+      if (DATABASE_URL !== undefined) process.env.DATABASE_URL = DATABASE_URL;
+      if (CORS_ORIGIN !== undefined) process.env.CORS_ORIGIN = CORS_ORIGIN;
+    }
+  });
+
   it('POST /api/sessions creates a guest session (clientId required)', async () => {
     const { SUPABASE_JWKS_URL, DATABASE_URL } = process.env;
     delete process.env.SUPABASE_JWKS_URL;

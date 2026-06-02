@@ -51,6 +51,10 @@ be green.
   `exactOptionalPropertyTypes` is **off**.
 - **Commits:** commit only the files relevant to the change — never `git add -A`
   / `git add .`. End commit messages with the project's `Co-Authored-By` trailer.
+- **Never work directly on `main`:** do not edit files, commit, or otherwise
+  change anything while on `main`. All work happens on a feature/fix branch —
+  create one *before* making changes. `main` only ever receives changes via a
+  merge.
 - **Merges are forbidden without direct user instruction:** never merge a branch
   on your own initiative. Do the work on a feature branch and stop there; only
   merge when the user explicitly tells you to. Keep feature branches as-is unless
