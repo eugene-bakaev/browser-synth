@@ -112,6 +112,16 @@ authenticated user id *becomes* the `clientId`.
    drift gets more audible, raising a *soft* question of whether to add a lightly
    shared transport (shared downbeat) even without chaining. Note, not blocker.
 
+9. **Remove a session from the lobby list** — follow-up to the persistent-lobby
+   work (#1–2). There's currently no way to delete a session; the backend already
+   has `DELETE /api/sessions/:id` + `deleteSession()` in the client, but no UI
+   surfaces it. Add an owner-only remove control to each lobby row (and/or the
+   session-settings panel), with a confirm step. **Fold in a known minor bug
+   while implementing:** the lobby briefly flashes the empty-state ("No live
+   sessions yet.") before the session list resolves — gate the empty-state on the
+   initial fetch having completed (e.g. a `loaded`/`pending` flag) so it doesn't
+   render during the first load.
+
 ## Suggested sequencing (not final)
 
 - **No-pivot track (ship anytime):** more tracks → variable-length patterns
