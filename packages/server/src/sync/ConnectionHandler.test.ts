@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PROJECT_SCHEMA_VERSION, HANDLES } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject } from '@fiddle/shared';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
@@ -576,6 +576,43 @@ describe('ConnectionHandler', () => {
       await handlerA.onClose();
       const stillConnected = await store.listConnected('room1');
       expect(stillConnected.map((i) => i.clientId)).toEqual([bId]);
+    });
+  });
+
+  describe('session-scoped room init (Plan 3)', () => {
+    it('rejects a hello for an unknown session with fatal session.not_found', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('ghost', socket);
+      const handler = new ConnectionHandler(
+        'ghost', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        async () => null,
+      );
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const err = socket.sent.find((m) => m.type === 'error');
+      expect(err && err.type === 'error' && err.code).toBe('session.not_found');
+      expect(err && err.type === 'error' && err.fatal).toBe(true);
+      expect(socket.closed).toBe(true);
+      expect(socket.sent.find((m) => m.type === 'welcome')).toBeUndefined();
+    });
+
+    it('seeds the room snapshot from the session loader', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('seeded', socket);
+      const seeded = freshProject();
+      seeded.bpm = 171;
+      const handler = new ConnectionHandler(
+        'seeded', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        async () => ({ project: seeded }),
+      );
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const snap = socket.sent.find((m) => m.type === 'snapshot');
+      expect(snap && snap.type === 'snapshot' && snap.project.bpm).toBe(171);
     });
   });
 });

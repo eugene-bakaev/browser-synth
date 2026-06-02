@@ -1,4 +1,5 @@
 import { createRouter, createMemoryHistory } from 'vue-router';
+import LobbyView from '../views/LobbyView.vue';
 import StudioView from '../views/StudioView.vue';
 import AccountView from '../views/AccountView.vue';
 
@@ -9,12 +10,13 @@ import AccountView from '../views/AccountView.vue';
 // empty room (wiping the pattern) on each reload. Memory history keeps Studio vs
 // Account purely in-memory and never touches the URL, so `/r/<roomId>` survives
 // navigation and reloads exactly as before the router existed.
-// Trade-off: Studio/Account aren't reflected in the URL and a refresh always
-// lands on Studio — acceptable here; room links `/r/<id>` still work.
+// Trade-off: Studio/Account/Lobby aren't reflected in the URL and a refresh
+// always lands on Lobby — acceptable here; room links `/r/<id>` still work.
 export const router = createRouter({
   history: createMemoryHistory(),
   routes: [
-    { path: '/', redirect: '/studio' },
+    { path: '/', redirect: '/lobby' },
+    { path: '/lobby', name: 'lobby', component: LobbyView },
     { path: '/studio', name: 'studio', component: StudioView },
     { path: '/account', name: 'account', component: AccountView },
   ],

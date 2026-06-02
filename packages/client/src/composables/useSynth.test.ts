@@ -163,6 +163,7 @@ describe('sync integration', () => {
     mod.disposeSynth();
     const synth = mod.useSynth();
     await synth.ensureAudio();
+    mod.connectToSession('testroom1'); // explicit now (was auto on ensureAudio)
     return { mod, synth, fake: fake! };
   }
 
@@ -295,6 +296,72 @@ describe('sync integration', () => {
     auth.session.value = { user: { id: 'u-1' }, access_token: 'tok-1' };
     await nextTick();
     expect(fake.reconnect).toHaveBeenCalled();
+  });
+});
+
+describe('session-scoped connection', () => {
+  function makeFakeWsClient(opts: any) {
+    let seq = 0;
+    return {
+      _opts: opts, sent: [] as any[],
+      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
+      send(op: any) { this.sent.push(op); },
+      isLive: () => true, nextClientSeq: () => ++seq,
+      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() } });
+    vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
+  });
+
+  async function boot() {
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+    const mod = await import('./useSynth');
+    const built: any[] = [];
+    mod.setWsClientFactory((o: any) => { const f = makeFakeWsClient(o); built.push(f); return f as any; });
+    mod.setSyncEnabled(true);
+    mod.disposeSynth();
+    const synth = mod.useSynth();
+    return { mod, synth, built };
+  }
+
+  it('connectToSession builds + connects a socket for the room and tracks currentRoomId', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    expect(built).toHaveLength(1);
+    expect(built[0]._opts.roomId).toBe('room-a');
+    expect(built[0].connect).toHaveBeenCalledTimes(1);
+    expect(synth.currentRoomId.value).toBe('room-a');
+  });
+
+  it('is idempotent for the same room', async () => {
+    const { mod, built } = await boot();
+    mod.connectToSession('room-a');
+    mod.connectToSession('room-a');
+    expect(built).toHaveLength(1);
+  });
+
+  it('switching rooms disconnects the old socket and builds a new one', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    mod.connectToSession('room-b');
+    expect(built).toHaveLength(2);
+    expect(built[0].disconnect).toHaveBeenCalled();
+    expect(built[1]._opts.roomId).toBe('room-b');
+    expect(synth.currentRoomId.value).toBe('room-b');
+  });
+
+  it('leaveSession disconnects, clears currentRoomId, and resets the project', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    synth.project.bpm = 199;
+    mod.leaveSession();
+    expect(built[0].disconnect).toHaveBeenCalled();
+    expect(synth.currentRoomId.value).toBeNull();
+    expect(synth.project.bpm).toBe(120); // fresh project default
   });
 });
 

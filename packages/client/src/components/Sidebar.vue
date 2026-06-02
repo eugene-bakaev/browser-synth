@@ -9,8 +9,10 @@
     </div>
 
     <nav class="nav">
-      <RouterLink to="/studio" class="nav-link">Studio</RouterLink>
+      <RouterLink to="/lobby" class="nav-link">Lobby</RouterLink>
+      <RouterLink v-if="inSession" to="/studio" class="nav-link">Studio</RouterLink>
       <RouterLink to="/account" class="nav-link">Account</RouterLink>
+      <button v-if="inSession" class="nav-link leave" @click="leave">Leave session</button>
     </nav>
 
     <div class="identity">
@@ -43,13 +45,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
+import { useRouter } from 'vue-router';
 import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
+import { SYNTH_CONTEXT } from '../sync/synthContext';
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 
 const auth = useAuth();
+const router = useRouter();
+const synth = inject(SYNTH_CONTEXT)!;
+
+const inSession = computed(() => synth.currentRoomId.value !== null);
+
+function leave(): void {
+  synth.leaveSession();
+  emit('close');
+  router.push({ name: 'lobby' });
+}
 
 const selfEntry = computed(() =>
   roster.value.find((r) => r.clientId === selfClientId.value) ?? null,

@@ -66,4 +66,19 @@ export interface RoomStore {
   startGrace(roomId: string, onExpire: () => void): Promise<void>;
   cancelGrace(roomId: string): Promise<void>;
   pruneRoom(roomId: string): Promise<void>;
+
+  // Reads a room's current project WITHOUT creating it (null if absent). Used by
+  // the autosave flusher, which must never resurrect a pruned room.
+  peekProject(roomId: string): Promise<Project | null>;
+
+  // Room ids with unsaved edits since their last flush.
+  listDirtyRoomIds(): Promise<string[]>;
+
+  // Clears a room's dirty flag (called after a successful snapshot save).
+  clearDirty(roomId: string): Promise<void>;
+
+  // Live member count per existing room (size of the connected set). Drives the
+  // lobby's member-count / "live" column and the guest "listed only while
+  // occupied" rule.
+  roomMemberCounts(): Promise<Map<string, number>>;
 }

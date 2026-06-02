@@ -9,3 +9,17 @@ app.listen({ port, host }).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });
+
+// Graceful shutdown: app.close() runs the onClose hook (flushes dirty rooms to
+// the SessionStore) before the process exits. Render sends SIGTERM on redeploy.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    app
+      .close()
+      .then(() => process.exit(0))
+      .catch((err) => {
+        app.log.error(err);
+        process.exit(1);
+      });
+  });
+}

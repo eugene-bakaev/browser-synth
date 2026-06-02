@@ -19,12 +19,16 @@ import type { RoomStore } from '../room/RoomStore.js';
 import type { ConnectionPool } from '../sync/ConnectionPool.js';
 import type { ProfileStore } from '../profile/ProfileStore.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
+import type { SessionSync } from '../session/SessionSync.js';
+import type { SessionLoader } from '../sync/ConnectionHandler.js';
 
 interface Deps {
   store: RoomStore;
   pool: ConnectionPool;
   verify: (token: string) => Promise<VerifiedClaims | null>;
   profiles: ProfileStore;
+  sessionSync: SessionSync;
+  loadSession: SessionLoader;
 }
 
 function adaptSocket(ws: WebSocket): SocketLike {
@@ -55,6 +59,7 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       (msg, fields) => app.log.info(fields ?? {}, msg),
       deps.verify,
       deps.profiles,
+      deps.loadSession,
     );
 
     socket.on('message', (raw: RawData) => {
@@ -70,7 +75,13 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
     socket.on('close', () => {
       // Remove from pool BEFORE onClose so pool.size === 0 means "last socket".
       deps.pool.remove(roomId, adapted);
+      const roomNowEmpty = deps.pool.size(roomId) === 0;
       handler.onClose().catch((err) => app.log.error({ err }, 'ws onClose'));
+      // Persist the room's project on every disconnect (and prune guest sessions
+      // when the room empties). Independent of onClose; both read live state.
+      deps.sessionSync
+        .handleDisconnect(roomId, roomNowEmpty)
+        .catch((err) => app.log.error({ err }, 'session disconnect'));
     });
   });
 }

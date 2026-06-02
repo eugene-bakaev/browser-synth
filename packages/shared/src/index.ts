@@ -37,3 +37,12 @@ export * from './protocol/index.js';
 
 // Wire-path helpers (setDeep, pathKey) shared by client + server.
 export * from './path.js';
+
+// Session settings shape + defaults, shared by the lobby UI and the server.
+export * from './session/settings.js';
+
+// Lobby list entry wire shape (GET /api/sessions response).
+export * from './session/lobby.js';
+
+// Session HTTP API request schemas (create/patch bodies).
+export * from './session/api.js';

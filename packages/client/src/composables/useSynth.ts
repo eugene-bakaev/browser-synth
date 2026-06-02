@@ -22,6 +22,8 @@ import {
   type EngineType,
   loadProject,
   installAutoSave,
+  freshProject,
+  replaceProject,
 } from '../project';
 
 // --- Sync layer (WebSocket collaboration) ---
@@ -29,7 +31,7 @@ import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
 import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
 import { setDeep } from '@fiddle/shared';
-import { resolveRoomIdFromUrl } from '../sync/roomId';
+import { setRoomInUrl, clearRoomFromUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
@@ -122,6 +124,11 @@ let wsClient: WsClient | null = null;
 let outbox: Outbox | null = null;
 const fatalError = ref<{ code: string; message: string } | null>(null);
 
+// The room this tab is currently connected to (null in the lobby). A ref so the
+// shell/sidebar can react (e.g. show the Leave control only inside a session).
+const currentRoomId = ref<string | null>(null);
+let authWatcherInstalled = false;
+
 // Flush the outbox entry for `path` immediately — called from a knob's
 // gesture-end (mouseup) so the final drag value goes out without waiting out
 // the 50ms throttle. No-op when sync is off or nothing is pending. Used by the
@@ -182,12 +189,11 @@ function emitLeafDiff(
   }
 }
 
-// Build the room connection + outbox and start connecting. Idempotent; called
-// from ensureAudio() once the engines exist (the WS doesn't strictly need
-// audio, but ordering them keeps a single teardown path in disposeSynth).
-function buildSyncState(): void {
+// Build the room connection + outbox. Does NOT call wsClient.connect() —
+// that is the caller's responsibility (connectToSession). Idempotent: if a
+// socket is already live, returns immediately.
+function buildSyncState(roomId: string): void {
   if (wsClient) return;
-  const roomId = resolveRoomIdFromUrl();
   const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
     .env?.VITE_WS_URL;
   const wsUrl = envUrl
@@ -225,13 +231,15 @@ function buildSyncState(): void {
     },
     isLive: () => !!wsClient?.isLive(),
   });
+}
 
-  wsClient.connect();
-
-  // Re-handshake when the user logs in/out so the server re-derives identity
-  // from the (now present/absent) token. Watch the user id, not the token —
-  // Supabase silently refreshes the token periodically and we don't want to
-  // bounce the socket on every refresh.
+// Installed once (the shell never unmounts). Re-handshakes the live socket when
+// the user logs in/out so the server re-derives identity. Watches the user id,
+// not the token (Supabase refreshes the token silently).
+function installAuthReconnectWatcher(): void {
+  if (authWatcherInstalled) return;
+  authWatcherInstalled = true;
+  const auth = useAuth();
   watch(
     () => auth.session.value?.user.id ?? null,
     (next, prev) => {
@@ -239,6 +247,42 @@ function buildSyncState(): void {
       wsClient?.reconnect();
     },
   );
+}
+
+// Tear down only the room connection (audio stays alive). Shared by leaveSession,
+// room-switching, and disposeSynth.
+function teardownConnection(): void {
+  if (wsClient) {
+    wsClient.disconnect();
+    wsClient = null;
+  }
+  outbox = null;
+  fatalError.value = null;
+  currentRoomId.value = null;
+  resetPresence();
+}
+
+// Enter a session: bring up the room connection for `roomId` and reflect it in
+// the URL. Idempotent for the same room; switches cleanly between rooms. Does
+// NOT touch audio — the AudioContext still boots lazily on first PLAY.
+export function connectToSession(roomId: string): void {
+  setRoomInUrl(roomId);
+  if (!syncEnabled) { currentRoomId.value = roomId; return; }
+  if (wsClient && currentRoomId.value === roomId) return;
+  if (wsClient) teardownConnection();
+  currentRoomId.value = roomId;
+  installAuthReconnectWatcher();
+  buildSyncState(roomId);
+  wsClient!.connect();
+}
+
+// Leave the current session: drop the connection, reset local state to a neutral
+// project, and clear the room from the URL. Audio stays alive.
+export function leaveSession(): void {
+  teardownConnection();
+  replaceProject(project, freshProject());
+  resetApplyOpState();
+  clearRoomFromUrl();
 }
 
 async function buildAudioState(): Promise<AudioState> {
@@ -448,9 +492,6 @@ async function ensureAudio(): Promise<AudioState> {
   if (!bootstrapping) {
     bootstrapping = buildAudioState().then(s => {
       audioState.value = s;
-      // Bring the room connection up once engines exist. Gated so tests can
-      // opt out of opening a socket.
-      if (syncEnabled) buildSyncState();
       return s;
     });
   }
@@ -470,14 +511,8 @@ export function disposeSynth() {
   bootstrapping = null;
 
   // Tear down the sync layer too so a re-init (or a test) starts clean.
-  if (wsClient) {
-    wsClient.disconnect();
-    wsClient = null;
-  }
-  outbox = null;
-  fatalError.value = null;
+  teardownConnection();
   resetApplyOpState();
-  resetPresence();
 }
 
 export function useSynth() {
@@ -595,5 +630,8 @@ export function useSynth() {
     fatalError,       // ref<{code,message}|null> — set on a fatal server error
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
+    currentRoomId,
+    connectToSession,
+    leaveSession,
   };
 }
