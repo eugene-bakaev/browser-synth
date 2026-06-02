@@ -37,12 +37,18 @@ export interface ProjectTrack {
   // do not play or render. Shrinking the window is therefore non-destructive.
   patternLength: number;
   steps: Step[];
+  // Whether this slot is an active track. The slot always exists (the pool is a
+  // fixed-length array); disabling is non-destructive — steps/params are kept.
+  enabled: boolean;
 }
 
 export interface Project {
   schemaVersion: 2;
   bpm: number;
-  tracks: [ProjectTrack, ProjectTrack, ProjectTrack, ProjectTrack];
+  // Fixed-length pool (TRACK_POOL_SIZE) — see factory.ts. The length invariant
+  // is enforced by ProjectSchema and normalizeTrackPool, not the TS type (a
+  // 32-element tuple type is not worth writing).
+  tracks: ProjectTrack[];
 }
 
 export function activeParams<T extends EngineType>(
