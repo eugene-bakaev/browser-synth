@@ -63,7 +63,9 @@ be green.
   the result in the browser using the Playwright MCP — drive the running dev app
   (`npm run dev`), exercise the changed flow, and confirm there are no console
   errors. Report what you observed. This does not replace the user's own
-  visual/audio sign-off, but never report work as done unverified.
+  visual/audio sign-off, but never report work as done unverified. **Always
+  close the browser** when finished testing — don't leave Playwright sessions
+  or tabs open.
 - **Sync state:** WS sync watchers must use `flush: 'sync'` — the
   `applyingFromNetwork` guard only works synchronously. Read
   `docs/ARCHITECTURE.md` §15 before adding syncable fields.
