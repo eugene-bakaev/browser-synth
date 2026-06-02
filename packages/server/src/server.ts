@@ -1,5 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
+import cors from '@fastify/cors';
+import { resolveCorsOrigin } from './cors.js';
 import postgres from 'postgres';
 import { freshProject } from '@fiddle/shared';
 import { healthRoute } from './routes/health.js';
@@ -61,6 +63,9 @@ export function buildServer(): FastifyInstance {
     return { project: project ?? freshProject() };
   };
 
+  // CORS first so its hooks apply to every route (incl. /api preflight). The
+  // client and server are cross-origin in prod; see resolveCorsOrigin.
+  app.register(cors, { origin: resolveCorsOrigin() });
   app.register(websocket);
   app.register(healthRoute);
   app.register(async (a) =>
