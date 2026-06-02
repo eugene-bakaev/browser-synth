@@ -38,7 +38,7 @@ describe('indicesInRange', () => {
   });
 
   it('rejects out-of-range track index', () => {
-    expect(indicesInRange('tracks.4.engineType')).toBe(false);
+    expect(indicesInRange('tracks.32.engineType')).toBe(false);
     expect(indicesInRange('tracks.99.engineType')).toBe(false);
   });
 
@@ -110,5 +110,20 @@ describe('validatePathAndValue', () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('value.invalid');
     }
+  });
+});
+
+describe('enabled flag path', () => {
+  it('tracks.<i>.enabled is writable and accepts a boolean', () => {
+    expect(validatePathAndValue('tracks.5.enabled', true)).toEqual({ ok: true });
+  });
+
+  it('rejects a non-boolean enabled value', () => {
+    expect(validatePathAndValue('tracks.5.enabled', 'yes').ok).toBe(false);
+  });
+
+  it('allows track indices up to 31 and rejects 32', () => {
+    expect(indicesInRange('tracks.31.enabled')).toBe(true);
+    expect(indicesInRange('tracks.32.enabled')).toBe(false);
   });
 });
