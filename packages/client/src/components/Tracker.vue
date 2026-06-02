@@ -425,8 +425,11 @@ const toggleDrumTrigger = (step: Step) => {
   grid-template-columns: 22px 22px 55px 40px 40px minmax(0, 1fr);
 }
 
+/* Non-focused poly layout. Must fit the fixed 275px container (≈253px inner)
+   like .synth-row's 240px does — the extra CHORD column means tighter tracks.
+   Sum 24+20+42+60+32+32 = 210px + 5 gaps×5 = 235px, comfortably inside. */
 .tracker-row.chord-row {
-  grid-template-columns: 24px 20px 48px 65px 36px 36px;
+  grid-template-columns: 24px 20px 42px 60px 32px 32px;
 }
 
 .tracker-row.chord-row.with-vel {
