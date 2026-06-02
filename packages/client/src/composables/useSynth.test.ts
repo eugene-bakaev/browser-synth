@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick } from 'vue';
+import { freshProject } from '../project';
 
 // Same minimal Web Audio mock as TrackMixer.test — useSynth touches AudioContext
 // transitively via ensureAudio().
@@ -164,6 +165,11 @@ describe('sync integration', () => {
     const synth = mod.useSynth();
     await synth.ensureAudio();
     mod.connectToSession('testroom1'); // explicit now (was auto on ensureAudio)
+    // The real server always sends a snapshot on join; that's what opens the
+    // outbound-sync gate (syncReady). Drive one so these emit tests reflect a
+    // fully-joined room. Fresh project == post-connect reset state, so applying
+    // it changes nothing and produces no ops.
+    fake!._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
     return { mod, synth, fake: fake! };
   }
 
@@ -281,6 +287,20 @@ describe('sync integration', () => {
     expect(fake.sent.length).toBe(0);
   });
 
+  it('stopPlayback halts a running sequencer and resets the step cursor', async () => {
+    const { synth } = await bootWithFakeSocket();
+    await synth.togglePlay();
+    expect(synth.sequencer.isPlaying).toBe(true);
+
+    synth.stopPlayback();
+    expect(synth.sequencer.isPlaying).toBe(false);
+    expect(synth.currentStep.value).toBe(-1);
+
+    // No-op when already stopped (e.g. navigating to the lobby twice).
+    expect(() => synth.stopPlayback()).not.toThrow();
+    expect(synth.sequencer.isPlaying).toBe(false);
+  });
+
   it('passes getToken to the WsClient factory', async () => {
     const { fake } = await bootWithFakeSocket();
     expect(typeof fake._opts.getToken).toBe('function');
@@ -362,6 +382,64 @@ describe('session-scoped connection', () => {
     expect(built[0].disconnect).toHaveBeenCalled();
     expect(synth.currentRoomId.value).toBeNull();
     expect(synth.project.bpm).toBe(120); // fresh project default
+  });
+
+  // --- Cross-session state-bleed guards ---
+  // These pin the two-part fix: (1) the local project is reset on every room
+  // switch, and (2) outbound sync is gated until the room's snapshot lands, so
+  // stale / pre-load content can never be written up into the room.
+
+  it('resets the local project when switching rooms (no stale content carries over)', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    const snap = freshProject();
+    snap.bpm = 200;
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: snap });
+    expect(synth.project.bpm).toBe(200); // room-a content applied
+
+    mod.connectToSession('room-b');
+    // Before any room-b snapshot, room-a's content must be gone (reset to fresh).
+    expect(synth.project.bpm).toBe(120);
+  });
+
+  it('does not emit local edits until the room snapshot has been applied', async () => {
+    const { mod, synth, built } = await boot();
+    await synth.ensureAudio(); // installs the sync watchers
+    mod.connectToSession('room-a');
+
+    // Edit BEFORE the snapshot — must not leak to the room (gate closed).
+    synth.project.tracks[0].patternLength = 8;
+    expect(built[0].sent.length).toBe(0);
+
+    // Snapshot arrives → gate opens.
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    synth.project.tracks[0].patternLength = 5; // discrete → flushes immediately
+    expect(
+      built[0].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
+    ).toBe(true);
+  });
+
+  it('does not flush the previous room\'s content into the new room on switch', async () => {
+    const { mod, synth, built } = await boot();
+    await synth.ensureAudio(); // installs the sync watchers
+    mod.connectToSession('room-a');
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    synth.project.tracks[0].patternLength = 7; // legit edit to room-a
+    expect(built[0].sent.length).toBeGreaterThan(0);
+
+    mod.connectToSession('room-b');
+    // Gate closed + project reset: no ops to room-b before its snapshot, even if
+    // a reactive change fires.
+    expect(built[1].sent.length).toBe(0);
+    synth.project.tracks[0].patternLength = 3;
+    expect(built[1].sent.length).toBe(0);
+
+    // After room-b's snapshot, edits flow to room-b again.
+    built[1]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    synth.project.tracks[0].patternLength = 9;
+    expect(
+      built[1].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
+    ).toBe(true);
   });
 });
 

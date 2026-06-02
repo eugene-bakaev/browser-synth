@@ -143,6 +143,14 @@ export function endGesture(path: Path): void {
 let syncEnabled = true;
 export function setSyncEnabled(v: boolean): void { syncEnabled = v; }
 
+// True once the CURRENT room's initial snapshot has been applied. Outbound sync
+// is gated on this so pre-snapshot / stale content is never written up into the
+// room — the cause of cross-session content bleed when switching sessions.
+// Reset to false on every new room connection (buildSyncState); set true when
+// the snapshot lands (onSnapshotApplied). NOT reset on transient reconnects, so
+// the offline queue still flushes correctly after a mid-session drop.
+let syncReady = false;
+
 // Injectable so tests can hand back a WsClient wired to a MockWebSocket +
 // in-memory storage instead of touching the network. Production uses the
 // default real constructor.
@@ -194,6 +202,7 @@ function emitLeafDiff(
 // socket is already live, returns immediately.
 function buildSyncState(roomId: string): void {
   if (wsClient) return;
+  syncReady = false;
   const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
     .env?.VITE_WS_URL;
   const wsUrl = envUrl
@@ -210,6 +219,7 @@ function buildSyncState(roomId: string): void {
       wsClient: wsClient!,
       outbox: outbox!,
       onFatalError: (code, message) => { fatalError.value = { code, message }; },
+      onSnapshotApplied: () => { syncReady = true; },
     }),
     onStateChange: (s) => {
       if (s === 'closed' && outbox) outbox.onClosed();
@@ -270,18 +280,29 @@ export function connectToSession(roomId: string): void {
   if (!syncEnabled) { currentRoomId.value = roomId; return; }
   if (wsClient && currentRoomId.value === roomId) return;
   if (wsClient) teardownConnection();
+  // Drop the previous session's (or localStorage's) content before connecting so
+  // it can't play, or be synced up into this room, before this room's snapshot
+  // arrives. `outbox` is null here (teardown / first connect), so no enqueue.
+  resetLocalProject();
   currentRoomId.value = roomId;
   installAuthReconnectWatcher();
   buildSyncState(roomId);
   wsClient!.connect();
 }
 
+// Reset local project state to a neutral fresh project. Shared by leaveSession
+// and connectToSession; only safe to call while `outbox` is null (otherwise the
+// sync watchers would enqueue the reset as local edits).
+function resetLocalProject(): void {
+  replaceProject(project, freshProject());
+  resetApplyOpState();
+}
+
 // Leave the current session: drop the connection, reset local state to a neutral
 // project, and clear the room from the URL. Audio stays alive.
 export function leaveSession(): void {
   teardownConnection();
-  replaceProject(project, freshProject());
-  resetApplyOpState();
+  resetLocalProject();
   clearRoomFromUrl();
 }
 
@@ -373,7 +394,7 @@ async function buildAudioState(): Promise<AudioState> {
     watch(
       () => project.bpm,
       (newVal, oldVal) => {
-        if (outbox && !isApplyingFromNetwork()) {
+        if (outbox && syncReady && !isApplyingFromNetwork()) {
           outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
         }
       },
@@ -388,7 +409,7 @@ async function buildAudioState(): Promise<AudioState> {
         () => project.tracks[i].engineType,
         (newType, oldType) => {
           syncTrackToEngine(i);
-          if (outbox && !isApplyingFromNetwork()) {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
             outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
           }
         },
@@ -416,7 +437,7 @@ async function buildAudioState(): Promise<AudioState> {
             // to any writable param. Skipped while a network op is being
             // applied (sync flush below means this fires inside the suppressed
             // write, so the guard is still held).
-            if (outbox && !isApplyingFromNetwork()) {
+            if (outbox && syncReady && !isApplyingFromNetwork()) {
               emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
             }
           },
@@ -436,7 +457,7 @@ async function buildAudioState(): Promise<AudioState> {
         () => snapshot(project.tracks[i].mixer),
         (newVal, oldVal) => {
           updateMixerGains();
-          if (outbox && !isApplyingFromNetwork()) {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
             const changed = diffParams(
               newVal as unknown as Record<string, unknown>,
               oldVal as unknown as Record<string, unknown>,
@@ -453,7 +474,7 @@ async function buildAudioState(): Promise<AudioState> {
       watch(
         () => snapshot(project.tracks[i].steps),
         (newSteps, oldSteps) => {
-          if (!outbox || isApplyingFromNetwork() || !oldSteps) return;
+          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldSteps) return;
           for (let j = 0; j < newSteps.length; j++) {
             const changed = diffParams(
               newSteps[j] as unknown as Record<string, unknown>,
@@ -471,7 +492,7 @@ async function buildAudioState(): Promise<AudioState> {
       watch(
         () => project.tracks[i].patternLength,
         (newVal, oldVal) => {
-          if (outbox && !isApplyingFromNetwork()) {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
             outbox.enqueue(['tracks', i, 'patternLength'], newVal, oldVal, gestureEndForLeaf('patternLength'));
           }
         },
@@ -601,6 +622,18 @@ export function useSynth() {
     }
   };
 
+  // Stop the sequencer if it's running. Used when leaving the studio for the
+  // lobby (a non-playback context): there's nothing to play there, and after a
+  // leave the project is reset to empty, so a running transport would just loop
+  // silence. No-op if audio never booted or playback is already stopped; the
+  // audio graph stays up so the next PLAY is instant.
+  const stopPlayback = () => {
+    if (sequencer.isPlaying) {
+      sequencer.stop();
+      currentStep.value = -1;
+    }
+  };
+
   const selectTrack = (index: number | null) => {
     activeTrackIndex.value = index;
   };
@@ -621,6 +654,7 @@ export function useSynth() {
     waveforms,
     shortestActiveNoteDuration,
     togglePlay,
+    stopPlayback,
     selectTrack,
     getTrackEngineType,
     // Force audio init without playing — needed by tests and any consumer

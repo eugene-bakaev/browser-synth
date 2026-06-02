@@ -24,6 +24,10 @@ export interface DispatchDeps {
   wsClient: WsClient;
   outbox: Outbox;
   onFatalError: (code: string, message: string) => void;
+  // Called after the room's initial snapshot has been applied locally. Opens the
+  // outbound-sync gate in useSynth so local edits can no longer leak into the
+  // room before its content has loaded (cross-session bleed guard).
+  onSnapshotApplied?: () => void;
 }
 
 export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): void {
@@ -42,6 +46,7 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
         exitSuppress();
       }
       resetApplyOpState();
+      deps.onSnapshotApplied?.();
       return;
     case 'set':
       if (msg.clientSeq != null) {
