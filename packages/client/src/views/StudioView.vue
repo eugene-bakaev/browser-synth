@@ -12,6 +12,8 @@
       <button @click="onNew" title="Discard current project and start fresh">NEW</button>
       <button @click="onSave" title="Save project to a file">SAVE</button>
       <button @click="onOpen" title="Open a project from a file">OPEN</button>
+      <button @click="showSettings = true" title="Session settings">SESSION</button>
+      <button @click="onLeave" title="Leave this session and return to the lobby">LEAVE</button>
     </div>
   </Teleport>
 
@@ -171,11 +173,36 @@
         :currentStep="currentStep"
       />
     </div>
+
+    <div v-if="showSettings" class="settings-backdrop" @click.self="showSettings = false">
+      <div class="settings-dialog" role="dialog" aria-label="Session settings">
+        <h3>Session</h3>
+        <template v-if="meta">
+          <label class="field">
+            <span>Name</span>
+            <input v-model="metaName" :disabled="!isOwner" maxlength="80" />
+          </label>
+          <label class="field">
+            <span>Description</span>
+            <input v-model="metaDesc" :disabled="!isOwner" maxlength="500" />
+          </label>
+          <p v-if="!isOwner" class="hint">Only the session owner can edit these.</p>
+          <p v-if="settingsErr" class="error">{{ settingsErr }}</p>
+          <div class="actions">
+            <button class="btn" @click="showSettings = false">Close</button>
+            <button v-if="isOwner" class="btn primary" :disabled="savingMeta" @click="saveMeta">
+              {{ savingMeta ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+        </template>
+        <p v-else class="hint">Loading…</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, inject } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import {
   clearTrack as clearProjectTrack,
@@ -198,6 +225,10 @@ import HatPanel from '../components/HatPanel.vue';
 import SnarePanel from '../components/SnarePanel.vue';
 import ClapPanel from '../components/ClapPanel.vue';
 import TrackMixer from '../components/TrackMixer.vue';
+import { useRouter } from 'vue-router';
+import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
+import { guestClientId } from '../sync/clientId';
+import { useAuth } from '../auth/useAuth';
 
 const synth = inject(SYNTH_CONTEXT);
 if (!synth) throw new Error('SYNTH_CONTEXT not provided');
@@ -215,6 +246,70 @@ const {
   selectTrack,
   getTrackEngineType,
 } = synth;
+
+const router = useRouter();
+const auth = useAuth();
+
+const showSettings = ref(false);
+const meta = ref<SessionMeta | null>(null);
+const metaName = ref('');
+const metaDesc = ref('');
+const savingMeta = ref(false);
+const settingsErr = ref<string | null>(null);
+
+const isOwner = computed(() => {
+  const m = meta.value;
+  if (!m) return false;
+  const uid = auth.session.value?.user.id ?? null;
+  if (m.ownerUserId !== null) return uid === m.ownerUserId;
+  return m.ownerClientId !== null && m.ownerClientId === guestClientId();
+});
+
+// Load (or refresh) the session metadata whenever the settings panel opens for
+// the current room.
+watch(showSettings, async (open) => {
+  if (!open) return;
+  const id = synth!.currentRoomId.value;
+  if (!id) return;
+  settingsErr.value = null;
+  meta.value = null;
+  try {
+    const m = await getSession(id);
+    meta.value = m;
+    if (m) { metaName.value = m.name; metaDesc.value = m.description; }
+  } catch (e) {
+    settingsErr.value = e instanceof Error ? e.message : 'failed to load session';
+  }
+});
+
+async function saveMeta(): Promise<void> {
+  const id = synth!.currentRoomId.value;
+  if (!id || !meta.value) return;
+  savingMeta.value = true;
+  settingsErr.value = null;
+  try {
+    await patchSession(
+      id,
+      {
+        name: metaName.value.trim(),
+        description: metaDesc.value.trim(),
+        // Guests authorise with their clientId; logged-in owners via the token.
+        clientId: auth.accessToken.value ? undefined : guestClientId(),
+      },
+      auth.accessToken.value,
+    );
+    showSettings.value = false;
+  } catch (e) {
+    settingsErr.value = e instanceof Error ? e.message : 'save failed';
+  } finally {
+    savingMeta.value = false;
+  }
+}
+
+function onLeave(): void {
+  synth!.leaveSession();
+  router.push({ name: 'lobby' });
+}
 
 const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
@@ -482,4 +577,16 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
   margin-top: 30px;
   flex-shrink: 0;
 }
+.settings-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }
+.settings-dialog { width: 420px; max-width: calc(100vw - 32px); background: #161616; border: 1px solid #2a2a2a; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.settings-dialog h3 { margin: 0; font-family: monospace; text-transform: uppercase; letter-spacing: 0.06em; color: #ddd; }
+.settings-dialog .field { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: #999; }
+.settings-dialog .field input { background: #111; border: 1px solid #333; border-radius: 6px; color: #eee; padding: 8px 10px; }
+.settings-dialog .field input:disabled { opacity: 0.5; }
+.settings-dialog .hint { margin: 0; font-size: 0.72rem; color: #666; }
+.settings-dialog .error { margin: 0; color: #FF4136; font-size: 0.8rem; }
+.settings-dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
+.settings-dialog .btn { font-size: 0.85rem; padding: 8px 14px; border-radius: 6px; border: 1px solid #444; background: #222; color: #ddd; cursor: pointer; }
+.settings-dialog .btn.primary { border-color: #00f0ff; color: #00f0ff; }
+.settings-dialog .btn:disabled { opacity: 0.5; cursor: default; }
 </style>
