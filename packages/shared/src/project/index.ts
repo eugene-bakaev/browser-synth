@@ -5,7 +5,8 @@ export type {
   Project,
 } from './types.js';
 export { activeParams } from './types.js';
-export { freshStep, freshTrack, freshProject, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
+export { freshStep, freshTrack, freshProject } from './factory.js';
+export { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './constants.js';
 export { ProjectSchema, Schemas } from './schema.js';
 export {
   PATTERNS,

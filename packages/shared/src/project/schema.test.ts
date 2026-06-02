@@ -63,3 +63,26 @@ describe('ProjectSchema', () => {
     expect(Schemas.Project.safeParse(p).success).toBe(false);
   });
 });
+
+describe('variable track pool schema', () => {
+  it('accepts a freshProject (32 slots, each with enabled)', () => {
+    expect(ProjectSchema.safeParse(freshProject()).success).toBe(true);
+  });
+
+  it('rejects a project with the old length of 4', () => {
+    const p = freshProject();
+    p.tracks = p.tracks.slice(0, 4);
+    expect(ProjectSchema.safeParse(p).success).toBe(false);
+  });
+
+  it('rejects a track missing enabled', () => {
+    const p = freshProject();
+    delete (p.tracks[0] as { enabled?: boolean }).enabled;
+    expect(ProjectSchema.safeParse(p).success).toBe(false);
+  });
+
+  it('TrackSchema.enabled validates a boolean leaf', () => {
+    expect(Schemas.Track.shape.enabled.safeParse(true).success).toBe(true);
+    expect(Schemas.Track.shape.enabled.safeParse('yes').success).toBe(false);
+  });
+});
