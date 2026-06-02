@@ -124,6 +124,13 @@ let wsClient: WsClient | null = null;
 let outbox: Outbox | null = null;
 const fatalError = ref<{ code: string; message: string } | null>(null);
 
+// True while the current room's initial catch-up is in flight — from
+// connectToSession (which resets the local project to blank) until the room
+// reaches 'live' on sync.complete. The studio binds a loader to this so the
+// freshly-reset empty project isn't shown as a blank session before the
+// snapshot lands. Cleared on sync.complete, teardown/leave, or a fatal error.
+const roomLoading = ref(false);
+
 // The room this tab is currently connected to (null in the lobby). A ref so the
 // shell/sidebar can react (e.g. show the Leave control only inside a session).
 const currentRoomId = ref<string | null>(null);
@@ -220,8 +227,16 @@ function buildSyncState(roomId: string): void {
       project,
       wsClient: wsClient!,
       outbox: outbox!,
-      onFatalError: (code, message) => { fatalError.value = { code, message }; },
-      onSyncLive: () => { syncReady = true; },
+      onFatalError: (code, message) => {
+        fatalError.value = { code, message };
+        // The error overlay takes over; stop showing the loader behind it.
+        roomLoading.value = false;
+      },
+      onSyncLive: () => {
+        syncReady = true;
+        // Initial catch-up done — the room's content is now applied locally.
+        roomLoading.value = false;
+      },
     }),
     onStateChange: (s) => {
       if (s === 'closed' && outbox) outbox.onClosed();
@@ -270,6 +285,7 @@ function teardownConnection(): void {
   }
   outbox = null;
   fatalError.value = null;
+  roomLoading.value = false;
   currentRoomId.value = null;
   resetPresence();
 }
@@ -287,6 +303,8 @@ export function connectToSession(roomId: string): void {
   // arrives. `outbox` is null here (teardown / first connect), so no enqueue.
   resetLocalProject();
   currentRoomId.value = roomId;
+  // Show the loader until this room's snapshot/catch-up completes (onSyncLive).
+  roomLoading.value = true;
   installAuthReconnectWatcher();
   buildSyncState(roomId);
   // Force a full snapshot: we just reset the local project, so a resume delta
@@ -667,6 +685,7 @@ export function useSynth() {
     ensureAudio,
     // --- Sync surface (read by Sidebar / AccountView / ErrorOverlay) ---
     fatalError,       // ref<{code,message}|null> — set on a fatal server error
+    roomLoading,      // ref<boolean> — true while the room's initial catch-up runs
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
     currentRoomId,
