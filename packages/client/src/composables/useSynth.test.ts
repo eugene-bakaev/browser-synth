@@ -165,11 +165,12 @@ describe('sync integration', () => {
     const synth = mod.useSynth();
     await synth.ensureAudio();
     mod.connectToSession('testroom1'); // explicit now (was auto on ensureAudio)
-    // The real server always sends a snapshot on join; that's what opens the
-    // outbound-sync gate (syncReady). Drive one so these emit tests reflect a
-    // fully-joined room. Fresh project == post-connect reset state, so applying
-    // it changes nothing and produces no ops.
+    // Drive a fresh-join handshake: snapshot (applies content) then sync.complete
+    // (opens the outbound-sync gate, syncReady). The gate keys on sync.complete —
+    // not snapshot — so resumed connections that catch up via op replay still open
+    // it. Fresh project == post-connect reset state, so applying it produces no ops.
     fake!._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    fake!._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
     return { mod, synth, fake: fake! };
   }
 
@@ -402,18 +403,42 @@ describe('session-scoped connection', () => {
     expect(synth.project.bpm).toBe(120);
   });
 
-  it('does not emit local edits until the room snapshot has been applied', async () => {
+  it('does not emit local edits until the room sync completes', async () => {
     const { mod, synth, built } = await boot();
     await synth.ensureAudio(); // installs the sync watchers
     mod.connectToSession('room-a');
 
-    // Edit BEFORE the snapshot — must not leak to the room (gate closed).
+    // Edit BEFORE catch-up completes — must not leak to the room (gate closed),
+    // even after the snapshot has been applied.
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
     synth.project.tracks[0].patternLength = 8;
     expect(built[0].sent.length).toBe(0);
 
-    // Snapshot arrives → gate opens.
-    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    // sync.complete → gate opens.
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
     synth.project.tracks[0].patternLength = 5; // discrete → flushes immediately
+    expect(
+      built[0].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
+    ).toBe(true);
+  });
+
+  // Regression: a resumed connection catches up via op replay, NOT a snapshot, so
+  // gating on snapshot left syncReady stuck false and silently dropped every edit
+  // (sessions appeared to never persist). The gate must open on sync.complete,
+  // which fires on the replay path with no snapshot at all.
+  it('opens the outbound gate on sync.complete even when catch-up is op replay (no snapshot)', async () => {
+    const { mod, synth, built } = await boot();
+    await synth.ensureAudio(); // installs the sync watchers
+    mod.connectToSession('room-a');
+
+    // Resume/replay handshake: backfilled `set` ops, then sync.complete — never a
+    // snapshot message.
+    built[0]._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other', path: ['bpm'], value: 140,
+    });
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 1 });
+
+    synth.project.tracks[0].patternLength = 6; // discrete → flushes immediately
     expect(
       built[0].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
     ).toBe(true);
@@ -424,18 +449,20 @@ describe('session-scoped connection', () => {
     await synth.ensureAudio(); // installs the sync watchers
     mod.connectToSession('room-a');
     built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
     synth.project.tracks[0].patternLength = 7; // legit edit to room-a
     expect(built[0].sent.length).toBeGreaterThan(0);
 
     mod.connectToSession('room-b');
-    // Gate closed + project reset: no ops to room-b before its snapshot, even if
+    // Gate closed + project reset: no ops to room-b before it syncs, even if
     // a reactive change fires.
     expect(built[1].sent.length).toBe(0);
     synth.project.tracks[0].patternLength = 3;
     expect(built[1].sent.length).toBe(0);
 
-    // After room-b's snapshot, edits flow to room-b again.
+    // After room-b syncs, edits flow to room-b again.
     built[1]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    built[1]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
     synth.project.tracks[0].patternLength = 9;
     expect(
       built[1].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),

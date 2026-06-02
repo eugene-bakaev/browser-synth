@@ -64,6 +64,12 @@ export class WsClient {
   private readonly maxBackoff = MAX_BACKOFF_MS;
   private reconnectTimer: number | null = null;
   private intentionallyClosed = false;
+  // When true, the next hello keeps our clientId (identity/ownership) but omits
+  // resumeFromOpId so the server replies with a full snapshot instead of an
+  // op-replay delta. Set by a deliberate (re)entry where the caller has reset
+  // local project state; a delta applied onto an empty project would render the
+  // room blank. Auto-reconnect / auth-reconnect leave this false (resume).
+  private forceSnapshotNextHello = false;
 
   constructor(opts: WsClientOptions) {
     this.opts = opts;
@@ -74,8 +80,12 @@ export class WsClient {
 
   // === Public API ===
 
-  connect(): void {
+  // `forceSnapshot` forces a full-snapshot catch-up on the next hello (keeping
+  // identity) — used when the caller has reset local project state and a resume
+  // delta would leave it blank. Defaults to false so auto-reconnect resumes.
+  connect(opts?: { forceSnapshot?: boolean }): void {
     if (this.socket) return;
+    this.forceSnapshotNextHello = opts?.forceSnapshot ?? false;
     this.intentionallyClosed = false;
     this.setState('opening');
     const socket = new this.socketCtor(this.opts.url);
@@ -135,19 +145,22 @@ export class WsClient {
 
   private sendHello(): void {
     const persisted = this.getPersisted();
-    const hello: HelloMessage = persisted?.clientId
-      ? {
-          v: 1,
-          type: 'hello',
-          schemaVersion: PROJECT_SCHEMA_VERSION,
-          clientId: persisted.clientId,
-          resumeFromOpId: persisted.opIdLastSeen,
-        }
-      : {
-          v: 1,
-          type: 'hello',
-          schemaVersion: PROJECT_SCHEMA_VERSION,
-        };
+    const hello: HelloMessage = {
+      v: 1,
+      type: 'hello',
+      schemaVersion: PROJECT_SCHEMA_VERSION,
+    };
+    if (persisted?.clientId) {
+      // Keep our identity (guest ownership / color) across the reconnect.
+      hello.clientId = persisted.clientId;
+      // Resume mid-stream only on a transient reconnect. On a forced-snapshot
+      // (re)entry the local project was reset to fresh, so omit resumeFromOpId
+      // — the server then sends a full snapshot rather than a delta that would
+      // apply onto an empty project and leave the room blank.
+      if (!this.forceSnapshotNextHello) {
+        hello.resumeFromOpId = persisted.opIdLastSeen;
+      }
+    }
     const token = this.opts.getToken?.();
     if (token) hello.token = token;
     this.socket?.send(JSON.stringify(hello));

@@ -24,10 +24,12 @@ export interface DispatchDeps {
   wsClient: WsClient;
   outbox: Outbox;
   onFatalError: (code: string, message: string) => void;
-  // Called after the room's initial snapshot has been applied locally. Opens the
-  // outbound-sync gate in useSynth so local edits can no longer leak into the
-  // room before its content has loaded (cross-session bleed guard).
-  onSnapshotApplied?: () => void;
+  // Called when the room reaches the live / caught-up state (sync.complete).
+  // Opens the outbound-sync gate in useSynth so local edits can't leak into the
+  // room before it has loaded (cross-session bleed guard). Keyed on sync.complete
+  // — NOT snapshot — because catch-up can arrive as op replay instead of a
+  // snapshot (a resumed connection), and sync.complete fires on every path.
+  onSyncLive?: () => void;
 }
 
 export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): void {
@@ -46,7 +48,6 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
         exitSuppress();
       }
       resetApplyOpState();
-      deps.onSnapshotApplied?.();
       return;
     case 'set':
       if (msg.clientSeq != null) {
@@ -63,6 +64,9 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       return;
     case 'sync.complete':
       deps.outbox.onLive();
+      // Room is now caught up (via snapshot OR op replay) — open the outbound
+      // gate. Fires on every catch-up path, unlike snapshot.
+      deps.onSyncLive?.();
       return;
     case 'presence.update':
       roster.value = msg.roster;
