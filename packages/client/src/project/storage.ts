@@ -15,6 +15,7 @@ import {
 } from './types';
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from '@fiddle/shared';
 
 const STORAGE_KEY = 'fiddle:project';
 const SAVE_DEBOUNCE_MS = 500;
@@ -29,7 +30,7 @@ function reconcileSteps(loaded: unknown, defaults: Step[]): Step[] {
   });
 }
 
-function reconcileTrack(loaded: unknown): ProjectTrack {
+function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
   const fresh = freshTrack();
   const t = (typeof loaded === 'object' && loaded !== null) ? (loaded as Partial<ProjectTrack>) : {};
   const loadedEngines = (t as any).engines ?? {};
@@ -51,6 +52,9 @@ function reconcileTrack(loaded: unknown): ProjectTrack {
       ? Math.max(1, Math.min(64, t.patternLength))
       : fresh.patternLength,
     steps: reconcileSteps(t.steps, fresh.steps),
+    // A stored explicit boolean wins; otherwise fall back to the slot default
+    // passed in by reconcileWithDefaults (first N slots enabled).
+    enabled: typeof t.enabled === 'boolean' ? t.enabled : enabled,
   };
 
   // Legacy compat: pre-refactor localStorage / .prj.json files stored
@@ -74,7 +78,9 @@ export function reconcileWithDefaults(loaded: unknown): Project {
     ...p,                                              // forward-compat: keep unknown extras
     schemaVersion: PROJECT_SCHEMA_VERSION,
     bpm: typeof p.bpm === 'number' ? p.bpm : fresh.bpm,
-    tracks: [0, 1, 2, 3].map(i => reconcileTrack(tracks[i])) as Project['tracks'],
+    tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
+      reconcileTrack(tracks[i], i < Math.max(DEFAULT_ENABLED_TRACKS, tracks.length)),
+    ) as Project['tracks'],
   };
 
   return out;
@@ -154,12 +160,13 @@ export function replaceProject(target: Project, source: Project): void {
   target.schemaVersion = source.schemaVersion;
   target.bpm = source.bpm;
 
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     const t = target.tracks[i];
     const s = source.tracks[i];
 
     t.engineType = s.engineType;
     t.patternLength = s.patternLength;
+    t.enabled = s.enabled;
 
     for (const engine of ENGINE_KEYS) {
       Object.assign(t.engines[engine], s.engines[engine]);
