@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
@@ -613,6 +613,27 @@ describe('ConnectionHandler', () => {
 
       const snap = socket.sent.find((m) => m.type === 'snapshot');
       expect(snap && snap.type === 'snapshot' && snap.project.bpm).toBe(171);
+    });
+
+    it('normalizes a legacy 4-track session to the full pool before serving', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('legacy', socket);
+      const legacy = freshProject();
+      legacy.tracks = legacy.tracks.slice(0, 4); // pre-pool stored project
+      const handler = new ConnectionHandler(
+        'legacy', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        async () => ({ project: legacy }),
+      );
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const snap = socket.sent.find((m) => m.type === 'snapshot');
+      expect(snap).toBeDefined();
+      if (!snap || snap.type !== 'snapshot') throw new Error('unreachable');
+      const servedProject = snap.project;
+      expect(servedProject.tracks).toHaveLength(TRACK_POOL_SIZE);
+      expect(servedProject.tracks.slice(0, 4).every((t) => t.enabled)).toBe(true);
     });
   });
 });

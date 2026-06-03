@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { freshProject, DEFAULT_SESSION_SETTINGS } from '@fiddle/shared';
+import { freshProject, DEFAULT_SESSION_SETTINGS, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemorySessionStore } from './InMemorySessionStore.js';
 import type { CreateSessionInput } from './SessionStore.js';
 
@@ -37,7 +37,7 @@ describe('InMemorySessionStore', () => {
     const store = new InMemorySessionStore();
     await store.create(input());
     const snap = await store.getSnapshot('sess-1');
-    expect(snap?.tracks).toHaveLength(4);
+    expect(snap?.tracks).toHaveLength(TRACK_POOL_SIZE);
   });
 
   it('saveSnapshot overwrites the current snapshot', async () => {
