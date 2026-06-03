@@ -9,23 +9,23 @@
     </div>
     
     <div class="channel-strips">
-      <div 
-        v-for="(track, index) in trackStates" 
-        :key="index"
+      <div
+        v-for="chan in enabledChannels"
+        :key="chan.index"
         class="channel-strip"
-        :style="{ '--track-color': TRACK_COLORS[index] }"
-        :class="{ soloed: track.mixer.soloed, muted: track.mixer.muted }"
+        :style="{ '--track-color': trackColor(chan.index) }"
+        :class="{ soloed: chan.track.mixer.soloed, muted: chan.track.mixer.muted }"
       >
         <!-- Strip Header with Label & LED -->
         <div class="strip-header">
           <div class="track-info">
-            <span class="track-number">TRK {{ index + 1 }}</span>
-            <span class="track-type">{{ track.engineType.toUpperCase() }}</span>
+            <span class="track-number">TRK {{ chan.index + 1 }}</span>
+            <span class="track-type">{{ chan.track.engineType.toUpperCase() }}</span>
           </div>
           <!-- Pulse LED on note trigger -->
-          <div 
-            class="trigger-led" 
-            :class="{ active: isTrackTriggered(index) }"
+          <div
+            class="trigger-led"
+            :class="{ active: isTrackTriggered(chan.index) }"
           ></div>
         </div>
 
@@ -38,26 +38,26 @@
             :step="0.01"
             :defaultValue="DEFAULT_MIXER_STATE.volume"
             format="db"
-            v-model="track.mixer.volume"
-            :syncPath="['tracks', index, 'mixer', 'volume']"
-            @gesture-end="endGesture(['tracks', index, 'mixer', 'volume'])"
+            v-model="chan.track.mixer.volume"
+            :syncPath="['tracks', chan.index, 'mixer', 'volume']"
+            @gesture-end="endGesture(['tracks', chan.index, 'mixer', 'volume'])"
           />
         </div>
 
         <!-- Buttons Section: Mute & Solo -->
         <div class="mute-solo-controls">
-          <button 
-            class="btn-mute" 
-            :class="{ active: track.mixer.muted }" 
-            @click="track.mixer.muted = !track.mixer.muted"
+          <button
+            class="btn-mute"
+            :class="{ active: chan.track.mixer.muted }"
+            @click="chan.track.mixer.muted = !chan.track.mixer.muted"
             title="Mute"
           >
             M
           </button>
-          <button 
-            class="btn-solo" 
-            :class="{ active: track.mixer.soloed }" 
-            @click="track.mixer.soloed = !track.mixer.soloed"
+          <button
+            class="btn-solo"
+            :class="{ active: chan.track.mixer.soloed }"
+            @click="chan.track.mixer.soloed = !chan.track.mixer.soloed"
             title="Solo"
           >
             S
@@ -69,9 +69,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
 import { endGesture } from '../composables/useSynth';
+import { trackColor } from '../ui/trackColors';
 
 const props = defineProps<{
   trackStates: ProjectTrack[];
@@ -81,7 +83,11 @@ const props = defineProps<{
   currentStep: number;
 }>();
 
-const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80'];
+const enabledChannels = computed(() =>
+  props.trackStates
+    .map((track, index) => ({ track, index }))
+    .filter(c => c.track.enabled),
+);
 
 // Detect note trigger on current step for active visualization pulse.
 // The LED must reflect what's actually audible — a muted step, a muted track,
@@ -96,7 +102,10 @@ const isTrackTriggered = (index: number) => {
   const mixer = track.mixer;
   if (!mixer || mixer.muted) return false;
 
-  const anySoloed = props.trackStates.some(ts => ts.mixer?.soloed);
+  // Only enabled slots count toward solo — matches the audio engine's gating
+  // (useSynth updateMixerGains), so a disabled slot with a stale soloed flag
+  // never suppresses the trigger LED on the tracks that are actually playing.
+  const anySoloed = props.trackStates.some(ts => ts.enabled && ts.mixer?.soloed);
   if (anySoloed && !mixer.soloed) return false;
 
   return true;
