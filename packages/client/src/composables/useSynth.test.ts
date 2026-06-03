@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick } from 'vue';
 import { freshProject } from '../project';
+import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 // Same minimal Web Audio mock as TrackMixer.test — useSynth touches AudioContext
 // transitively via ensureAudio().
@@ -490,6 +491,82 @@ describe('session-scoped connection', () => {
     expect(
       built[1].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
     ).toBe(true);
+  });
+});
+
+describe('variable track count', () => {
+  // Reuse the same fake-socket harness shape as the session-scoped suite: the
+  // fake records outbound ops in `sent` and drives inbound via `_opts.onMessage`.
+  function makeFakeWsClient(opts: any) {
+    let seq = 0;
+    return {
+      _opts: opts, sent: [] as any[],
+      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
+      send(op: any) { this.sent.push(op); },
+      isLive: () => true, nextClientSeq: () => ++seq,
+      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() } });
+    vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
+  });
+
+  async function boot() {
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+    const mod = await import('./useSynth');
+    const built: any[] = [];
+    mod.setWsClientFactory((o: any) => { const f = makeFakeWsClient(o); built.push(f); return f as any; });
+    mod.setSyncEnabled(true);
+    mod.disposeSynth();
+    const synth = mod.useSynth();
+    await synth.ensureAudio(); // installs the per-track sync watchers
+    return { mod, synth, built };
+  }
+
+  it('addTrack enables the lowest-index disabled slot and emits a leaf op', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+    built[0].sent.length = 0; // clear ops emitted during catch-up
+
+    synth.addTrack();
+    await nextTick();
+
+    expect(synth.project.tracks[4].enabled).toBe(true);
+    expect(synth.enabledTrackCount.value).toBe(5);
+    expect(
+      built[0].sent.some((m: any) => m.path.join('.') === 'tracks.4.enabled' && m.value === true),
+    ).toBe(true);
+  });
+
+  it('removeTrack disables that slot but refuses to drop below 1 enabled', async () => {
+    const { mod, synth, built } = await boot();
+    mod.connectToSession('room-a');
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+
+    synth.removeTrack(3);
+    await nextTick();
+    expect(synth.project.tracks[3].enabled).toBe(false);
+    expect(synth.enabledTrackCount.value).toBe(3);
+
+    synth.removeTrack(2);
+    synth.removeTrack(1);
+    await nextTick();
+    expect(synth.enabledTrackCount.value).toBe(1);
+    synth.removeTrack(0);
+    await nextTick();
+    expect(synth.enabledTrackCount.value).toBe(1); // unchanged — refused
+    expect(synth.project.tracks[0].enabled).toBe(true);
+  });
+
+  it('exposes all TRACK_POOL_SIZE slots in project.tracks', async () => {
+    const { synth } = await boot();
+    expect(synth.project.tracks).toHaveLength(TRACK_POOL_SIZE);
   });
 });
 
