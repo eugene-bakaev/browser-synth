@@ -579,7 +579,7 @@ export function disposeSynth() {
 
 export function useSynth() {
   const currentStep = ref(-1);
-  const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
+  const activeTrackIndex = ref<number | null>(null); // null means the track overview
 
   const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 

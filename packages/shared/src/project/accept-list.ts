@@ -13,8 +13,9 @@
 // Bounds note: pathIsWritable only checks the path *shape*, not whether the
 // numeric indices are in range. A path like `tracks.99.engineType` will pass
 // because the pattern allows `tracks.*.engineType`. The server-side
-// ConnectionHandler (Task 8) is responsible for additionally bounds-checking
-// track indices (0..3) and step indices (0..63) before applying the op.
+// ConnectionHandler is responsible for additionally bounds-checking
+// track indices (0..TRACK_POOL_SIZE-1) and step indices (0..63) before
+// applying the op.
 
 import { z } from 'zod';
 import { TRACK_POOL_SIZE } from './constants.js';
