@@ -7,7 +7,9 @@
       </button>
       <div class="bpm">
         <label>BPM</label>
-        <input type="number" v-model.number="bpm" min="40" max="240">
+        <!-- Like the Tracker's length field: v-model a local draft and commit on
+             change, so the ~8/sec playback re-renders can't clobber mid-typing. -->
+        <input type="number" v-model.number="bpmDraft" min="40" max="240" @change="commitBpm">
       </div>
       <button @click="onNew" title="Discard current project and start fresh">NEW</button>
       <button @click="onSave" title="Save project to a file">SAVE</button>
@@ -33,12 +35,6 @@
           :key="entry.index"
           class="track-cell"
         >
-          <button
-            v-if="enabledTrackCount > 1"
-            class="remove-track-btn"
-            title="Remove this track"
-            @click.stop="removeTrack(entry.index)"
-          >×</button>
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
@@ -49,7 +45,9 @@
             :engineType="getTrackEngineType(entry.index)"
             :mode="project.tracks[entry.index].engines.synth.mode"
             :patternLength="entry.track.patternLength"
+            :canRemove="enabledTrackCount > 1"
             @select-track="selectTrack(entry.index)"
+            @remove="onRemoveTrack(entry.index)"
             @clear="onClear"
             @shift="onShift"
             @fill="onFill"
@@ -292,6 +290,27 @@ watch(
     if (!stillEnabled) selectTrack(null);
   },
 );
+
+// BPM editing mirrors the Tracker length field (Tracker.vue): bind a local draft
+// and commit on change. A direct v-model against the reactive project.bpm gets
+// clobbered by the ~8/sec re-renders during playback, so the field is effectively
+// uneditable while the sequence plays. Resync the draft when bpm changes externally
+// (remote sync op, or our own clamp).
+const bpmDraft = ref(bpm.value);
+watch(bpm, (v) => { bpmDraft.value = v; });
+const commitBpm = () => {
+  const n = Math.round(Number(bpmDraft.value));
+  const clamped = Math.max(40, Math.min(240, Number.isFinite(n) && n > 0 ? n : bpm.value));
+  bpmDraft.value = clamped; // reflect the clamp in the field
+  bpm.value = clamped;
+};
+
+// Confirm before removing a track — deletion drops the slot's pattern and patch.
+const onRemoveTrack = (index: number) => {
+  if (confirm(`Remove Track ${index + 1}? Its pattern and sound settings will be cleared.`)) {
+    removeTrack(index);
+  }
+};
 
 const router = useRouter();
 const auth = useAuth();
@@ -537,34 +556,6 @@ const onInitPatch = () => {
   gap: 20px;
   justify-content: center;
   width: 100%;
-}
-.track-cell {
-  position: relative;
-}
-/* Reserve room on the right of the Tracker's title bar so the absolute remove (×)
-   button sits in the corner without overlapping the title bar's EDIT hint. */
-.track-cell :deep(.tracker-title-bar) {
-  padding-right: 34px;
-}
-.remove-track-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  width: 22px;
-  height: 22px;
-  line-height: 1;
-  border: 1px solid #2a2a2a;
-  border-radius: 4px;
-  background: #181818;
-  color: #888;
-  cursor: pointer;
-  font-weight: bold;
-}
-.remove-track-btn:hover {
-  color: #fff;
-  border-color: #ff4136;
-  background: #2a1414;
 }
 .add-track-btn {
   align-self: center;

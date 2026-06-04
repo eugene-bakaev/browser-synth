@@ -2,7 +2,15 @@
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
     <div class="tracker-title-bar" @click="$emit('select-track')">
       <span class="track-name">{{ title }}</span>
-      <span class="focus-hint" v-if="!isFocused">EDIT</span>
+      <div class="title-actions" v-if="!isFocused">
+        <span class="title-badge focus-hint">EDIT</span>
+        <button
+          v-if="canRemove"
+          class="title-badge remove-badge"
+          title="Remove this track"
+          @click.stop="$emit('remove')"
+        >DEL</button>
+      </div>
     </div>
 
     <!-- Operations Toolbar -->
@@ -193,12 +201,14 @@ const props = withDefaults(defineProps<{
   engineType: string;
   mode?: 'mono' | 'poly';
   patternLength: number;
+  canRemove?: boolean;
 }>(), {
   mode: 'mono'
 });
 
 const emit = defineEmits<{
   (e: 'select-track'): void;
+  (e: 'remove'): void;
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
   (e: 'fill', payload: { trackId: number; interval: number }): void;
@@ -315,19 +325,44 @@ const toggleDrumTrigger = (step: Step) => {
   text-transform: uppercase;
 }
 
-.focus-hint {
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* One badge box shared by the EDIT hint and the DEL button so they are
+   guaranteed identical in size and baseline — they sit side by side in the
+   title bar, not bolted on from outside. */
+.title-badge {
+  font-family: monospace;
   font-size: 0.65rem;
-  color: #666;
   font-weight: bold;
+  line-height: normal;
   border: 1px solid #333;
   padding: 1px 4px;
   border-radius: 3px;
-  transition: color 0.2s, border-color 0.2s;
+  color: #666;
+  background: transparent;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
 }
 
-.tracker-title-bar:hover .focus-hint {
+/* EDIT hint lights up in the track colour when the title bar is hovered — but not
+   while the DEL button is hovered, since that targets a different action and the
+   "click to edit" affordance shouldn't light up then. */
+.tracker-title-bar:hover:not(:has(.remove-badge:hover)) .focus-hint {
   color: var(--track-color);
   border-color: var(--track-color);
+}
+
+.remove-badge {
+  color: #888;
+  cursor: pointer;
+}
+.remove-badge:hover {
+  color: #fff;
+  border-color: #ff4136;
+  background: #2a1414;
 }
 
 /* Toolbar Styling */
