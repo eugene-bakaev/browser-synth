@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { freshProject, DEFAULT_SESSION_SETTINGS } from '@fiddle/shared';
+import { freshProject, DEFAULT_SESSION_SETTINGS, PROJECT_SCHEMA_VERSION } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemorySessionStore } from './InMemorySessionStore.js';
 import { SessionSync } from './SessionSync.js';
@@ -25,6 +25,24 @@ describe('SessionSync', () => {
 
     expect((await sessions.getSnapshot('r1'))?.bpm).toBe(155);
     expect(await rooms.listDirtyRoomIds()).toEqual([]);
+  });
+
+  it('flushRoom repairs an invalid project (0 enabled tracks) before persisting', async () => {
+    const rooms = new InMemoryRoomStore();
+    const sessions = new InMemorySessionStore();
+    await sessions.create(sessionInput({ id: 'r1' }));
+    // Seed the room with the "test 222" corruption: a 32-slot pool with every
+    // track disabled. The server must never persist a 0-track project.
+    const broken = freshProject();
+    broken.tracks.forEach(t => { t.enabled = false; });
+    await rooms.getOrCreate('r1', () => broken);
+
+    const sync = new SessionSync(rooms, sessions);
+    await sync.flushRoom('r1');
+
+    const saved = await sessions.getSnapshot('r1');
+    expect(saved!.tracks.filter(t => t.enabled).length).toBeGreaterThanOrEqual(1);
+    expect(saved!.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
   it('flushAllDirty flushes only dirty rooms', async () => {

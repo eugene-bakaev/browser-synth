@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 class MockAudioNode {
   connect = vi.fn();
@@ -111,16 +112,20 @@ describe('TrackMixer Logic', () => {
       track.mixer.soloed = false;
     });
     // Reset spy call records + mock gain.value to the new expected baseline.
-    trackGains.forEach((g: any) => {
+    // Disabled pool slots are gated to silence regardless of mixer volume.
+    trackGains.forEach((g: any, i: number) => {
       g.gain.setTargetAtTime.mockClear();
-      g.gain.value = sliderGain(0.8);
+      g.gain.value = synthData.project.tracks[i].enabled ? sliderGain(0.8) : 0;
     });
   });
 
-  it('should initialize tracks with default volume gain', () => {
-    expect(trackGains.length).toBe(4);
-    trackGains.forEach((g: any) => {
-      expect(g.gain.value).toBe(sliderGain(0.8));
+  it('should initialize the full pool: enabled slots at default gain, disabled slots silent', () => {
+    expect(trackGains.length).toBe(TRACK_POOL_SIZE);
+    trackGains.forEach((g: any, i: number) => {
+      // freshProject enables the first DEFAULT_ENABLED_TRACKS slots; the rest of
+      // the 32-slot pool is disabled and gated to silence by updateMixerGains.
+      const expected = synthData.project.tracks[i].enabled ? sliderGain(0.8) : 0;
+      expect(g.gain.value).toBe(expected);
     });
   });
 

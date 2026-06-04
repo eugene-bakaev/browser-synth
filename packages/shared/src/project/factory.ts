@@ -7,6 +7,9 @@ import {
 } from '../engines/index.js';
 import { DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project, ProjectTrack, Step } from './types.js';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './constants.js';
+
+export { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS };
 
 export function freshStep(): Step {
   return {
@@ -20,7 +23,7 @@ export function freshStep(): Step {
   };
 }
 
-export function freshTrack(): ProjectTrack {
+export function freshTrack(enabled = true): ProjectTrack {
   return {
     engineType: 'synth',
     engines: {
@@ -33,6 +36,7 @@ export function freshTrack(): ProjectTrack {
     mixer: { ...DEFAULT_MIXER_STATE },
     patternLength: 16,
     steps: Array.from({ length: 64 }, () => freshStep()),
+    enabled,
   };
 }
 
@@ -40,6 +44,8 @@ export function freshProject(): Project {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     bpm: 120,
-    tracks: [freshTrack(), freshTrack(), freshTrack(), freshTrack()],
+    tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
+      freshTrack(i < DEFAULT_ENABLED_TRACKS),
+    ),
   };
 }

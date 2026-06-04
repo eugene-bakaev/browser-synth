@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
-import { freshProject, DEFAULT_SESSION_SETTINGS } from '@fiddle/shared';
+import { freshProject, DEFAULT_SESSION_SETTINGS, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemorySessionStore } from '../session/InMemorySessionStore.js';
 import { sessionsRoute } from './sessions.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
@@ -73,7 +73,7 @@ describe('sessions HTTP API', () => {
     await app.close();
   });
 
-  it('POST with seed=default seeds a fresh 4-track project', async () => {
+  it('POST with seed=default seeds a fresh full-pool project', async () => {
     const { app, sessions } = build();
     const res = await app.inject({
       method: 'POST', url: '/api/sessions',
@@ -81,7 +81,7 @@ describe('sessions HTTP API', () => {
       payload: { name: 'n', seed: 'default' },
     });
     const { id } = res.json() as { id: string };
-    expect((await sessions.getSnapshot(id))?.tracks).toHaveLength(4);
+    expect((await sessions.getSnapshot(id))?.tracks).toHaveLength(TRACK_POOL_SIZE);
     await app.close();
   });
 

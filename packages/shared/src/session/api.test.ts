@@ -26,7 +26,7 @@ describe('CreateSessionBodySchema', () => {
   it('accepts a full project as the seed', () => {
     const parsed = CreateSessionBodySchema.parse({ name: 'n', seed: freshProject() });
     expect(parsed.seed).not.toBe('default');
-    expect(typeof parsed.seed === 'object' && parsed.seed.tracks).toHaveLength(4);
+    expect(typeof parsed.seed === 'object' && parsed.seed.tracks).toHaveLength(32);
   });
 
   it('accepts optional settings and clientId', () => {

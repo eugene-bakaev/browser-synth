@@ -3,6 +3,7 @@ import { reactive, watch, nextTick } from 'vue';
 import { loadProject, installAutoSave, serializeProject, deserializeProject, replaceProject, reconcileWithDefaults } from './storage';
 import { freshProject } from './factory';
 import { PROJECT_SCHEMA_VERSION } from './types';
+import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 const STORAGE_KEY = 'fiddle:project';
 
@@ -289,5 +290,25 @@ describe('reconcileWithDefaults — legacy playMode compat', () => {
     };
     const out = reconcileWithDefaults(legacy) as unknown as { tracks: any[] };
     expect('playMode' in out.tracks[0]).toBe(false);
+  });
+});
+
+describe('track pool reconcile', () => {
+  it('reconcileWithDefaults pads a 4-track save to 32 slots, first 4 enabled', () => {
+    const legacy = { schemaVersion: 2, bpm: 120, tracks: [{}, {}, {}, {}] };
+    const out = reconcileWithDefaults(legacy);
+    expect(out.tracks).toHaveLength(TRACK_POOL_SIZE);
+    expect(out.tracks.slice(0, 4).every(t => t.enabled)).toBe(true);
+    expect(out.tracks.slice(4).every(t => t.enabled === false)).toBe(true);
+  });
+
+  it('replaceProject copies enabled across all slots', () => {
+    const target = freshProject();
+    const source = freshProject();
+    source.tracks[4].enabled = true;   // an added track
+    source.tracks[0].enabled = false;  // a removed default
+    replaceProject(target, source);
+    expect(target.tracks[4].enabled).toBe(true);
+    expect(target.tracks[0].enabled).toBe(false);
   });
 });

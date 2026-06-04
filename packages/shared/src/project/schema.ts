@@ -9,6 +9,7 @@
 // accept ops the client would silently clamp on application, opening a drift.
 
 import { z } from 'zod';
+import { TRACK_POOL_SIZE } from './constants.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -127,6 +128,8 @@ const TrackSchema = z.object({
   // Track loop-window length (steps). The buffer below is fixed at 64.
   patternLength: z.number().int().min(1).max(64),
   steps: z.array(StepSchema).length(64),
+  // Whether this pool slot is an active track. Always present post-normalization.
+  enabled: z.boolean(),
 });
 
 export const ProjectSchema = z.object({
@@ -134,7 +137,7 @@ export const ProjectSchema = z.object({
   // No engine-level BPM clamp; pick a generous-but-sane range. The sequencer
   // schedules off this directly, so we keep it as an integer.
   bpm: z.number().int().min(40).max(240),
-  tracks: z.array(TrackSchema).length(4),
+  tracks: z.array(TrackSchema).length(TRACK_POOL_SIZE),
 });
 
 // Re-exported lookup map. The accept-list path walker uses these to validate

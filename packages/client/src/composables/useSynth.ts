@@ -30,7 +30,7 @@ import {
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
 import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
-import { setDeep } from '@fiddle/shared';
+import { setDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
@@ -175,7 +175,7 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
 // re-derived inline in each watcher. Keyed by leaf field name — unambiguous
 // across the accept-list (no continuous and discrete field share a name).
 const DISCRETE_LEAF_FIELDS = new Set<string>([
-  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength',
+  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {
   return DISCRETE_LEAF_FIELDS.has(leafKey);
@@ -354,7 +354,7 @@ async function buildAudioState(): Promise<AudioState> {
   // oscilloscope shows only that channel, not the summed mix.
   const trackGains: GainNode[] = [];
   const trackAnalysers: AnalyserNode[] = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.8, ctx.currentTime);
     g.connect(compressor);
@@ -389,19 +389,22 @@ async function buildAudioState(): Promise<AudioState> {
   };
 
   const updateMixerGains = () => {
-    const anySoloed = project.tracks.some(t => t.mixer?.soloed);
-    for (let i = 0; i < 4; i++) {
+    // Solo is scoped to enabled tracks only — soloing has no meaning for a
+    // disabled slot, and a disabled slot must never count toward anySoloed.
+    const anySoloed = project.tracks.some(t => t.enabled && t.mixer?.soloed);
+    for (let i = 0; i < TRACK_POOL_SIZE; i++) {
       const track = project.tracks[i];
-      const audible = anySoloed
+      // A disabled slot is always silent regardless of its mixer state.
+      const audible = track.enabled && (anySoloed
         ? (track.mixer.soloed && !track.mixer.muted)
-        : !track.mixer.muted;
+        : !track.mixer.muted);
       const targetGain = audible ? sliderToLinearGain(track.mixer.volume) : 0;
       trackGains[i].gain.setTargetAtTime(targetGain, ctx.currentTime, 0.015);
     }
   };
 
   // Build engines + apply current project tracks (which may already carry pre-play knob edits).
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     syncTrackToEngine(i);
   }
   updateMixerGains();
@@ -424,7 +427,7 @@ async function buildAudioState(): Promise<AudioState> {
       { flush: 'sync' },
     );
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < TRACK_POOL_SIZE; i++) {
       // Engine-type change triggers full sync: dispose old, build new, apply
       // the entire new slice. Slice watchers handle the steady-state case.
       // Sync-flush + suppression guard so a remote swap doesn't echo back out.
@@ -472,7 +475,7 @@ async function buildAudioState(): Promise<AudioState> {
         );
       }
 
-      // Mixer: any change recomputes all 4 track gains (solo logic is global).
+      // Mixer: any change recomputes all track gains (solo logic is global).
       // snapshot()+diff (instead of the old deep watch) lets us emit the
       // individual changed leaf (volume/muted/soloed) outbound. Sync-flush for
       // the suppression guard, as above.
@@ -521,6 +524,21 @@ async function buildAudioState(): Promise<AudioState> {
         },
         { flush: 'sync' },
       );
+
+      // enabled is a syncable leaf with no engine of its own — toggling it must
+      // re-gate audio (updateMixerGains zeroes a disabled slot; the sequencer
+      // tick also skips disabled slots). Same suppression/readiness guard +
+      // sync flush as the other leaf watchers so a remote toggle doesn't echo.
+      watch(
+        () => project.tracks[i].enabled,
+        (newVal, oldVal) => {
+          updateMixerGains();
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'enabled'], newVal, oldVal, gestureEndForLeaf('enabled'));
+          }
+        },
+        { flush: 'sync' },
+      );
     }
   });
 
@@ -561,7 +579,7 @@ export function disposeSynth() {
 
 export function useSynth() {
   const currentStep = ref(-1);
-  const activeTrackIndex = ref<number | null>(null); // null means 4-track overview
+  const activeTrackIndex = ref<number | null>(null); // null means the track overview
 
   const waveforms: OscillatorTypeLiteral[] = ['sine', 'square', 'sawtooth', 'triangle'];
 
@@ -570,7 +588,7 @@ export function useSynth() {
     set: (v: number) => { project.bpm = v; },
   });
 
-  // The currently-focused track, or null on the 4-track overview. Panels read
+  // The currently-focused track, or null on the track overview. Panels read
   // their reactive engine slice from this (e.g. focusedTrack.value.engines.synth);
   // mutating that slice writes straight through to `project`, driving the
   // existing slice watchers (audio + outbox). Replaces the per-param trackParam
@@ -616,8 +634,9 @@ export function useSynth() {
       sequencer.start(state.ctx, () => project.bpm, (stepIndex, time) => {
         currentStep.value = stepIndex;
 
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < TRACK_POOL_SIZE; i++) {
           const track = project.tracks[i];
+          if (!track.enabled) continue;
           const step = track.steps[stepIndex % track.patternLength];
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
@@ -665,6 +684,27 @@ export function useSynth() {
     return project.tracks[index].engineType;
   };
 
+  // How many of the fixed 32-slot pool are currently enabled (= "the track
+  // count" the UI shows).
+  const enabledTrackCount = computed(() => project.tracks.filter(t => t.enabled).length);
+
+  // Add a track = enable the lowest-index disabled slot (fills a freed hole if
+  // any). No-op when the pool is full. The enabled watcher emits the sync op
+  // and re-gates audio.
+  const addTrack = (): void => {
+    const idx = project.tracks.findIndex(t => !t.enabled);
+    if (idx !== -1) project.tracks[idx].enabled = true;
+  };
+
+  // Remove a track = disable that slot (non-destructive; step/param data stays
+  // so re-adding restores it). Refused when it would leave zero enabled tracks.
+  const removeTrack = (index: number): void => {
+    if (index < 0 || index >= TRACK_POOL_SIZE) return;
+    if (!project.tracks[index].enabled) return;
+    if (enabledTrackCount.value <= 1) return;
+    project.tracks[index].enabled = false;
+  };
+
   return {
     project,                                       // NEW: single source of truth
     sequencer,
@@ -680,6 +720,9 @@ export function useSynth() {
     stopPlayback,
     selectTrack,
     getTrackEngineType,
+    enabledTrackCount,
+    addTrack,
+    removeTrack,
     // Force audio init without playing — needed by tests and any consumer
     // that needs the audio graph up before the first togglePlay.
     ensureAudio,

@@ -25,27 +25,43 @@
       <p>Loading session…</p>
     </div>
 
-    <!-- 4-Track Overview Screen -->
+    <!-- Track Overview Screen (enabled slots only) -->
     <div v-if="activeTrackIndex === null" class="overview-container">
       <div class="tracks-grid">
-        <Tracker
-          v-for="(track, index) in project.tracks"
-          :key="index"
-          :steps="track.steps"
-          :currentStep="currentStep"
-          :title="`Track ${index + 1} [${getTrackEngineType(index).toUpperCase()}]`"
-          :color="TRACK_COLORS[index]"
-          :isFocused="false"
-          :trackId="index"
-          :engineType="getTrackEngineType(index)"
-          :mode="project.tracks[index].engines.synth.mode"
-          :patternLength="track.patternLength"
-          @select-track="selectTrack(index)"
-          @clear="onClear"
-          @shift="onShift"
-          @fill="onFill"
-          @set-length="onSetLength"
-        />
+        <div
+          v-for="entry in enabledTrackEntries"
+          :key="entry.index"
+          class="track-cell"
+        >
+          <button
+            v-if="enabledTrackCount > 1"
+            class="remove-track-btn"
+            title="Remove this track"
+            @click.stop="removeTrack(entry.index)"
+          >×</button>
+          <Tracker
+            :steps="entry.track.steps"
+            :currentStep="currentStep"
+            :title="`Track ${entry.index + 1} [${getTrackEngineType(entry.index).toUpperCase()}]`"
+            :color="trackColor(entry.index)"
+            :isFocused="false"
+            :trackId="entry.index"
+            :engineType="getTrackEngineType(entry.index)"
+            :mode="project.tracks[entry.index].engines.synth.mode"
+            :patternLength="entry.track.patternLength"
+            @select-track="selectTrack(entry.index)"
+            @clear="onClear"
+            @shift="onShift"
+            @fill="onFill"
+            @set-length="onSetLength"
+          />
+        </div>
+
+        <button
+          v-if="enabledTrackCount < TRACK_POOL_SIZE"
+          class="add-track-btn"
+          @click="addTrack"
+        >+ ADD TRACK</button>
       </div>
     </div>
 
@@ -55,7 +71,7 @@
         <button class="back-btn" @click="selectTrack(null)">
           ← BACK TO OVERVIEW
         </button>
-        <h2 :style="{ color: TRACK_COLORS[activeTrackIndex] }">
+        <h2 :style="{ color: trackColor(activeTrackIndex) }">
           Editing: Track {{ activeTrackIndex + 1 }} ({{ focusedTrack!.engineType.toUpperCase() }})
         </h2>
 
@@ -63,35 +79,35 @@
           <button
             :class="{ active: focusedTrack!.engineType === 'synth' }"
             @click="focusedTrack!.engineType = 'synth'"
-            :style="focusedTrack!.engineType === 'synth' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+            :style="focusedTrack!.engineType === 'synth' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SYNTH
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'kick' }"
             @click="focusedTrack!.engineType = 'kick'"
-            :style="focusedTrack!.engineType === 'kick' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+            :style="focusedTrack!.engineType === 'kick' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             KICK
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'hat' }"
             @click="focusedTrack!.engineType = 'hat'"
-            :style="focusedTrack!.engineType === 'hat' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+            :style="focusedTrack!.engineType === 'hat' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             HAT
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'snare' }"
             @click="focusedTrack!.engineType = 'snare'"
-            :style="focusedTrack!.engineType === 'snare' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+            :style="focusedTrack!.engineType === 'snare' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SNARE
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'clap' }"
             @click="focusedTrack!.engineType = 'clap'"
-            :style="focusedTrack!.engineType === 'clap' ? { borderColor: TRACK_COLORS[activeTrackIndex], color: TRACK_COLORS[activeTrackIndex] } : {}"
+            :style="focusedTrack!.engineType === 'clap' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             CLAP
           </button>
@@ -112,7 +128,7 @@
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
               :title="`Track ${activeTrackIndex + 1}`"
-              :color="TRACK_COLORS[activeTrackIndex]"
+              :color="trackColor(activeTrackIndex)"
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="focusedTrack!.engineType"
@@ -125,14 +141,14 @@
             />
           </section>
 
-          <section class="engine-section" :style="{ '--track-glow': TRACK_COLORS[activeTrackIndex] }">
+          <section class="engine-section" :style="{ '--track-glow': trackColor(activeTrackIndex) }">
             <template v-if="focusedTrack!.engineType === 'synth'">
               <SynthPanel
                 :params="focusedTrack!.engines.synth"
                 :waveforms="waveforms"
                 :shortestActiveNoteDuration="shortestActiveNoteDuration"
                 :analyser="activeAnalyser"
-                :color="TRACK_COLORS[activeTrackIndex]"
+                :color="trackColor(activeTrackIndex)"
               />
             </template>
 
@@ -140,7 +156,7 @@
               <KickPanel
                 :params="focusedTrack!.engines.kick"
                 :analyser="activeAnalyser"
-                :color="TRACK_COLORS[activeTrackIndex]"
+                :color="trackColor(activeTrackIndex)"
               />
             </template>
 
@@ -148,7 +164,7 @@
               <HatPanel
                 :params="focusedTrack!.engines.hat"
                 :analyser="activeAnalyser"
-                :color="TRACK_COLORS[activeTrackIndex]"
+                :color="trackColor(activeTrackIndex)"
               />
             </template>
 
@@ -156,7 +172,7 @@
               <SnarePanel
                 :params="focusedTrack!.engines.snare"
                 :analyser="activeAnalyser"
-                :color="TRACK_COLORS[activeTrackIndex]"
+                :color="trackColor(activeTrackIndex)"
               />
             </template>
 
@@ -164,7 +180,7 @@
               <ClapPanel
                 :params="focusedTrack!.engines.clap"
                 :analyser="activeAnalyser"
-                :color="TRACK_COLORS[activeTrackIndex]"
+                :color="trackColor(activeTrackIndex)"
               />
             </template>
           </section>
@@ -210,7 +226,9 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
+import { TRACK_POOL_SIZE } from '@fiddle/shared';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
+import { trackColor } from '../ui/trackColors';
 import {
   clearTrack as clearProjectTrack,
   shiftTrack as shiftProjectTrack,
@@ -253,7 +271,27 @@ const {
   selectTrack,
   getTrackEngineType,
   roomLoading,
+  addTrack,
+  removeTrack,
+  enabledTrackCount,
 } = synth;
+
+// Enabled slots paired with their true pool index (used for color, sync paths,
+// and the focused view). Disabled slots are filtered out; order is slot order.
+const enabledTrackEntries = computed(() =>
+  project.tracks
+    .map((track, index) => ({ track, index }))
+    .filter(e => e.track.enabled),
+);
+
+// If the focused track gets disabled (e.g. a remote peer removed it), drop back
+// to the overview so we never render a disabled slot's panels.
+watch(
+  () => (activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value].enabled : true),
+  (stillEnabled) => {
+    if (!stillEnabled) selectTrack(null);
+  },
+);
 
 const router = useRouter();
 const auth = useAuth();
@@ -377,8 +415,6 @@ const onInitPatch = () => {
     resetEnginePatch(project.tracks[activeTrackIndex.value]);
   }
 };
-
-const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purple, Orange, Green
 </script>
 
 <style scoped>
@@ -501,6 +537,53 @@ const TRACK_COLORS = ['#00f0ff', '#c084fc', '#fb923c', '#4ade80']; // Cyan, Purp
   gap: 20px;
   justify-content: center;
   width: 100%;
+}
+.track-cell {
+  position: relative;
+}
+/* Reserve room on the right of the Tracker's title bar so the absolute remove (×)
+   button sits in the corner without overlapping the title bar's EDIT hint. */
+.track-cell :deep(.tracker-title-bar) {
+  padding-right: 34px;
+}
+.remove-track-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  background: #181818;
+  color: #888;
+  cursor: pointer;
+  font-weight: bold;
+}
+.remove-track-btn:hover {
+  color: #fff;
+  border-color: #ff4136;
+  background: #2a1414;
+}
+.add-track-btn {
+  align-self: center;
+  min-width: 120px;
+  min-height: 60px;
+  border: 1px dashed #333;
+  border-radius: 4px;
+  background: #141414;
+  color: #888;
+  font-family: monospace;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.add-track-btn:hover {
+  color: #00f0ff;
+  border-color: #00f0ff;
+  background: #181818;
 }
 
 /* Focused track layout */

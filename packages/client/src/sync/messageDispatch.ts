@@ -13,6 +13,7 @@
 // snapshot path wraps replaceProject explicitly here.
 
 import type { ServerMessage, Project } from '@fiddle/shared';
+import { normalizeTrackPool } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
 import { applyOp, resetApplyOpState, enterSuppress, exitSuppress } from './applyOp.js';
@@ -43,7 +44,9 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       // incoming snapshot as a flurry of local edits and echo it all back out.
       enterSuppress();
       try {
-        replaceProject(deps.project, msg.project);
+        // Normalize first so a snapshot from an older (pre-pool) server can't
+        // under-fill the fixed 32-slot model the client assumes.
+        replaceProject(deps.project, normalizeTrackPool(msg.project));
       } finally {
         exitSuppress();
       }

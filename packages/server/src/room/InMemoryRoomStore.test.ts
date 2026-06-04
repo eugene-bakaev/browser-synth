@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { freshProject } from '@fiddle/shared';
+import { freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemoryRoomStore } from './InMemoryRoomStore.js';
 
 describe('InMemoryRoomStore', () => {
@@ -8,7 +8,7 @@ describe('InMemoryRoomStore', () => {
     const { project, opIdHead } = await store.getOrCreate('room1', freshProject);
     expect(opIdHead).toBe(0);
     expect(project.bpm).toBe(120);
-    expect(project.tracks).toHaveLength(4);
+    expect(project.tracks).toHaveLength(TRACK_POOL_SIZE);
   });
 
   it('assigns sequential opIds when appending ops', async () => {

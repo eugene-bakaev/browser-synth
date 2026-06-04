@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { freshProject, freshTrack, freshStep } from './factory';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from '@fiddle/shared';
 import { PROJECT_SCHEMA_VERSION } from './types';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine } from '../engine/KickEngine';
@@ -68,10 +69,11 @@ describe('freshProject', () => {
     expect(freshProject().schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
-  it('starts at 120 bpm with 4 tracks', () => {
+  it('starts at 120 bpm with a full TRACK_POOL_SIZE pool, first DEFAULT_ENABLED_TRACKS enabled', () => {
     const p = freshProject();
     expect(p.bpm).toBe(120);
-    expect(p.tracks).toHaveLength(4);
+    expect(p.tracks).toHaveLength(TRACK_POOL_SIZE);
+    expect(p.tracks.filter(t => t.enabled)).toHaveLength(DEFAULT_ENABLED_TRACKS);
   });
 
   it('tracks are independent (mutating one does not affect another)', () => {
