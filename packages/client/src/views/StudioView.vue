@@ -541,10 +541,15 @@ const onInitPatch = () => {
 .track-cell {
   position: relative;
 }
+/* Reserve room on the right of the Tracker's title bar so the absolute remove (×)
+   button sits in the corner without overlapping the title bar's EDIT hint. */
+.track-cell :deep(.tracker-title-bar) {
+  padding-right: 34px;
+}
 .remove-track-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 12px;
+  right: 12px;
   z-index: 5;
   width: 22px;
   height: 22px;
