@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeTrackPool } from './normalize.js';
-import { freshProject, freshTrack, TRACK_POOL_SIZE } from './factory.js';
+import { freshProject, freshTrack, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
+import { PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project } from './types.js';
 
 describe('normalizeTrackPool', () => {
@@ -48,5 +49,40 @@ describe('normalizeTrackPool', () => {
     expect(out).not.toBe(p);
     expect(out.tracks).toHaveLength(TRACK_POOL_SIZE);
     expect(out.tracks[5].enabled).toBe(true);
+  });
+
+  it('heals a 32-slot, all-disabled project (no enabled tracks) back to the default count', () => {
+    // Reproduces the "test 222" corruption: a full 32-slot pool with every slot
+    // disabled and no schemaVersion. The UI enforces >=1 track, so 0 enabled is
+    // always corruption — normalize must restore the default enabled count.
+    const broken = {
+      bpm: 120,
+      tracks: Array.from({ length: TRACK_POOL_SIZE }, () => freshTrack(false)),
+    } as unknown as Project;
+    delete (broken as { schemaVersion?: number }).schemaVersion;
+
+    const out = normalizeTrackPool(broken);
+    expect(out.tracks).toHaveLength(TRACK_POOL_SIZE);
+    expect(out.tracks.filter(t => t.enabled)).toHaveLength(DEFAULT_ENABLED_TRACKS);
+    // First DEFAULT_ENABLED_TRACKS slots are the ones re-enabled.
+    expect(out.tracks.slice(0, DEFAULT_ENABLED_TRACKS).every(t => t.enabled)).toBe(true);
+    expect(out.tracks.slice(DEFAULT_ENABLED_TRACKS).every(t => t.enabled === false)).toBe(true);
+    expect(out.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+  });
+
+  it('always stamps the current schemaVersion (even on an otherwise-valid pool)', () => {
+    // 32 slots, boolean enabled, >=1 enabled, but schemaVersion missing → must
+    // be rebuilt with the version stamped.
+    const p = {
+      bpm: 120,
+      tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) => freshTrack(i < DEFAULT_ENABLED_TRACKS)),
+    } as unknown as Project;
+    delete (p as { schemaVersion?: number }).schemaVersion;
+
+    const out = normalizeTrackPool(p);
+    expect(out).not.toBe(p);
+    expect(out.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
+    // Enabled set is preserved (already valid count), not re-healed.
+    expect(out.tracks.filter(t => t.enabled)).toHaveLength(DEFAULT_ENABLED_TRACKS);
   });
 });
