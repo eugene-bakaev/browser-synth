@@ -38,7 +38,8 @@
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
-            :title="`Track ${entry.index + 1} [${getTrackEngineType(entry.index).toUpperCase()}]`"
+            :title="`Track ${entry.index + 1}`"
+            :mixer="entry.track.mixer"
             :color="trackColor(entry.index)"
             :isFocused="false"
             :trackId="entry.index"
@@ -126,6 +127,7 @@
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
               :title="`Track ${activeTrackIndex + 1}`"
+              :mixer="focusedTrack!.mixer"
               :color="trackColor(activeTrackIndex)"
               :isFocused="true"
               :trackId="activeTrackIndex"
