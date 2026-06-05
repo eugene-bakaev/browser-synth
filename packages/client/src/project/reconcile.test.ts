@@ -79,6 +79,27 @@ describe('reconcileWithDefaults', () => {
     expect(reconciled.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
   });
 
+  // bpm goes through the shared coerceBpm rule (same as the sync boundary), so
+  // the offline load path can't surface a blank/garbage bpm either.
+  it('defaults a missing bpm to 120', () => {
+    expect(reconcileWithDefaults({} as any).bpm).toBe(120);
+  });
+
+  it('defaults a NaN/non-number bpm to 120 (old typeof check let NaN through)', () => {
+    expect(reconcileWithDefaults({ bpm: NaN } as any).bpm).toBe(120);
+    expect(reconcileWithDefaults({ bpm: '128' } as any).bpm).toBe(120);
+  });
+
+  it('clamps and rounds an out-of-range / fractional bpm', () => {
+    expect(reconcileWithDefaults({ bpm: 5000 } as any).bpm).toBe(240);
+    expect(reconcileWithDefaults({ bpm: 10 } as any).bpm).toBe(40);
+    expect(reconcileWithDefaults({ bpm: 128.7 } as any).bpm).toBe(129);
+  });
+
+  it('preserves a valid bpm', () => {
+    expect(reconcileWithDefaults({ bpm: 140 } as any).bpm).toBe(140);
+  });
+
   it('pads a 16-step v1 track to a 64-step buffer and defaults patternLength to 16', () => {
     const v1Track = { engineType: 'synth', engines: {}, mixer: {}, steps: Array.from({ length: 16 }, () => ({ note: 'C', octave: 4, length: 1, velocity: 0.8, muted: false })) };
     const out = reconcileWithDefaults({ schemaVersion: 1, bpm: 120, tracks: [v1Track] });

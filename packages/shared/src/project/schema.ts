@@ -9,7 +9,7 @@
 // accept ops the client would silently clamp on application, opening a drift.
 
 import { z } from 'zod';
-import { TRACK_POOL_SIZE } from './constants.js';
+import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -135,8 +135,9 @@ const TrackSchema = z.object({
 export const ProjectSchema = z.object({
   schemaVersion: z.literal(2),
   // No engine-level BPM clamp; pick a generous-but-sane range. The sequencer
-  // schedules off this directly, so we keep it as an integer.
-  bpm: z.number().int().min(40).max(240),
+  // schedules off this directly, so we keep it as an integer. Range constants
+  // are single-sourced in constants.ts (shared with coerceBpm + the factory).
+  bpm: z.number().int().min(BPM_MIN).max(BPM_MAX),
   tracks: z.array(TrackSchema).length(TRACK_POOL_SIZE),
 });
 

@@ -12,7 +12,7 @@
 import {
   ClientMessageSchema,
   freshProject,
-  normalizeTrackPool,
+  normalizeProject,
   PROJECT_SCHEMA_VERSION,
   validatePathAndValue,
 } from '@fiddle/shared';
@@ -207,7 +207,7 @@ export class ConnectionHandler {
         this.fatal('session.not_found', `session ${this.roomId} does not exist`);
         return;
       }
-      seed = () => normalizeTrackPool(loaded.project);
+      seed = () => normalizeProject(loaded.project);
     }
     const { opIdHead } = await this.store.getOrCreate(this.roomId, seed);
     await this.store.cancelGrace(this.roomId);
