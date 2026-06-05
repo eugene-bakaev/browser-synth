@@ -704,7 +704,52 @@ input::-webkit-inner-spin-button {
   -webkit-appearance: none; 
   margin: 0; 
 }
-input[type=number] { 
-  -moz-appearance: textfield; 
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* === Channel-rack: compact sizing for the overview (non-focused) only === */
+/* Focused single-track view keeps the original 275px layout untouched. */
+.tracker-container:not(.focused) {
+  width: 180px;
+  padding: 7px;
+}
+
+/* Narrowed step-grid columns. One flexible column per track type fills the
+   uniform 180px width so there is no dead space: NOTE (mono), CHORD (poly),
+   VEL (drums). */
+.tracker-container:not(.focused) .tracker-row.synth-row {
+  grid-template-columns: 18px 20px minmax(34px, 1fr) 28px 32px;
+  gap: 2px;
+}
+.tracker-container:not(.focused) .tracker-row.chord-row {
+  grid-template-columns: 18px 18px 30px minmax(40px, 1fr) 24px 26px;
+  gap: 2px;
+}
+.tracker-container:not(.focused) .tracker-row.drum-row {
+  grid-template-columns: 18px 20px 26px minmax(0, 1fr);
+  gap: 2px;
+}
+
+/* Fixed, identical row height across synth/poly/drum so the playhead row
+   highlight lines up horizontally across adjacent columns in the rack. */
+.tracker-container:not(.focused) .step-row {
+  height: 23px;
+  padding: 0 2px;
+}
+
+/* Shrink the inputs to fit 1-2 characters. Reaches the StepNumberInput root
+   input via Vue's child-root scoping. */
+.tracker-container:not(.focused) select,
+.tracker-container:not(.focused) input[type="number"] {
+  height: 18px;
+  font-size: 0.66rem;
+}
+.tracker-container:not(.focused) .trig-btn {
+  height: 16px;
+  width: 16px;
+}
+.tracker-container:not(.focused) .mute-btn {
+  height: 18px;
 }
 </style>
