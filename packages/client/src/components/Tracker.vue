@@ -184,6 +184,36 @@
         </template>
       </div>
     </div>
+
+    <!-- Inline mixer footer — replaces the old bottom Track Mixer strip. Binds
+         the same reactive mixer object + sync paths the TrackMixer used. -->
+    <div class="tracker-mixer">
+      <Knob
+        label="LEVEL"
+        :min="0"
+        :max="1"
+        :step="0.01"
+        :defaultValue="DEFAULT_MIXER_STATE.volume"
+        format="db"
+        v-model="mixer.volume"
+        :syncPath="['tracks', trackId, 'mixer', 'volume']"
+        @gesture-end="endGesture(['tracks', trackId, 'mixer', 'volume'])"
+      />
+      <div class="tracker-mixer-buttons">
+        <button
+          class="mix-btn mute"
+          :class="{ active: mixer.muted }"
+          @click="mixer.muted = !mixer.muted"
+          title="Mute"
+        >MUTE</button>
+        <button
+          class="mix-btn solo"
+          :class="{ active: mixer.soloed }"
+          @click="mixer.soloed = !mixer.soloed"
+          title="Solo"
+        >SOLO</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -194,6 +224,10 @@ import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
 import StepNumberInput from './StepNumberInput.vue';
 import { engineLabel } from '../ui/engineLabel';
+import Knob from './Knob.vue';
+import { DEFAULT_MIXER_STATE } from '../project';
+import type { MixerState } from '../project';
+import { endGesture } from '../composables/useSynth';
 
 const props = withDefaults(defineProps<{
   steps: Step[];
@@ -206,6 +240,7 @@ const props = withDefaults(defineProps<{
   mode?: 'mono' | 'poly';
   patternLength: number;
   canRemove?: boolean;
+  mixer: MixerState;
 }>(), {
   mode: 'mono'
 });
@@ -771,5 +806,54 @@ input[type=number] {
 }
 .tracker-container:not(.focused) .mute-btn {
   height: 18px;
+}
+
+/* === Inline mixer footer === */
+.tracker-mixer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #222;
+}
+
+.tracker-mixer-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.mix-btn {
+  height: 20px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.62rem;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.4);
+  color: #666;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.mix-btn:hover {
+  color: #aaa;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.mix-btn.mute.active {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+.mix-btn.solo.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
 }
 </style>
