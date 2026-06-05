@@ -1,3 +1,12 @@
+<!--
+  INTENTIONALLY RETAINED — not currently mounted anywhere.
+
+  The per-track inline mixer footer in Tracker.vue replaced this bottom mixer
+  strip in the channel-rack redesign (2026-06-05, see
+  docs/superpowers/specs/2026-06-05-channel-rack-ui-design.md). This component
+  is kept on purpose for a future consolidated "master mixer" view. Do NOT
+  delete it as dead code.
+-->
 <template>
   <div class="module-group track-mixer-module">
     <div class="mixer-header">
