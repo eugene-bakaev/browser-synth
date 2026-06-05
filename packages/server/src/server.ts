@@ -3,6 +3,7 @@ import websocket from '@fastify/websocket';
 import cors from '@fastify/cors';
 import { resolveCorsOrigin } from './cors.js';
 import postgres from 'postgres';
+import { POSTGRES_OPTIONS } from './db/postgresOptions.js';
 import { freshProject } from '@fiddle/shared';
 import { healthRoute } from './routes/health.js';
 import { wsRoute } from './routes/ws.js';
@@ -39,7 +40,7 @@ export function buildServer(): FastifyInstance {
 
   // One Postgres connection backs both privileged read/write stores when a DB is
   // configured; otherwise both fall back to in-memory.
-  const sql = dbUrl ? postgres(dbUrl) : null;
+  const sql = dbUrl ? postgres(dbUrl, POSTGRES_OPTIONS) : null;
   const profiles: ProfileStore = sql
     ? new PostgresProfileStore(sql)
     : new InMemoryProfileStore();

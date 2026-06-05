@@ -1,10 +1,18 @@
 import './loadEnv.js';
 import { buildServer } from './server.js';
+import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? '0.0.0.0';
 
 const app = buildServer();
+
+// Keep a transient DB/connection rejection from crash-looping the server.
+// porsager/postgres can emit an unhandled rejection on a fatal pooler error
+// that no call site can await; without this the process dies and Render
+// restarts it into the same cold-start failure. See processSafetyNet.
+installProcessSafetyNet((msg, ctx) => app.log.error(ctx ?? {}, msg));
+
 app.listen({ port, host }).catch((err) => {
   app.log.error(err);
   process.exit(1);
