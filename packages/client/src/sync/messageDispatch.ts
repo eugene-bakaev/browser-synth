@@ -13,7 +13,7 @@
 // snapshot path wraps replaceProject explicitly here.
 
 import type { ServerMessage, Project } from '@fiddle/shared';
-import { normalizeTrackPool } from '@fiddle/shared';
+import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
 import { applyOp, resetApplyOpState, enterSuppress, exitSuppress } from './applyOp.js';
@@ -45,8 +45,9 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       enterSuppress();
       try {
         // Normalize first so a snapshot from an older (pre-pool) server can't
-        // under-fill the fixed 32-slot model the client assumes.
-        replaceProject(deps.project, normalizeTrackPool(msg.project));
+        // under-fill the fixed 32-slot model the client assumes, or leave a
+        // blank/out-of-range bpm in the reactive state.
+        replaceProject(deps.project, normalizeProject(msg.project));
       } finally {
         exitSuppress();
       }

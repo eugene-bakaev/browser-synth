@@ -1,9 +1,9 @@
 // One-time repair sweep: bring every stored session snapshot up to the
-// well-formed track-pool shape (32 slots, boolean enabled, >=1 enabled,
+// well-formed project shape (32 slots, boolean enabled, >=1 enabled, valid bpm,
 // current schemaVersion). Fixes already-corrupted rows (e.g. a session stored
-// with 0 enabled tracks) and inoculates legacy pre-pool rows.
+// with 0 enabled tracks or a blank bpm) and inoculates legacy pre-pool rows.
 //
-// normalizeTrackPool is idempotent and returns its input by reference when the
+// normalizeProject is idempotent and returns its input by reference when the
 // project is already valid, so this is safe to re-run and only writes rows that
 // actually change.
 //
@@ -15,7 +15,7 @@
 // environment, exactly like the server.
 import '../loadEnv.js';
 import postgres from 'postgres';
-import { normalizeTrackPool, type Project } from '@fiddle/shared';
+import { normalizeProject, type Project } from '@fiddle/shared';
 
 const apply = process.argv.includes('--apply');
 
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 
     let changed = 0;
     for (const { session_id, project } of rows) {
-      const repaired = normalizeTrackPool(project);
+      const repaired = normalizeProject(project);
       if (repaired === project) continue; // already valid — untouched
 
       changed++;

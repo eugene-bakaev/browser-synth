@@ -1,4 +1,4 @@
-import { normalizeTrackPool } from '@fiddle/shared';
+import { normalizeProject } from '@fiddle/shared';
 import type { RoomStore } from '../room/RoomStore.js';
 import type { SessionStore } from './SessionStore.js';
 import type { Log } from '../sync/ConnectionHandler.js';
@@ -47,7 +47,7 @@ export class SessionSync {
       // writer, so normalizing here guarantees a malformed in-memory project
       // (e.g. driven to 0 enabled tracks by a stream of leaf ops) can never
       // reach the DB. Idempotent — a well-formed project is unchanged.
-      await this.sessions.saveSnapshot(roomId, normalizeTrackPool(project));
+      await this.sessions.saveSnapshot(roomId, normalizeProject(project));
       await this.rooms.clearDirty(roomId);
     } catch (err) {
       this.log('session flush failed', { roomId, err });

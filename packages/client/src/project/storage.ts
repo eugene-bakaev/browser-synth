@@ -15,7 +15,7 @@ import {
 } from './types';
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
-import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, coerceBpm } from '@fiddle/shared';
 
 const STORAGE_KEY = 'fiddle:project';
 const SAVE_DEBOUNCE_MS = 500;
@@ -70,14 +70,15 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
 }
 
 export function reconcileWithDefaults(loaded: unknown): Project {
-  const fresh = freshProject();
   const p = (typeof loaded === 'object' && loaded !== null) ? (loaded as any) : {};
   const tracks = Array.isArray(p.tracks) ? p.tracks : [];
 
   const out: Project = {
     ...p,                                              // forward-compat: keep unknown extras
     schemaVersion: PROJECT_SCHEMA_VERSION,
-    bpm: typeof p.bpm === 'number' ? p.bpm : fresh.bpm,
+    // Same bpm rule as the sync/server boundary (normalizeProject) — one
+    // definition so offline load, file open, and snapshot apply agree.
+    bpm: coerceBpm(p.bpm),
     tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
       reconcileTrack(tracks[i], i < Math.max(DEFAULT_ENABLED_TRACKS, tracks.length)),
     ) as Project['tracks'],

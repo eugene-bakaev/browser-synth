@@ -46,7 +46,7 @@ export interface Project {
   schemaVersion: 2;
   bpm: number;
   // Fixed-length pool (TRACK_POOL_SIZE) — see factory.ts. The length invariant
-  // is enforced by ProjectSchema and normalizeTrackPool, not the TS type (a
+  // is enforced by ProjectSchema and normalizeProject, not the TS type (a
   // 32-element tuple type is not worth writing).
   tracks: ProjectTrack[];
 }

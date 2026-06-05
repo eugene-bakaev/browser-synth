@@ -7,7 +7,7 @@ import {
 } from '../engines/index.js';
 import { DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project, ProjectTrack, Step } from './types.js';
-import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './constants.js';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, DEFAULT_BPM } from './constants.js';
 
 export { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS };
 
@@ -43,7 +43,7 @@ export function freshTrack(enabled = true): ProjectTrack {
 export function freshProject(): Project {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
-    bpm: 120,
+    bpm: DEFAULT_BPM,
     tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
       freshTrack(i < DEFAULT_ENABLED_TRACKS),
     ),
