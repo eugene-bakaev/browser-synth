@@ -1,16 +1,19 @@
 <template>
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
-    <div class="tracker-title-bar" @click="$emit('select-track')">
-      <span class="track-name">{{ title }}</span>
-      <div class="title-actions" v-if="!isFocused">
-        <span class="title-badge focus-hint">EDIT</span>
-        <button
-          v-if="canRemove"
-          class="title-badge remove-badge"
-          title="Remove this track"
-          @click.stop="$emit('remove')"
-        >DEL</button>
+    <div class="tracker-header-bar">
+      <div class="tracker-title-row" @click="$emit('select-track')">
+        <span class="track-name">{{ title }}</span>
+        <div class="title-actions" v-if="!isFocused">
+          <span class="title-badge focus-hint">EDIT</span>
+          <button
+            v-if="canRemove"
+            class="title-badge remove-badge"
+            title="Remove this track"
+            @click.stop="$emit('remove')"
+          >DEL</button>
+        </div>
       </div>
+      <div class="tracker-engine-row">{{ engineLabelText }}</div>
     </div>
 
     <!-- Operations Toolbar -->
@@ -181,6 +184,36 @@
         </template>
       </div>
     </div>
+
+    <!-- Inline mixer footer — replaces the old bottom Track Mixer strip. Binds
+         the same reactive mixer object + sync paths the TrackMixer used. -->
+    <div class="tracker-mixer">
+      <Knob
+        label="LEVEL"
+        :min="0"
+        :max="1"
+        :step="0.01"
+        :defaultValue="DEFAULT_MIXER_STATE.volume"
+        format="db"
+        v-model="mixer.volume"
+        :syncPath="['tracks', trackId, 'mixer', 'volume']"
+        @gesture-end="endGesture(['tracks', trackId, 'mixer', 'volume'])"
+      />
+      <div class="tracker-mixer-buttons">
+        <button
+          class="mix-btn mute"
+          :class="{ active: mixer.muted }"
+          @click="mixer.muted = !mixer.muted"
+          title="Mute"
+        >MUTE</button>
+        <button
+          class="mix-btn solo"
+          :class="{ active: mixer.soloed }"
+          @click="mixer.soloed = !mixer.soloed"
+          title="Solo"
+        >SOLO</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -190,6 +223,11 @@ import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
 import StepNumberInput from './StepNumberInput.vue';
+import { engineLabel } from '../ui/engineLabel';
+import Knob from './Knob.vue';
+import { DEFAULT_MIXER_STATE } from '../project';
+import type { MixerState } from '../project';
+import { endGesture } from '../composables/useSynth';
 
 const props = withDefaults(defineProps<{
   steps: Step[];
@@ -202,6 +240,7 @@ const props = withDefaults(defineProps<{
   mode?: 'mono' | 'poly';
   patternLength: number;
   canRemove?: boolean;
+  mixer: MixerState;
 }>(), {
   mode: 'mono'
 });
@@ -220,6 +259,9 @@ const fillSelectRef = ref<HTMLSelectElement | null>(null);
 // Only the [0, patternLength) window plays/renders. slice() keeps the underlying
 // reactive Step references, so in-place edits still write through to `project`.
 const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
+
+// Always-present engine label for the fixed second header row.
+const engineLabelText = computed(() => engineLabel(props.engineType, props.mode));
 
 // The length field is v-model'd to a local draft (not the prop directly) so that the
 // ~8/sec re-renders during playback — which re-apply value bindings on every patch —
@@ -299,22 +341,35 @@ const toggleDrumTrigger = (step: Step) => {
   box-shadow: 0 0 10px rgba(var(--track-color), 0.15);
 }
 
-.tracker-title-bar {
+.tracker-header-bar {
+  background: #181818;
+  border-bottom: 2px solid var(--track-color);
+  border-radius: 4px 4px 0 0;
+  margin-bottom: 8px;
+}
+
+.tracker-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #181818;
-  border-bottom: 2px solid var(--track-color);
-  padding: 6px 8px;
-  margin-bottom: 8px;
+  height: 24px;
+  padding: 0 8px;
   cursor: pointer;
-  border-radius: 4px 4px 0 0;
   user-select: none;
   transition: background-color 0.2s;
 }
 
-.tracker-title-bar:hover {
+.tracker-title-row:hover {
   background: #222;
+}
+
+.tracker-engine-row {
+  height: 16px;
+  padding: 0 8px 4px;
+  font-size: 0.6rem;
+  color: #7a7a7a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .track-name {
@@ -350,7 +405,7 @@ const toggleDrumTrigger = (step: Step) => {
 /* EDIT hint lights up in the track colour when the title bar is hovered — but not
    while the DEL button is hovered, since that targets a different action and the
    "click to edit" affordance shouldn't light up then. */
-.tracker-title-bar:hover:not(:has(.remove-badge:hover)) .focus-hint {
+.tracker-title-row:hover:not(:has(.remove-badge:hover)) .focus-hint {
   color: var(--track-color);
   border-color: var(--track-color);
 }
@@ -704,7 +759,101 @@ input::-webkit-inner-spin-button {
   -webkit-appearance: none; 
   margin: 0; 
 }
-input[type=number] { 
-  -moz-appearance: textfield; 
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* === Channel-rack: compact sizing for the overview (non-focused) only === */
+/* Focused single-track view keeps the original 275px layout untouched. */
+.tracker-container:not(.focused) {
+  width: 180px;
+  padding: 7px;
+}
+
+/* Narrowed step-grid columns. One flexible column per track type fills the
+   uniform 180px width so there is no dead space: NOTE (mono), CHORD (poly),
+   VEL (drums). */
+.tracker-container:not(.focused) .tracker-row.synth-row {
+  grid-template-columns: 18px 20px minmax(34px, 1fr) 28px 32px;
+  gap: 2px;
+}
+.tracker-container:not(.focused) .tracker-row.chord-row {
+  grid-template-columns: 18px 18px 30px minmax(40px, 1fr) 24px 26px;
+  gap: 2px;
+}
+.tracker-container:not(.focused) .tracker-row.drum-row {
+  grid-template-columns: 18px 20px 26px minmax(0, 1fr);
+  gap: 2px;
+}
+
+/* Fixed, identical row height across synth/poly/drum so the playhead row
+   highlight lines up horizontally across adjacent columns in the rack. */
+.tracker-container:not(.focused) .step-row {
+  height: 23px;
+  padding: 0 2px;
+}
+
+/* Shrink the inputs to fit 1-2 characters. Reaches the StepNumberInput root
+   input via Vue's child-root scoping. */
+.tracker-container:not(.focused) select,
+.tracker-container:not(.focused) input[type="number"] {
+  height: 18px;
+  font-size: 0.66rem;
+}
+.tracker-container:not(.focused) .trig-btn {
+  height: 16px;
+  width: 16px;
+}
+.tracker-container:not(.focused) .mute-btn {
+  height: 18px;
+}
+
+/* === Inline mixer footer === */
+.tracker-mixer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #222;
+}
+
+.tracker-mixer-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.mix-btn {
+  height: 20px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.62rem;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.4);
+  color: #666;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.mix-btn:hover {
+  color: #aaa;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.mix-btn.mute.active {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+}
+
+.mix-btn.solo.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
 }
 </style>

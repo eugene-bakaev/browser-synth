@@ -38,7 +38,8 @@
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
-            :title="`Track ${entry.index + 1} [${getTrackEngineType(entry.index).toUpperCase()}]`"
+            :title="`Track ${entry.index + 1}`"
+            :mixer="entry.track.mixer"
             :color="trackColor(entry.index)"
             :isFocused="false"
             :trackId="entry.index"
@@ -57,9 +58,10 @@
 
         <button
           v-if="enabledTrackCount < TRACK_POOL_SIZE"
-          class="add-track-btn"
+          class="add-track-ghost"
           @click="addTrack"
-        >+ ADD TRACK</button>
+          title="Add a track"
+        >+</button>
       </div>
     </div>
 
@@ -126,6 +128,7 @@
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
               :title="`Track ${activeTrackIndex + 1}`"
+              :mixer="focusedTrack!.mixer"
               :color="trackColor(activeTrackIndex)"
               :isFocused="true"
               :trackId="activeTrackIndex"
@@ -186,15 +189,6 @@
       </div>
     </div>
 
-    <!-- Track Mixer (Globally visible at the bottom) -->
-    <div class="mixer-section">
-      <TrackMixer
-        :trackStates="project.tracks"
-        :sequencer="sequencer"
-        :currentStep="currentStep"
-      />
-    </div>
-
     <div v-if="showSettings" class="settings-backdrop" @click.self="showSettings = false">
       <div class="settings-dialog" role="dialog" aria-label="Session settings">
         <h3>Session</h3>
@@ -247,7 +241,6 @@ import KickPanel from '../components/KickPanel.vue';
 import HatPanel from '../components/HatPanel.vue';
 import SnarePanel from '../components/SnarePanel.vue';
 import ClapPanel from '../components/ClapPanel.vue';
-import TrackMixer from '../components/TrackMixer.vue';
 import { useRouter } from 'vue-router';
 import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
 import { guestClientId } from '../sync/clientId';
@@ -552,29 +545,32 @@ const onInitPatch = () => {
 .tracks-grid {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
-  gap: 20px;
-  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 16px;
+  align-items: flex-start;
   width: 100%;
+  overflow-x: auto;
+  padding-bottom: 12px;
 }
-.add-track-btn {
-  align-self: center;
-  min-width: 120px;
-  min-height: 60px;
+.add-track-ghost {
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 180px;
+  min-height: 140px;
   border: 1px dashed #333;
-  border-radius: 4px;
-  background: #141414;
-  color: #888;
+  border-radius: 6px;
+  background: #0f0f0f;
+  color: #555;
   font-family: monospace;
+  font-size: 2rem;
   font-weight: bold;
-  letter-spacing: 0.05em;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
-.add-track-btn:hover {
+.add-track-ghost:hover {
   color: #00f0ff;
   border-color: #00f0ff;
-  background: #181818;
+  background: #141414;
 }
 
 /* Focused track layout */
@@ -688,10 +684,6 @@ const onInitPatch = () => {
   border-color: #555;
 }
 
-.mixer-section {
-  margin-top: 30px;
-  flex-shrink: 0;
-}
 .settings-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }
 .settings-dialog { width: 420px; max-width: calc(100vw - 32px); background: #161616; border: 1px solid #2a2a2a; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .settings-dialog h3 { margin: 0; font-family: monospace; text-transform: uppercase; letter-spacing: 0.06em; color: #ddd; }
