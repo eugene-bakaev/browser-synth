@@ -778,7 +778,7 @@ input[type=number] {
   gap: 2px;
 }
 .tracker-container:not(.focused) .tracker-row.chord-row {
-  grid-template-columns: 18px 18px 30px minmax(40px, 1fr) 24px 26px;
+  grid-template-columns: 16px 16px 28px minmax(34px, 1fr) 22px 24px;
   gap: 2px;
 }
 .tracker-container:not(.focused) .tracker-row.drum-row {
@@ -806,6 +806,30 @@ input[type=number] {
 }
 .tracker-container:not(.focused) .mute-btn {
   height: 18px;
+}
+
+/* Reserve a stable scrollbar gutter so a track's row width is identical whether
+   it scrolls (>16 steps) or not — a 32-step column is exactly as wide as a
+   16-step one, and both stay inside the uniform 180px. This replaces, for the
+   compact rack, the conditional `.scrolling` negative-margin gutter (whose
+   hardcoded -10px was tuned for the focused view's 10px padding and bled past
+   the 7px compact padding, making scrolling tracks render wider). The focused
+   single-track view keeps the original `.scrolling` hack untouched.
+   `overflow-x: hidden` suppresses the spurious horizontal scrollbar that
+   `overflow-y: auto` implies on the tight poly grid. */
+.tracker-container:not(.focused) .tracker-steps {
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+}
+.tracker-container:not(.focused) .tracker-steps.scrolling {
+  margin-right: 0;
+  padding-right: 0;
+}
+/* The header row sits outside the scroll container, so reserve the same 8px the
+   gutter consumes (see ::-webkit-scrollbar width) to keep its columns aligned
+   with the step rows below it. */
+.tracker-container:not(.focused) .tracker-header {
+  padding-right: 8px;
 }
 
 /* === Inline mixer footer === */
