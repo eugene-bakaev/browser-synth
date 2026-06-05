@@ -39,3 +39,6 @@ screenshot*.png
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Visual brainstorming companion (superpowers)
+.superpowers/
