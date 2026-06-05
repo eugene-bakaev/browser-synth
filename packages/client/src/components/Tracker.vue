@@ -1,16 +1,19 @@
 <template>
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
-    <div class="tracker-title-bar" @click="$emit('select-track')">
-      <span class="track-name">{{ title }}</span>
-      <div class="title-actions" v-if="!isFocused">
-        <span class="title-badge focus-hint">EDIT</span>
-        <button
-          v-if="canRemove"
-          class="title-badge remove-badge"
-          title="Remove this track"
-          @click.stop="$emit('remove')"
-        >DEL</button>
+    <div class="tracker-header-bar">
+      <div class="tracker-title-row" @click="$emit('select-track')">
+        <span class="track-name">{{ title }}</span>
+        <div class="title-actions" v-if="!isFocused">
+          <span class="title-badge focus-hint">EDIT</span>
+          <button
+            v-if="canRemove"
+            class="title-badge remove-badge"
+            title="Remove this track"
+            @click.stop="$emit('remove')"
+          >DEL</button>
+        </div>
       </div>
+      <div class="tracker-engine-row">{{ engineLabelText }}</div>
     </div>
 
     <!-- Operations Toolbar -->
@@ -190,6 +193,7 @@ import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
 import StepNumberInput from './StepNumberInput.vue';
+import { engineLabel } from '../ui/engineLabel';
 
 const props = withDefaults(defineProps<{
   steps: Step[];
@@ -220,6 +224,9 @@ const fillSelectRef = ref<HTMLSelectElement | null>(null);
 // Only the [0, patternLength) window plays/renders. slice() keeps the underlying
 // reactive Step references, so in-place edits still write through to `project`.
 const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
+
+// Always-present engine label for the fixed second header row.
+const engineLabelText = computed(() => engineLabel(props.engineType, props.mode));
 
 // The length field is v-model'd to a local draft (not the prop directly) so that the
 // ~8/sec re-renders during playback — which re-apply value bindings on every patch —
@@ -299,22 +306,35 @@ const toggleDrumTrigger = (step: Step) => {
   box-shadow: 0 0 10px rgba(var(--track-color), 0.15);
 }
 
-.tracker-title-bar {
+.tracker-header-bar {
+  background: #181818;
+  border-bottom: 2px solid var(--track-color);
+  border-radius: 4px 4px 0 0;
+  margin-bottom: 8px;
+}
+
+.tracker-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #181818;
-  border-bottom: 2px solid var(--track-color);
-  padding: 6px 8px;
-  margin-bottom: 8px;
+  height: 24px;
+  padding: 0 8px;
   cursor: pointer;
-  border-radius: 4px 4px 0 0;
   user-select: none;
   transition: background-color 0.2s;
 }
 
-.tracker-title-bar:hover {
+.tracker-title-row:hover {
   background: #222;
+}
+
+.tracker-engine-row {
+  height: 16px;
+  padding: 0 8px 4px;
+  font-size: 0.6rem;
+  color: #7a7a7a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .track-name {
@@ -350,7 +370,7 @@ const toggleDrumTrigger = (step: Step) => {
 /* EDIT hint lights up in the track colour when the title bar is hovered — but not
    while the DEL button is hovered, since that targets a different action and the
    "click to edit" affordance shouldn't light up then. */
-.tracker-title-bar:hover:not(:has(.remove-badge:hover)) .focus-hint {
+.tracker-title-row:hover:not(:has(.remove-badge:hover)) .focus-hint {
   color: var(--track-color);
   border-color: var(--track-color);
 }
