@@ -90,9 +90,20 @@ export class WsClient {
     this.setState('opening');
     const socket = new this.socketCtor(this.opts.url);
     this.socket = socket;
-    socket.onopen = () => this.sendHello();
-    socket.onmessage = (ev) => this.onSocketMessage(ev.data);
-    socket.onclose = () => this.onSocketClose();
+    // Guard every handler to THIS socket. After a reconnect, a superseded socket
+    // can still fire late events; without the guard its onopen would call
+    // sendHello against the *current* this.socket — which may still be
+    // CONNECTING — throwing "Failed to execute 'send' … Still in CONNECTING
+    // state", and its onclose would spuriously reconnect the live connection.
+    socket.onopen = () => {
+      if (this.socket === socket) this.sendHello();
+    };
+    socket.onmessage = (ev) => {
+      if (this.socket === socket) this.onSocketMessage(ev.data);
+    };
+    socket.onclose = () => {
+      if (this.socket === socket) this.onSocketClose();
+    };
     // Errors fire before close; the close handler is where the real fallout
     // (reconnect, state transitions) lives, so onerror just absorbs.
     socket.onerror = () => {};

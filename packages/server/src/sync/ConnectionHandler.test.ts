@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
+import { SESSION_LOAD_TIMEOUT_MS } from './ConnectionHandler.js';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
@@ -593,6 +594,51 @@ describe('ConnectionHandler', () => {
 
       const err = socket.sent.find((m) => m.type === 'error');
       expect(err && err.type === 'error' && err.code).toBe('session.not_found');
+      expect(err && err.type === 'error' && err.fatal).toBe(true);
+      expect(socket.closed).toBe(true);
+      expect(socket.sent.find((m) => m.type === 'welcome')).toBeUndefined();
+    });
+
+    it('rejects fast with a fatal overloaded when the session load hangs', async () => {
+      vi.useFakeTimers();
+      try {
+        const socket = makeMockSocket();
+        const pool = new FakePool();
+        pool.add('slow', socket);
+        // Loader that never settles — mimics a wedged DB pooler. Without the
+        // timeout the client would wait for a welcome that never comes.
+        const handler = new ConnectionHandler(
+          'slow', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+          () => new Promise<never>(() => {}),
+        );
+
+        const p = handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+        await vi.advanceTimersByTimeAsync(SESSION_LOAD_TIMEOUT_MS + 1);
+        await p;
+
+        const err = socket.sent.find((m) => m.type === 'error');
+        expect(err && err.type === 'error' && err.code).toBe('overloaded');
+        expect(err && err.type === 'error' && err.fatal).toBe(true);
+        expect(socket.closed).toBe(true);
+        expect(socket.sent.find((m) => m.type === 'welcome')).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('rejects with a fatal overloaded when the session load throws', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('err', socket);
+      const handler = new ConnectionHandler(
+        'err', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        async () => { throw new Error('db down'); },
+      );
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const err = socket.sent.find((m) => m.type === 'error');
+      expect(err && err.type === 'error' && err.code).toBe('overloaded');
       expect(err && err.type === 'error' && err.fatal).toBe(true);
       expect(socket.closed).toBe(true);
       expect(socket.sent.find((m) => m.type === 'welcome')).toBeUndefined();

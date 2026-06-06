@@ -291,4 +291,39 @@ describe('WsClient', () => {
     expect(hello.type).toBe('hello');
     expect(hello.token).toBe('tok-1');
   });
+
+  it('a superseded socket opening late does not send hello on the new (still-connecting) socket', () => {
+    // Repro of the prod console error: "Failed to execute 'send' on 'WebSocket':
+    // Still in CONNECTING state" thrown from onopen→sendHello. A reconnect swaps
+    // this.socket to a new, still-connecting socket; the OLD socket then fires
+    // onopen and (pre-fix) calls sendHello against the new connecting socket.
+    const { client } = makeClient();
+    client.connect();
+    const first = MockWebSocket.instances[0];
+
+    client.reconnect();
+    const second = MockWebSocket.instances[1];
+    expect(second.readyState).toBe(0); // still CONNECTING
+
+    // The stale first socket opens late. Its handler must be ignored.
+    first._open();
+
+    // The new connecting socket must NOT have received a hello from the stale open.
+    expect(second.sent).toEqual([]);
+  });
+
+  it('a superseded socket closing does not trigger a reconnect against the live socket', () => {
+    const { client } = makeClient();
+    client.connect();
+    const first = MockWebSocket.instances[0];
+    client.reconnect();
+    const second = MockWebSocket.instances[1];
+    driveLive(client, second);
+    expect(client.isLive()).toBe(true);
+
+    // Stale socket fires a late close; it must not disturb the live connection.
+    first.onclose?.({});
+    expect(client.isLive()).toBe(true);
+    expect(MockWebSocket.instances).toHaveLength(2); // no spurious reconnect socket
+  });
 });
