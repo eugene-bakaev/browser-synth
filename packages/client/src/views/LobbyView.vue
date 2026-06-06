@@ -44,7 +44,7 @@ const synth = inject(SYNTH_CONTEXT)!;
 const { sessions, loading, error, startPolling, stopPolling } = useLobby();
 const showCreate = ref(false);
 
-onMounted(() => startPolling(3000));
+onMounted(() => startPolling()); // default interval; pauses while tab hidden
 onBeforeUnmount(() => stopPolling());
 
 function join(id: string): void {

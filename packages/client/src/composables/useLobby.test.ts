@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../sync/sessionsApi', () => ({
@@ -39,5 +40,42 @@ describe('useLobby', () => {
     stopPolling();
     await vi.advanceTimersByTimeAsync(6000);
     expect(mockList).toHaveBeenCalledTimes(2); // no more after stop
+  });
+
+  function setHidden(hidden: boolean): void {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+
+  afterEach(() => { setHidden(false); });
+
+  it('pauses the interval while the tab is hidden and resumes (with an immediate refresh) when visible', async () => {
+    mockList.mockResolvedValue([]);
+    const { startPolling, stopPolling } = useLobby();
+    startPolling(3000);
+    expect(mockList).toHaveBeenCalledTimes(1); // immediate on start
+
+    setHidden(true);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(mockList).toHaveBeenCalledTimes(1); // no polling while hidden
+
+    setHidden(false);
+    expect(mockList).toHaveBeenCalledTimes(2); // immediate catch-up on return
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mockList).toHaveBeenCalledTimes(3); // interval resumed
+
+    stopPolling();
+  });
+
+  it('stopPolling removes the visibilitychange listener', async () => {
+    mockList.mockResolvedValue([]);
+    const { startPolling, stopPolling } = useLobby();
+    startPolling(3000);
+    stopPolling();
+    mockList.mockClear();
+
+    setHidden(true);
+    setHidden(false);
+    expect(mockList).toHaveBeenCalledTimes(0); // listener gone — no refresh
   });
 });
