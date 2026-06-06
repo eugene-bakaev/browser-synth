@@ -245,6 +245,9 @@ import { useRouter } from 'vue-router';
 import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
 import { guestClientId } from '../sync/clientId';
 import { useAuth } from '../auth/useAuth';
+import { useDialog } from '../dialogs/useDialog';
+
+const dialog = useDialog();
 
 const synth = inject(SYNTH_CONTEXT);
 if (!synth) throw new Error('SYNTH_CONTEXT not provided');
@@ -299,10 +302,14 @@ const commitBpm = () => {
 };
 
 // Confirm before removing a track — deletion drops the slot's pattern and patch.
-const onRemoveTrack = (index: number) => {
-  if (confirm(`Remove Track ${index + 1}? Its pattern and sound settings will be cleared.`)) {
-    removeTrack(index);
-  }
+const onRemoveTrack = async (index: number) => {
+  const ok = await dialog.confirm({
+    title: 'Remove track',
+    message: `Remove Track ${index + 1}? Its pattern and sound settings will be cleared.`,
+    confirmLabel: 'Remove',
+    danger: true,
+  });
+  if (ok) removeTrack(index);
 };
 
 const router = useRouter();
@@ -383,10 +390,14 @@ const onSetLength = ({ trackId, length }: { trackId: number; length: number }) =
   project.tracks[trackId].patternLength = Math.max(1, Math.min(64, length));
 };
 
-const onNew = () => {
-  if (confirm('Discard current project and start fresh?')) {
-    replaceProject(project, freshProject());
-  }
+const onNew = async () => {
+  const ok = await dialog.confirm({
+    title: 'New project',
+    message: 'Discard current project and start fresh?',
+    confirmLabel: 'Discard',
+    danger: true,
+  });
+  if (ok) replaceProject(project, freshProject());
 };
 
 const onSave = () => {
@@ -399,7 +410,7 @@ const onOpen = async () => {
     if (loaded) replaceProject(project, loaded);
   } catch (e) {
     console.warn('Open failed:', e);
-    alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
+    await dialog.alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
   }
 };
 
@@ -417,15 +428,20 @@ const onLoadPreset = async () => {
     if (preset) applyPreset(project.tracks[activeTrackIndex.value], preset);
   } catch (e) {
     console.warn('Load preset failed:', e);
-    alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
+    await dialog.alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
   }
 };
 
-const onInitPatch = () => {
+const onInitPatch = async () => {
   if (activeTrackIndex.value === null) return;
-  if (confirm("Reset this track's patch to defaults?")) {
-    resetEnginePatch(project.tracks[activeTrackIndex.value]);
-  }
+  const ok = await dialog.confirm({
+    title: 'Reset patch',
+    message: "Reset this track's patch to defaults?",
+    confirmLabel: 'Reset',
+    danger: true,
+  });
+  // Re-check: the active track may have changed while the dialog was open.
+  if (ok && activeTrackIndex.value !== null) resetEnginePatch(project.tracks[activeTrackIndex.value]);
 };
 </script>
 

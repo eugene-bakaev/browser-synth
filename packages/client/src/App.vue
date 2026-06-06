@@ -1,5 +1,6 @@
 <template>
   <ErrorOverlay />
+  <DialogHost />
   <header class="app-bar">
     <button
       class="hamburger"
@@ -32,6 +33,7 @@ import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
 import { readRoomIdFromUrl } from './sync/roomId';
 import ErrorOverlay from './components/ErrorOverlay.vue';
+import DialogHost from './components/DialogHost.vue';
 import Sidebar from './components/Sidebar.vue';
 
 // useSynth() is called exactly once here, in the never-unmounting shell, so its

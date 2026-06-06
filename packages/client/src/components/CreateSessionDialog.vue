@@ -1,9 +1,6 @@
 <template>
-  <div class="backdrop" @click.self="emit('close')">
-    <div class="dialog" role="dialog" aria-label="Create session">
-      <h3>New session</h3>
-
-      <label class="field">
+  <BaseModal title="New session" aria-label="Create session" @close="emit('close')">
+    <label class="field">
         <span>Name</span>
         <input v-model="name" maxlength="80" placeholder="My jam" @keyup.enter="submit" />
       </label>
@@ -42,12 +39,12 @@
           {{ busy ? 'Creating…' : 'Create' }}
         </button>
       </div>
-    </div>
-  </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import BaseModal from './BaseModal.vue';
 import { DEFAULT_SESSION_SETTINGS, type Project, type CreateSessionBody } from '@fiddle/shared';
 import { openProjectFromFile } from '../project';
 import { createSession } from '../sync/sessionsApi';
@@ -104,9 +101,6 @@ async function submit(): Promise<void> {
 </script>
 
 <style scoped>
-.backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }
-.dialog { width: 420px; max-width: calc(100vw - 32px); background: #161616; border: 1px solid #2a2a2a; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
-.dialog h3 { margin: 0; font-family: monospace; text-transform: uppercase; letter-spacing: 0.06em; color: #ddd; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: #999; }
 .field input { background: #111; border: 1px solid #333; border-radius: 6px; color: #eee; padding: 8px 10px; }
 .field.disabled input { opacity: 0.5; }
