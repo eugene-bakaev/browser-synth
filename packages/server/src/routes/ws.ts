@@ -50,6 +50,10 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
     const { roomId } = req.params as { roomId: string };
     const adapted = adaptSocket(socket as unknown as WebSocket);
     deps.pool.add(roomId, adapted);
+    app.log.info(
+      { roomId, conns: deps.pool.totalConnections(), rooms: deps.pool.roomCount() },
+      'ws open',
+    );
 
     const handler = new ConnectionHandler(
       roomId,
@@ -72,10 +76,14 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       handler.onMessage(parsed).catch((err) => app.log.error({ err }, 'ws onMessage'));
     });
 
-    socket.on('close', () => {
+    socket.on('close', (code: number) => {
       // Remove from pool BEFORE onClose so pool.size === 0 means "last socket".
       deps.pool.remove(roomId, adapted);
       const roomNowEmpty = deps.pool.size(roomId) === 0;
+      app.log.info(
+        { roomId, code, conns: deps.pool.totalConnections(), rooms: deps.pool.roomCount() },
+        'ws close',
+      );
       handler.onClose().catch((err) => app.log.error({ err }, 'ws onClose'));
       // Persist the room's project on every disconnect (and prune guest sessions
       // when the room empties). Independent of onClose; both read live state.
