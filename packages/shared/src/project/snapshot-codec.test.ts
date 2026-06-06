@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { deepEqual, packProject } from './snapshot-codec.js';
+import { deepEqual, packProject, unpackProject } from './snapshot-codec.js';
 import { freshProject, freshTrack } from './factory.js';
+import { normalizeProject } from './normalize.js';
 
 describe('deepEqual', () => {
   it('is true for identical primitives and structurally equal objects', () => {
@@ -48,5 +49,44 @@ describe('packProject', () => {
     const p = freshProject();
     p.tracks[7] = freshTrack(true); // enabled, otherwise identical to fresh
     expect(Object.keys(packProject(p).tracks)).toContain('7');
+  });
+});
+
+describe('unpackProject', () => {
+  it('round-trips a default project (unpack(pack(p)) == normalizeProject(p))', () => {
+    const p = freshProject();
+    expect(unpackProject(packProject(p))).toEqual(normalizeProject(p));
+  });
+
+  it('round-trips a disabled-but-edited slot losslessly', () => {
+    const p = freshProject();
+    p.tracks[10] = freshTrack(false);
+    p.tracks[10].steps[0].note = 'C';
+    const out = unpackProject(packProject(p));
+    expect(out.tracks[10].steps[0].note).toBe('C');
+    expect(out.tracks[10].enabled).toBe(false);
+  });
+
+  it('reads the legacy full-array form unchanged', () => {
+    const legacy = freshProject(); // tracks is a 32-element ARRAY
+    legacy.tracks[0].steps[3].note = 'E';
+    const out = unpackProject(legacy);
+    expect(out.tracks).toHaveLength(32);
+    expect(out.tracks[0].steps[3].note).toBe('E');
+  });
+
+  it('fills omitted indices with disabled fresh tracks', () => {
+    const out = unpackProject(packProject(freshProject()));
+    expect(out.tracks).toHaveLength(32);
+    expect(out.tracks[20].enabled).toBe(false); // a padding slot
+  });
+
+  it('heals garbage defensively without throwing', () => {
+    for (const bad of [null, undefined, 'nope', 42, {}, { tracks: 5 }]) {
+      const out = unpackProject(bad);
+      expect(out.tracks).toHaveLength(32);
+      expect(out.tracks.some((t) => t.enabled)).toBe(true); // normalizeProject re-enables
+      expect(out.schemaVersion).toBe(2);
+    }
   });
 });
