@@ -43,9 +43,14 @@ export interface StoredProject {
   tracks: Record<string, ProjectTrack>;
 }
 
-// The one pristine-disabled template; a slot equal to this carries no
-// information and is omitted from the stored form. Built once (read-only).
-const PRISTINE_DISABLED: ProjectTrack = freshTrack(false);
+// Lazily built (memoized) so this module has NO import-time side effect: a
+// top-level freshTrack() call runs before factory.ts's imported constants are
+// initialized when loaded via the barrel, causing a circular-import TDZ error.
+// A slot equal to this pristine template carries no information and is omitted.
+let pristineDisabled: ProjectTrack | undefined;
+function getPristineDisabled(): ProjectTrack {
+  return (pristineDisabled ??= freshTrack(false));
+}
 
 // Sparse StoredProject OR legacy full-array Project -> full 32-slot Project.
 // Discriminator: `tracks` as an array => legacy full form; as an object => sparse
@@ -82,7 +87,7 @@ export function unpackProject(stored: unknown): Project {
 export function packProject(project: Project): StoredProject {
   const tracks: Record<string, ProjectTrack> = {};
   project.tracks.forEach((track, i) => {
-    if (track.enabled || !deepEqual(track, PRISTINE_DISABLED)) {
+    if (track.enabled || !deepEqual(track, getPristineDisabled())) {
       tracks[String(i)] = track;
     }
   });
