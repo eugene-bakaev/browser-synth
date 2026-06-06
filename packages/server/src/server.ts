@@ -77,7 +77,28 @@ export function buildServer(): FastifyInstance {
   // Autosave: periodic sweep of dirty rooms + a final flush on graceful shutdown
   // (SIGTERM → app.close() → onClose). stop() first so no sweep races the flush.
   sessionSync.start();
+
+  // Leak / memory gauge: every 60s log live connection + room counts alongside
+  // process memory. On the 512 MB Render instance a leak shows up here as conns
+  // and/or rooms staying elevated when no one is connected, with rss climbing
+  // toward the limit (→ GC thrash → OOM restart). unref so it can't keep the
+  // process alive on shutdown. NODE_ENV==='test' suppresses logging entirely.
+  const gauge = setInterval(() => {
+    const m = process.memoryUsage();
+    app.log.info(
+      {
+        conns: pool.totalConnections(),
+        rooms: pool.roomCount(),
+        rssMB: Math.round(m.rss / 1024 / 1024),
+        heapUsedMB: Math.round(m.heapUsed / 1024 / 1024),
+      },
+      'gauge',
+    );
+  }, 60_000);
+  gauge.unref();
+
   app.addHook('onClose', async () => {
+    clearInterval(gauge);
     sessionSync.stop();
     await sessionSync.flushAllDirty();
   });

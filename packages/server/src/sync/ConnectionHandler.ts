@@ -48,6 +48,13 @@ export const ROOM_CAP = 4;
 // reconnect once the DB recovers, instead of spinning on a loader forever.
 export const SESSION_LOAD_TIMEOUT_MS = 8000;
 
+// Upper bound on how long a freshly-accepted socket may sit before completing
+// hello. The heartbeat only starts AFTER hello, so a half-open or never-helloing
+// socket otherwise has no liveness check at all — it squats in the pool forever
+// (a half-open TCP still reports readyState OPEN), keeping its room non-empty so
+// the ~224 KB project is never grace-pruned. This bounds that leak.
+export const HELLO_DEADLINE_MS = 15_000;
+
 // Lightweight log surface so tests can pass a noop and production can pipe to
 // Fastify's pino logger.
 export type Log = (message: string, ctx?: Record<string, unknown>) => void;
@@ -70,6 +77,7 @@ export class ConnectionHandler {
   private helloProcessed = false;
   private bucket = new TokenBucket();
   private readonly heartbeat: Heartbeat;
+  private helloDeadline: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly roomId: string,
@@ -83,6 +91,24 @@ export class ConnectionHandler {
     heartbeat?: Heartbeat,
   ) {
     this.heartbeat = heartbeat ?? new Heartbeat(socket);
+  }
+
+  // Called by the route the moment the socket is accepted. Arms the hello
+  // deadline so a connection that never completes the handshake can't squat
+  // (see HELLO_DEADLINE_MS). Cleared on the first hello and on close.
+  onOpen(): void {
+    this.helloDeadline = setTimeout(() => {
+      if (this.helloProcessed) return;
+      this.log('hello deadline exceeded; closing connection', { roomId: this.roomId });
+      this.socket.close(1008, 'hello deadline exceeded');
+    }, HELLO_DEADLINE_MS);
+  }
+
+  private clearHelloDeadline(): void {
+    if (this.helloDeadline) {
+      clearTimeout(this.helloDeadline);
+      this.helloDeadline = null;
+    }
   }
 
   async onMessage(raw: unknown): Promise<void> {
@@ -155,8 +181,10 @@ export class ConnectionHandler {
   async onClose(): Promise<void> {
     // Stop the heartbeat first — the timer must not fire (and trigger
     // close/send) after the socket has gone away, even if grace-prune below
-    // does more async work.
+    // does more async work. Same for the hello deadline (a connection can close
+    // before ever completing hello).
     this.heartbeat.stop();
+    this.clearHelloDeadline();
 
     if (!this.clientId) {
       // Hello never completed — nothing to clean up.
@@ -190,6 +218,10 @@ export class ConnectionHandler {
   }
 
   private async handleHello(msg: HelloMessage): Promise<void> {
+    // A hello arrived — the pre-hello deadline has done its job; cancel it so it
+    // can't fire mid-handshake. (loadSession is independently bounded to 8s.)
+    this.clearHelloDeadline();
+
     if (msg.schemaVersion !== PROJECT_SCHEMA_VERSION) {
       this.fatal(
         'schema.version_mismatch',

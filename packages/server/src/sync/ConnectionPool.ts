@@ -40,4 +40,19 @@ export class ConnectionPool implements RoomConnectionPool {
   size(roomId: string): number {
     return this.all(roomId).length;
   }
+
+  // Leak gauges (raw membership, NOT readyState-filtered): a socket that should
+  // have been removed but wasn't still counts here. If totalConnections /
+  // roomCount stay elevated when no one is using the app, those are stale
+  // connections leaking (and, since a non-empty room blocks grace pruning,
+  // leaking its ~224 KB project too). Used by the periodic memory gauge.
+  totalConnections(): number {
+    let n = 0;
+    for (const set of this.rooms.values()) n += set.size;
+    return n;
+  }
+
+  roomCount(): number {
+    return this.rooms.size;
+  }
 }
