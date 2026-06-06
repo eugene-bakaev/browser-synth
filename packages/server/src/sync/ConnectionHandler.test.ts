@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
-import { SESSION_LOAD_TIMEOUT_MS } from './ConnectionHandler.js';
+import { SESSION_LOAD_TIMEOUT_MS, HELLO_DEADLINE_MS } from './ConnectionHandler.js';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
@@ -680,6 +680,44 @@ describe('ConnectionHandler', () => {
       const servedProject = snap.project;
       expect(servedProject.tracks).toHaveLength(TRACK_POOL_SIZE);
       expect(servedProject.tracks.slice(0, 4).every((t) => t.enabled)).toBe(true);
+    });
+  });
+
+  describe('hello deadline', () => {
+    it('closes a connection that never completes hello after the deadline', () => {
+      vi.useFakeTimers();
+      try {
+        const socket = makeMockSocket();
+        const pool = new FakePool();
+        pool.add('idle', socket);
+        const handler = new ConnectionHandler(
+          'idle', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        );
+        handler.onOpen();
+        expect(socket.closed).toBe(false);
+        vi.advanceTimersByTime(HELLO_DEADLINE_MS + 1);
+        expect(socket.closed).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not close once hello completes before the deadline', async () => {
+      vi.useFakeTimers();
+      try {
+        const socket = makeMockSocket();
+        const pool = new FakePool();
+        pool.add('room1', socket);
+        const handler = new ConnectionHandler(
+          'room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        );
+        handler.onOpen();
+        await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+        vi.advanceTimersByTime(HELLO_DEADLINE_MS + 1);
+        expect(socket.closed).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

@@ -65,6 +65,9 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       deps.profiles,
       deps.loadSession,
     );
+    // Arm the hello deadline immediately so a socket that opens but never
+    // completes the handshake can't squat in the pool (no heartbeat pre-hello).
+    handler.onOpen();
 
     socket.on('message', (raw: RawData) => {
       let parsed: unknown;
