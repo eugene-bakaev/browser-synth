@@ -36,9 +36,17 @@ import type { ProfileStore } from '../profile/ProfileStore.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
 import { Heartbeat } from './Heartbeat.js';
 import { TokenBucket } from './rate-limit.js';
+import { withTimeout } from './withTimeout.js';
 import type { RoomConnectionPool, SocketLike } from './SocketLike.js';
 
 export const ROOM_CAP = 4;
+
+// Upper bound on the durable session read during hello. The read hits Postgres
+// (via the Supabase pooler), which can wedge and never return; without a cap the
+// client waits for a welcome that never arrives. On timeout we reject the
+// connection with a retryable fatal so the client surfaces an error and can
+// reconnect once the DB recovers, instead of spinning on a loader forever.
+export const SESSION_LOAD_TIMEOUT_MS = 8000;
 
 // Lightweight log surface so tests can pass a noop and production can pipe to
 // Fastify's pino logger.
@@ -202,12 +210,27 @@ export class ConnectionHandler {
     let seed: () => Project = freshProject;
     const alreadyLive = (await this.store.peekProject(this.roomId)) !== null;
     if (!alreadyLive) {
-      const loaded = await this.loadSession(this.roomId);
+      let loaded;
+      try {
+        loaded = await withTimeout(this.loadSession(this.roomId), SESSION_LOAD_TIMEOUT_MS);
+      } catch (err) {
+        // A timed-out or failed durable read must not hang the connection — the
+        // client would spin on the loader with no welcome and no close. Fail
+        // fast with a retryable fatal; the client shows an error and can retry
+        // once the DB recovers.
+        this.log('session load failed', {
+          roomId: this.roomId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        this.fatal('overloaded', 'session is taking too long to load, please retry');
+        return;
+      }
       if (!loaded) {
         this.fatal('session.not_found', `session ${this.roomId} does not exist`);
         return;
       }
-      seed = () => normalizeProject(loaded.project);
+      const project = loaded.project;
+      seed = () => normalizeProject(project);
     }
     const { opIdHead } = await this.store.getOrCreate(this.roomId, seed);
     await this.store.cancelGrace(this.roomId);
