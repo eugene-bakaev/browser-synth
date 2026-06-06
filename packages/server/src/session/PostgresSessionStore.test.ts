@@ -108,4 +108,43 @@ maybe('PostgresSessionStore (integration)', () => {
     await store.updateMeta('a', { name: 'A2' });
     expect((await store.list()).map((r) => r.id)).toEqual(['a', 'b']);
   });
+
+  it('stores the snapshot in sparse form (tracks is a keyed object, not a 32-array)', async () => {
+    await store.create({
+      id: 's1', name: 'Jam', description: '',
+      ownerUserId: null, ownerClientId: null,
+      settings: DEFAULT_SESSION_SETTINGS, project: freshProject(),
+    });
+    const [{ project }] = await sql<{ project: { tracks: unknown } }[]>`
+      select project from session_snapshots where session_id = 's1'
+    `;
+    expect(Array.isArray(project.tracks)).toBe(false);     // sparse, not full array
+    expect(Object.keys(project.tracks as object)).toHaveLength(4); // 4 enabled
+  });
+
+  it('getSnapshot rehydrates the full 32-slot project from sparse storage', async () => {
+    await store.create({
+      id: 's1', name: 'Jam', description: '',
+      ownerUserId: null, ownerClientId: null,
+      settings: DEFAULT_SESSION_SETTINGS, project: freshProject(),
+    });
+    const got = await store.getSnapshot('s1');
+    expect(got?.tracks).toHaveLength(32);
+    expect(got?.tracks.filter((t) => t.enabled)).toHaveLength(4);
+  });
+
+  it('reads a legacy full-array row written before the codec', async () => {
+    await store.create({
+      id: 's1', name: 'Jam', description: '',
+      ownerUserId: null, ownerClientId: null,
+      settings: DEFAULT_SESSION_SETTINGS, project: freshProject(),
+    });
+    // Simulate a pre-codec row: overwrite the column with the full array form.
+    const legacy = freshProject();
+    legacy.tracks[0].steps[2].note = 'G';
+    await sql`update session_snapshots set project = ${sql.json(legacy as never)} where session_id = 's1'`;
+    const got = await store.getSnapshot('s1');
+    expect(got?.tracks).toHaveLength(32);
+    expect(got?.tracks[0].steps[2].note).toBe('G');
+  });
 });

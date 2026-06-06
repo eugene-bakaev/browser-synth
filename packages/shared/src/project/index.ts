@@ -7,6 +7,8 @@ export type {
 export { activeParams } from './types.js';
 export { freshStep, freshTrack, freshProject } from './factory.js';
 export { normalizeProject, coerceBpm } from './normalize.js';
+export { packProject, unpackProject, deepEqual } from './snapshot-codec.js';
+export type { StoredProject } from './snapshot-codec.js';
 export {
   TRACK_POOL_SIZE,
   DEFAULT_ENABLED_TRACKS,
