@@ -278,12 +278,131 @@ function installAuthReconnectWatcher(): void {
 
 // Tear down only the room connection (audio stays alive). Shared by leaveSession,
 // room-switching, and disposeSynth.
+// Module-scope EffectScope holding the OUTBOUND-SYNC watchers. Its lifecycle is
+// the room connection (created in connectToSession, stopped in teardown), NOT
+// the audio graph. This is the whole point of the split: outbound sync is a
+// function of (reactive project, connection) with no dependency on the
+// AudioContext, so installing it here — rather than inside buildAudioState,
+// which only runs on the first PLAY gesture — is what lets edits made before
+// the first Play actually reach the server. The audio-reaction watchers (engine
+// + gain side effects) stay in buildAudioState because they genuinely need the
+// engines; the two sets are kept disjoint so no field is emitted twice once both
+// are live after Play.
+let syncWatcherScope: EffectScope | null = null;
+
+function installSyncWatchers(): void {
+  if (syncWatcherScope) return; // idempotent — exactly one set per connection
+  syncWatcherScope = effectScope(true);
+  syncWatcherScope.run(() => {
+    // Every watcher below uses flush:'sync' so the applyingFromNetwork guard —
+    // held synchronously during applyOp/replaceProject — actually covers the
+    // fire (async flush would clear it first and remote ops would echo back
+    // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
+    // nothing leaks before the room is live or while applying a remote op.
+    watch(
+      () => project.bpm,
+      (newVal, oldVal) => {
+        if (outbox && syncReady && !isApplyingFromNetwork()) {
+          outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
+        }
+      },
+      { flush: 'sync' },
+    );
+
+    for (let i = 0; i < TRACK_POOL_SIZE; i++) {
+      watch(
+        () => project.tracks[i].engineType,
+        (newType, oldType) => {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      for (const slice of ENGINE_SLICES) {
+        watch(
+          () => snapshot(project.tracks[i].engines[slice]),
+          (newVal, oldVal) => {
+            if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+            const changed = diffParams(
+              newVal as unknown as Record<string, unknown>,
+              oldVal as unknown as Record<string, unknown>,
+            );
+            // Emit regardless of whether this is the active slice so peers stay
+            // in sync for edits to any writable param.
+            if (changed) emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
+          },
+          { flush: 'sync' },
+        );
+      }
+
+      watch(
+        () => snapshot(project.tracks[i].mixer),
+        (newVal, oldVal) => {
+          if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+          const changed = diffParams(
+            newVal as unknown as Record<string, unknown>,
+            oldVal as unknown as Record<string, unknown>,
+          );
+          if (changed) emitLeafDiff(['tracks', i, 'mixer'], changed, oldVal as unknown as Record<string, unknown>);
+        },
+        { flush: 'sync' },
+      );
+
+      watch(
+        () => snapshot(project.tracks[i].steps),
+        (newSteps, oldSteps) => {
+          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldSteps) return;
+          for (let j = 0; j < newSteps.length; j++) {
+            const changed = diffParams(
+              newSteps[j] as unknown as Record<string, unknown>,
+              oldSteps[j] as unknown as Record<string, unknown>,
+            );
+            if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      watch(
+        () => project.tracks[i].patternLength,
+        (newVal, oldVal) => {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'patternLength'], newVal, oldVal, gestureEndForLeaf('patternLength'));
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      watch(
+        () => project.tracks[i].enabled,
+        (newVal, oldVal) => {
+          if (outbox && syncReady && !isApplyingFromNetwork()) {
+            outbox.enqueue(['tracks', i, 'enabled'], newVal, oldVal, gestureEndForLeaf('enabled'));
+          }
+        },
+        { flush: 'sync' },
+      );
+    }
+  });
+}
+
+function disposeSyncWatchers(): void {
+  syncWatcherScope?.stop();
+  syncWatcherScope = null;
+}
+
 function teardownConnection(): void {
   if (wsClient) {
     wsClient.disconnect();
     wsClient = null;
   }
   outbox = null;
+  // Drop the outbound-sync watchers with the connection. Done before
+  // resetLocalProject runs (in connectToSession / leaveSession) so the reset to
+  // a fresh project can't be observed and enqueued as local edits.
+  disposeSyncWatchers();
   fatalError.value = null;
   roomLoading.value = false;
   currentRoomId.value = null;
@@ -307,6 +426,10 @@ export function connectToSession(roomId: string): void {
   roomLoading.value = true;
   installAuthReconnectWatcher();
   buildSyncState(roomId);
+  // Outbound sync is live from here — independent of audio. The watchers still
+  // gate on syncReady (false until sync.complete), so nothing leaks during the
+  // initial catch-up; they just no longer wait for the first PLAY to exist.
+  installSyncWatchers();
   // Force a full snapshot: we just reset the local project, so a resume delta
   // (op replay since opIdLastSeen) would apply onto an empty project and leave
   // the room blank. forceSnapshot keeps our identity but pulls the whole room.
@@ -409,134 +532,57 @@ async function buildAudioState(): Promise<AudioState> {
   }
   updateMixerGains();
 
-  // Watchers live in a detached EffectScope so they can be stopped explicitly
-  // via disposeSynth() — without this the original code had no teardown path.
+  // Audio-reaction watchers ONLY: they drive the engine graph and track gains,
+  // so they live with the AudioContext (built on first PLAY). The watchers that
+  // EMIT sync ops live in installSyncWatchers(), tied to the room connection —
+  // see the note there. Nothing in this scope enqueues an op; doing so would
+  // double-emit once both sets are live. bpm/steps/patternLength have no engine
+  // reaction (the sequencer reads them live each tick), so they aren't watched
+  // here at all. flush:'sync' keeps each reaction in step with the synchronous
+  // applyOp write, and the bodies are guard-free so remote ops drive audio too.
   const scope = effectScope(true);
   scope.run(() => {
-    // BPM is global (not per-track). Sync-flush so the applyingFromNetwork guard
-    // (held synchronously during applyOp/replaceProject) actually covers the
-    // watcher fire — see applyOp.ts. No engine call: the sequencer reads
-    // project.bpm directly each tick.
-    watch(
-      () => project.bpm,
-      (newVal, oldVal) => {
-        if (outbox && syncReady && !isApplyingFromNetwork()) {
-          outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
-        }
-      },
-      { flush: 'sync' },
-    );
-
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-      // Engine-type change triggers full sync: dispose old, build new, apply
-      // the entire new slice. Slice watchers handle the steady-state case.
-      // Sync-flush + suppression guard so a remote swap doesn't echo back out.
+      // Engine-type change: dispose the old engine, build the new one, apply the
+      // whole slice. Fires for remote swaps too, so a peer's change rebuilds the
+      // local audio graph.
       watch(
         () => project.tracks[i].engineType,
-        (newType, oldType) => {
-          syncTrackToEngine(i);
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
-          }
-        },
+        () => { syncTrackToEngine(i); },
         { flush: 'sync' },
       );
 
-      // Per-slice narrow watchers. Wrapping the getter in snapshot() does two
-      // things: (a) Vue tracks every nested field as a dependency (no need
-      // for `deep: true`); (b) each fire produces a fresh plain snapshot so
-      // newVal/oldVal can be diffed — Vue would otherwise hand us the same
-      // reactive proxy reference for both.
+      // Per-slice param edits feed the active engine. snapshot()+diff lets Vue
+      // track nested fields without deep:true and gives a real before/after. A
+      // non-active slice's params apply when it becomes active (the engineType
+      // watcher rebuilds it).
       for (const slice of ENGINE_SLICES) {
         watch(
           () => snapshot(project.tracks[i].engines[slice]),
           (newVal, oldVal) => {
-            const changed = diffParams(newVal as unknown as Record<string, unknown>, oldVal as unknown as Record<string, unknown>);
-            if (!changed) return;
-            // Only feed the engine if this slice is the track's active engine;
-            // a non-active slice's params apply when it becomes active (the
-            // engineType watcher full-syncs).
-            if (project.tracks[i].engineType === slice) {
-              engines[i].applyParams(changed);
-            }
-            // Emit regardless of active slice so peers stay in sync for edits
-            // to any writable param. Skipped while a network op is being
-            // applied (sync flush below means this fires inside the suppressed
-            // write, so the guard is still held).
-            if (outbox && syncReady && !isApplyingFromNetwork()) {
-              emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
-            }
+            if (project.tracks[i].engineType !== slice) return;
+            const changed = diffParams(
+              newVal as unknown as Record<string, unknown>,
+              oldVal as unknown as Record<string, unknown>,
+            );
+            if (changed) engines[i].applyParams(changed);
           },
-          // flush:'sync' so the applyingFromNetwork guard — held synchronously
-          // during applyOp/replaceProject — actually covers this watcher fire.
-          // With the default async flush the guard would already be cleared by
-          // the time the watcher ran, and remote ops would echo back out.
           { flush: 'sync' },
         );
       }
 
       // Mixer: any change recomputes all track gains (solo logic is global).
-      // snapshot()+diff (instead of the old deep watch) lets us emit the
-      // individual changed leaf (volume/muted/soloed) outbound. Sync-flush for
-      // the suppression guard, as above.
       watch(
         () => snapshot(project.tracks[i].mixer),
-        (newVal, oldVal) => {
-          updateMixerGains();
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            const changed = diffParams(
-              newVal as unknown as Record<string, unknown>,
-              oldVal as unknown as Record<string, unknown>,
-            );
-            if (changed) emitLeafDiff(['tracks', i, 'mixer'], changed, oldVal as unknown as Record<string, unknown>);
-          }
-        },
+        () => { updateMixerGains(); },
         { flush: 'sync' },
       );
 
-      // Steps have no engine reaction (the sequencer reads them each tick), so
-      // this watcher exists purely to sync edits. Diff per-step and emit the
-      // changed leaf for each. Sync-flush + suppression guard, as above.
-      watch(
-        () => snapshot(project.tracks[i].steps),
-        (newSteps, oldSteps) => {
-          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldSteps) return;
-          for (let j = 0; j < newSteps.length; j++) {
-            const changed = diffParams(
-              newSteps[j] as unknown as Record<string, unknown>,
-              oldSteps[j] as unknown as Record<string, unknown>,
-            );
-            if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
-          }
-        },
-        { flush: 'sync' },
-      );
-
-      // patternLength has no engine reaction (the sequencer reads it each tick
-      // via the playback loop's modulo). This watcher exists purely to sync the
-      // edit. Sync-flush + suppression guard, as with the other leaf watchers.
-      watch(
-        () => project.tracks[i].patternLength,
-        (newVal, oldVal) => {
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'patternLength'], newVal, oldVal, gestureEndForLeaf('patternLength'));
-          }
-        },
-        { flush: 'sync' },
-      );
-
-      // enabled is a syncable leaf with no engine of its own — toggling it must
-      // re-gate audio (updateMixerGains zeroes a disabled slot; the sequencer
-      // tick also skips disabled slots). Same suppression/readiness guard +
-      // sync flush as the other leaf watchers so a remote toggle doesn't echo.
+      // enabled re-gates audio: a disabled slot's gain is zeroed (the sequencer
+      // tick also skips it).
       watch(
         () => project.tracks[i].enabled,
-        (newVal, oldVal) => {
-          updateMixerGains();
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'enabled'], newVal, oldVal, gestureEndForLeaf('enabled'));
-          }
-        },
+        () => { updateMixerGains(); },
         { flush: 'sync' },
       );
     }

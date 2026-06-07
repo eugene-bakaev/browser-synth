@@ -446,6 +446,31 @@ describe('session-scoped connection', () => {
     ).toBe(true);
   });
 
+  // Regression: edits made BEFORE the first Play were silently dropped because the
+  // outbound-sync watchers were installed by ensureAudio() (the audio bootstrap,
+  // gated on a user gesture), not by connecting to the room. A user who changed an
+  // engine / steps and only then pressed Play lost those edits — they never synced
+  // or persisted, so a second client (or a reload) saw the un-edited server state.
+  // Outbound sync must be live as soon as the room is, independent of audio.
+  it('emits edits made before the first Play (sync does not require ensureAudio/audio)', async () => {
+    const { mod, synth, built } = await boot();
+    // NOTE: deliberately NO ensureAudio() — simulates editing before pressing Play.
+    mod.connectToSession('room-a');
+    built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+    built[0].sent.length = 0; // ignore any catch-up ops
+
+    // The exact repro: swap an engine before any AudioContext exists. engineType is
+    // discrete (gestureEnd) so it flushes immediately — no timer advance needed.
+    synth.project.tracks[0].engineType = 'kick';
+
+    expect(
+      built[0].sent.some(
+        (o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engineType']) && o.value === 'kick',
+      ),
+    ).toBe(true);
+  });
+
   // Regression: a resumed connection catches up via op replay, NOT a snapshot, so
   // gating on snapshot left syncReady stuck false and silently dropped every edit
   // (sessions appeared to never persist). The gate must open on sync.complete,
