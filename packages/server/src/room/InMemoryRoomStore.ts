@@ -43,7 +43,7 @@ export class InMemoryRoomStore implements RoomStore {
     // capped at RING_BUFFER_CAPACITY entries.
     for (const entry of room.opLog) {
       if (entry.clientId === input.clientId && entry.clientSeq === input.clientSeq) {
-        return { ok: false, reason: 'duplicate' };
+        return { ok: false, reason: 'duplicate', op: entry };
       }
     }
 

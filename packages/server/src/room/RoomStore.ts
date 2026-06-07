@@ -28,7 +28,7 @@ export interface AppendOpInput {
 
 export type AppendOpResult =
   | { ok: true; op: AppliedOp }
-  | { ok: false; reason: 'duplicate' };
+  | { ok: false; reason: 'duplicate'; op: AppliedOp };
 
 export interface RoomStore {
   // Returns the room's current project + the latest opId (0 for a fresh room).
