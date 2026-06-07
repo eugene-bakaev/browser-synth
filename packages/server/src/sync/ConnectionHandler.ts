@@ -158,7 +158,20 @@ export class ConnectionHandler {
         value: msg.value,
       });
       if (!r.ok) {
-        this.nack(msg.clientSeq, 'op.duplicate', 'op already in log');
+        // Duplicate (clientId, clientSeq): the op is already applied — confirm it
+        // by echoing the existing op back to the originator instead of nacking
+        // (a nack would make the client roll back a change the server actually
+        // has). Idempotent resends therefore resolve transparently.
+        const echo: SetOpBroadcast = {
+          v: 1,
+          type: 'set',
+          opId: r.op.opId,
+          clientId: this.clientId,
+          clientSeq: msg.clientSeq,
+          path: r.op.path,
+          value: r.op.value,
+        };
+        this.socket.send(echo);
         return;
       }
       for (const sock of this.pool.all(this.roomId)) {

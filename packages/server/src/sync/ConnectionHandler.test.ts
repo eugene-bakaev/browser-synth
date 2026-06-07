@@ -357,34 +357,29 @@ describe('ConnectionHandler', () => {
       expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
     });
 
-    it('duplicate clientSeq is nacked with op.duplicate', async () => {
+    it('a duplicate set is echoed (not nacked) to the originator', async () => {
       const { socket, handler } = await helloOne();
-      await handler.onMessage({
-        v: 1,
-        type: 'set',
-        clientSeq: 1,
-        path: ['bpm'],
-        value: 140,
-      });
-      // First one should have broadcast.
-      expect(socket.sent.find((m) => m.type === 'set')).toBeDefined();
-      socket.sent.length = 0;
+      // First apply: server stores value 140 at some opId and echoes it back.
+      await handler.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 140 });
+      const firstSet = socket.sent.find((m) => m.type === 'set');
+      expect(firstSet).toBeDefined();
+      if (!firstSet || firstSet.type !== 'set') throw new Error('unreachable');
+      const firstOpId = firstSet.opId;
 
-      await handler.onMessage({
-        v: 1,
-        type: 'set',
-        clientSeq: 1,
-        path: ['bpm'],
-        value: 142,
-      });
+      // Resend the same clientSeq (a lost-echo retry), this time with a different
+      // value — the server must recognise the duplicate and echo its STORED op,
+      // not re-apply the resent value or nack it.
+      await handler.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 142 });
 
-      const nack = socket.sent.find((m) => m.type === 'nack');
-      expect(nack).toBeDefined();
-      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
-      expect(nack.code).toBe('op.duplicate');
-      expect(nack.clientSeq).toBe(1);
-      // No re-broadcast on dedup.
-      expect(socket.sent.find((m) => m.type === 'set')).toBeUndefined();
+      const sets = socket.sent.filter((m) => m.type === 'set');
+      expect(sets).toHaveLength(2); // first apply + a duplicate echo (NOT a nack)
+      expect(socket.sent.some((m) => m.type === 'nack')).toBe(false);
+      const echo = sets[1];
+      if (echo.type !== 'set') throw new Error('unreachable');
+      // Echo carries the original opId + value and the incoming clientSeq.
+      expect(echo.opId).toBe(firstOpId);
+      expect(echo.clientSeq).toBe(1);
+      expect(echo.value).toBe(140); // server's stored value, not the resent 142
     });
 
     it('broadcast hides clientSeq from non-originators', async () => {
