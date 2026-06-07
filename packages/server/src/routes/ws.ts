@@ -20,7 +20,7 @@ import type { ConnectionPool } from '../sync/ConnectionPool.js';
 import type { ProfileStore } from '../profile/ProfileStore.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
 import type { SessionSync } from '../session/SessionSync.js';
-import type { SessionLoader } from '../sync/ConnectionHandler.js';
+import type { SessionLoader, Log } from '../sync/ConnectionHandler.js';
 import { recordWsFrame, frameType } from '../otel/ws.js';
 
 interface Deps {
@@ -30,6 +30,7 @@ interface Deps {
   profiles: ProfileStore;
   sessionSync: SessionSync;
   loadSession: SessionLoader;
+  log: Log;
 }
 
 function adaptSocket(ws: WebSocket): SocketLike {
@@ -63,7 +64,7 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       adapted,
       deps.store,
       deps.pool,
-      (msg, fields) => app.log.info(fields ?? {}, msg),
+      deps.log,
       deps.verify,
       deps.profiles,
       deps.loadSession,
