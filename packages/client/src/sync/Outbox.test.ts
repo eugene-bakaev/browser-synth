@@ -128,4 +128,43 @@ describe('Outbox', () => {
     for (let i = 0; i < 10; i++) vi.advanceTimersByTime(4000);
     expect(h.sent.length).toBe(1 + 3); // initial + MAX_RESENDS
   });
+
+  it('re-sends an un-echoed in-flight op after disconnect → reconnect', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 130, 120, true); // sent, now in-flight (never echoed)
+    expect(h.sent.length).toBe(1);
+    h.live.current = false;
+    h.outbox.onClosed();      // socket dropped before the echo
+    h.live.current = true;
+    h.outbox.onLive();        // reconnected
+    expect(h.sent.length).toBe(2);
+    expect(h.sent[1].path).toEqual(['bpm']);
+    expect(h.sent[1].value).toBe(130);
+  });
+
+  it('coalesces a shared path on disconnect: pending value wins, earliest priorValue kept', () => {
+    const h = harness();
+    // In-flight: value 130 (priorValue 120), sent immediately, not yet echoed.
+    h.outbox.enqueue(['bpm'], 130, 120, true);
+    expect(h.sent.length).toBe(1);
+    // A newer throttled edit for the SAME path lands before the echo (priorValue 130).
+    h.outbox.enqueue(['bpm'], 140, 130, false);
+
+    h.live.current = false;
+    h.outbox.onClosed();
+    // Both timers (throttle + ackTimer) were cancelled on requeue: time passes, nothing sends.
+    vi.advanceTimersByTime(4000);
+    expect(h.sent.length).toBe(1);
+
+    h.live.current = true;
+    h.outbox.onLive();
+    expect(h.sent.length).toBe(2);
+    expect(h.sent[1].path).toEqual(['bpm']);
+    expect(h.sent[1].value).toBe(140); // pending (newer) value wins
+
+    // A nack on the re-sent op rolls back to the EARLIEST priorValue (the in-flight
+    // op's 120), not the pending op's 130 — proving coalescing kept the earliest.
+    h.outbox.onNack(h.sent[1].clientSeq!, 'x');
+    expect(h.applied).toEqual([{ path: ['bpm'], value: 120 }]);
+  });
 });

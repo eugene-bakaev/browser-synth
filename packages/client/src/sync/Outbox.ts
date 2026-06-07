@@ -134,12 +134,26 @@ export class Outbox {
     this.offlineQueue.clear();
   }
 
-  /** Called when the WS goes from live → closed. Move pending into offline queue. */
+  /** WS live → closed. Move pending AND in-flight into the offline queue so a
+   *  disconnect can't strand an op that was sent but never echoed. Coalesced by
+   *  path; pending (newer) wins over in-flight (older); the earliest priorValue
+   *  is preserved for rollback. */
   onClosed(): void {
-    for (const [key, entry] of this.pending) {
+    const requeue = (entry: PendingEntry) => {
       if (entry.timer) clearTimeout(entry.timer);
-      this.offlineQueue.set(key, { ...entry, timer: null });
-    }
+      if (entry.ackTimer) clearTimeout(entry.ackTimer);
+      const key = pathKey(entry.path);
+      const existing = this.offlineQueue.get(key);
+      this.offlineQueue.set(key, {
+        path: entry.path,
+        value: entry.value,
+        priorValue: existing?.priorValue ?? entry.priorValue,
+        clientSeq: null, timer: null, sent: false, resends: 0, ackTimer: null,
+      });
+    };
+    for (const entry of this.inFlight.values()) requeue(entry);
+    this.inFlight.clear();
+    for (const entry of this.pending.values()) requeue(entry);
     this.pending.clear();
   }
 
