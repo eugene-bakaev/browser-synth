@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { freshProject } from '@fiddle/shared';
+import { freshProject, DEFAULT_SESSION_SETTINGS } from '@fiddle/shared';
 import { withDbSpan, instrumentSessionStore, instrumentProfileStore } from './db.js';
 import type { SessionStore } from '../session/SessionStore.js';
 import type { ProfileStore } from '../profile/ProfileStore.js';
@@ -32,6 +32,16 @@ describe('instrumentSessionStore', () => {
     };
     const store = instrumentSessionStore(inner);
 
+    const createInput = {
+      id: 's1',
+      name: 'n',
+      description: '',
+      ownerUserId: null,
+      ownerClientId: null,
+      settings: DEFAULT_SESSION_SETTINGS,
+      project: freshProject(),
+    };
+    await store.create(createInput);
     await store.list();
     await store.get('s1');
     await store.getSnapshot('s1');
@@ -39,6 +49,7 @@ describe('instrumentSessionStore', () => {
     await store.updateMeta('s1', { name: 'n' });
     await store.delete('s1');
 
+    expect(inner.create).toHaveBeenCalledWith(createInput);
     expect(inner.list).toHaveBeenCalledTimes(1);
     expect(inner.get).toHaveBeenCalledWith('s1');
     expect(inner.saveSnapshot).toHaveBeenCalledTimes(1);
