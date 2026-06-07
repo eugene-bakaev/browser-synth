@@ -5,10 +5,11 @@ describe('frameType', () => {
   it('extracts the type field from a parsed frame', () => {
     expect(frameType({ type: 'set', path: ['bpm'] })).toBe('set');
   });
-  it('returns "unknown" for null / typeless / non-object frames', () => {
+  it('returns "unknown" for null / typeless / non-object / non-string-type frames', () => {
     expect(frameType(null)).toBe('unknown');
     expect(frameType({})).toBe('unknown');
     expect(frameType(42)).toBe('unknown');
+    expect(frameType({ type: 42 })).toBe('unknown'); // type present but not a string
   });
 });
 
