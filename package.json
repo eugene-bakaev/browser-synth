@@ -7,6 +7,8 @@
     "dev:client": "npm run dev -w @fiddle/client",
     "dev:server": "npm run dev -w @fiddle/server",
     "dev": "npm-run-all --parallel dev:client dev:server",
+    "dev:obs:server": "npm run dev:obs -w @fiddle/server",
+    "dev:obs": "npm-run-all --parallel dev:client dev:obs:server",
     "build:client": "npm run build -w @fiddle/client",
     "build:server": "npm run build -w @fiddle/server",
     "build": "npm run build:client && npm run build:server",

@@ -1,9 +1,15 @@
 import './loadEnv.js';
+import { startOtel, shutdownOtel } from './otel/sdk.js';
 import { buildServer } from './server.js';
 import { installProcessSafetyNet } from './processSafetyNet.js';
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? '0.0.0.0';
+
+// Must run before buildServer() creates the Fastify instance: @fastify/otel
+// subscribes to the 'fastify.initialization' diagnostics channel inside
+// sdk.start(), and only instances created after that subscription are traced.
+startOtel();
 
 const app = buildServer();
 
@@ -24,6 +30,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
     app
       .close()
+      .then(() => shutdownOtel())
       .then(() => process.exit(0))
       .catch((err) => {
         app.log.error(err);

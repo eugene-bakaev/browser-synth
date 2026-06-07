@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:obs": "DATABASE_URL=postgres://fiddle:fiddle@localhost:5432/fiddle FIDDLE_OTEL=1 OTEL_SERVICE_NAME=fiddle-server OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5080/api/default OTEL_EXPORTER_OTLP_HEADERS=\"Authorization=Basic YWRtaW5AZmlkZGxlLmxvY2FsOkZpZGRsZS1EZXYtMSE=\" tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --alias:@fiddle/shared=../shared/src/index.ts --outfile=dist/index.js",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -14,8 +15,17 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/otel": "^0.18.1",
     "@fastify/websocket": "^11.0.0",
     "@fiddle/shared": "*",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api-logs": "^0.218.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.218.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.218.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
+    "@opentelemetry/sdk-logs": "^0.218.0",
+    "@opentelemetry/sdk-metrics": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.218.0",
     "fastify": "^5.0.0",
     "jose": "^6.2.3",
     "postgres": "^3.4.9"

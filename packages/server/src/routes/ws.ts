@@ -20,7 +20,8 @@ import type { ConnectionPool } from '../sync/ConnectionPool.js';
 import type { ProfileStore } from '../profile/ProfileStore.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
 import type { SessionSync } from '../session/SessionSync.js';
-import type { SessionLoader } from '../sync/ConnectionHandler.js';
+import type { SessionLoader, Log } from '../sync/ConnectionHandler.js';
+import { recordWsFrame, frameType } from '../otel/ws.js';
 
 interface Deps {
   store: RoomStore;
@@ -29,12 +30,15 @@ interface Deps {
   profiles: ProfileStore;
   sessionSync: SessionSync;
   loadSession: SessionLoader;
+  log: Log;
 }
 
 function adaptSocket(ws: WebSocket): SocketLike {
   return {
     send(msg: ServerMessage) {
-      ws.send(JSON.stringify(msg));
+      const text = JSON.stringify(msg);
+      recordWsFrame('out', msg.type, Buffer.byteLength(text));
+      ws.send(text);
     },
     close(code?: number, reason?: string) {
       ws.close(code, reason);
@@ -60,7 +64,7 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       adapted,
       deps.store,
       deps.pool,
-      (msg, fields) => app.log.info(fields ?? {}, msg),
+      deps.log,
       deps.verify,
       deps.profiles,
       deps.loadSession,
@@ -70,12 +74,14 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
     handler.onOpen();
 
     socket.on('message', (raw: RawData) => {
+      const text = raw.toString();
       let parsed: unknown;
       try {
-        parsed = JSON.parse(raw.toString());
+        parsed = JSON.parse(text);
       } catch {
         parsed = null;
       }
+      recordWsFrame('in', frameType(parsed), Buffer.byteLength(text));
       handler.onMessage(parsed).catch((err) => app.log.error({ err }, 'ws onMessage'));
     });
 

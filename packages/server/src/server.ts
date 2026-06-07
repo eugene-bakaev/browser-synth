@@ -19,9 +19,12 @@ import { PostgresSessionStore } from './session/PostgresSessionStore.js';
 import type { SessionStore } from './session/SessionStore.js';
 import { SessionSync } from './session/SessionSync.js';
 import { sessionsRoute } from './routes/sessions.js';
+import { instrumentSessionStore, instrumentProfileStore } from './otel/db.js';
+import { makeLog } from './otel/log.js';
 
 export function buildServer(): FastifyInstance {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+  const log = makeLog(app);
   const store = new InMemoryRoomStore();
   const pool = new ConnectionPool();
 
@@ -41,18 +44,14 @@ export function buildServer(): FastifyInstance {
   // One Postgres connection backs both privileged read/write stores when a DB is
   // configured; otherwise both fall back to in-memory.
   const sql = dbUrl ? postgres(dbUrl, POSTGRES_OPTIONS) : null;
-  const profiles: ProfileStore = sql
-    ? new PostgresProfileStore(sql)
-    : new InMemoryProfileStore();
-  const sessions: SessionStore = sql
-    ? new PostgresSessionStore(sql)
-    : new InMemorySessionStore();
-
-  const sessionSync = new SessionSync(
-    store,
-    sessions,
-    (msg, fields) => app.log.info(fields ?? {}, msg),
+  const profiles: ProfileStore = instrumentProfileStore(
+    sql ? new PostgresProfileStore(sql) : new InMemoryProfileStore(),
   );
+  const sessions: SessionStore = instrumentSessionStore(
+    sql ? new PostgresSessionStore(sql) : new InMemorySessionStore(),
+  );
+
+  const sessionSync = new SessionSync(store, sessions, log);
 
   // Production session loader: a room exists iff it has a session row. Seed its
   // in-memory project from the durable snapshot (falling back to a fresh project
@@ -72,7 +71,7 @@ export function buildServer(): FastifyInstance {
   app.register(async (a) =>
     sessionsRoute(a, { sessions, verify, liveCounts: () => store.roomMemberCounts() }),
   );
-  app.register(async (a) => wsRoute(a, { store, pool, verify, profiles, sessionSync, loadSession }));
+  app.register(async (a) => wsRoute(a, { store, pool, verify, profiles, sessionSync, loadSession, log }));
 
   // Autosave: periodic sweep of dirty rooms + a final flush on graceful shutdown
   // (SIGTERM → app.close() → onClose). stop() first so no sweep races the flush.
