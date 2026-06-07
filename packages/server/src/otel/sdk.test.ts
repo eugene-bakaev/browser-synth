@@ -19,4 +19,13 @@ describe('otel bootstrap', () => {
     expect(() => startOtel()).not.toThrow();
     expect(() => startOtel()).not.toThrow();
   });
+
+  it('does not start the SDK when the flag is unset', async () => {
+    // sdk is module-private, so prove the guard held indirectly: with no SDK
+    // started, shutdownOtel resolves immediately to undefined (the early return)
+    // rather than awaiting a real provider shutdown.
+    delete process.env.FIDDLE_OTEL;
+    startOtel();
+    await expect(shutdownOtel()).resolves.toBeUndefined();
+  });
 });
