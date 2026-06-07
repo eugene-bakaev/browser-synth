@@ -19,6 +19,7 @@ import { PostgresSessionStore } from './session/PostgresSessionStore.js';
 import type { SessionStore } from './session/SessionStore.js';
 import { SessionSync } from './session/SessionSync.js';
 import { sessionsRoute } from './routes/sessions.js';
+import { instrumentSessionStore, instrumentProfileStore } from './otel/db.js';
 
 export function buildServer(): FastifyInstance {
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
@@ -41,12 +42,12 @@ export function buildServer(): FastifyInstance {
   // One Postgres connection backs both privileged read/write stores when a DB is
   // configured; otherwise both fall back to in-memory.
   const sql = dbUrl ? postgres(dbUrl, POSTGRES_OPTIONS) : null;
-  const profiles: ProfileStore = sql
-    ? new PostgresProfileStore(sql)
-    : new InMemoryProfileStore();
-  const sessions: SessionStore = sql
-    ? new PostgresSessionStore(sql)
-    : new InMemorySessionStore();
+  const profiles: ProfileStore = instrumentProfileStore(
+    sql ? new PostgresProfileStore(sql) : new InMemoryProfileStore(),
+  );
+  const sessions: SessionStore = instrumentSessionStore(
+    sql ? new PostgresSessionStore(sql) : new InMemorySessionStore(),
+  );
 
   const sessionSync = new SessionSync(
     store,
