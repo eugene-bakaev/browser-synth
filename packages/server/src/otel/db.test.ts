@@ -42,8 +42,8 @@ describe('instrumentSessionStore', () => {
       project: freshProject(),
     };
     await store.create(createInput);
-    await store.list();
-    await store.get('s1');
+    const listed = await store.list();
+    const got = await store.get('s1');
     await store.getSnapshot('s1');
     await store.saveSnapshot('s1', freshProject());
     await store.updateMeta('s1', { name: 'n' });
@@ -52,8 +52,13 @@ describe('instrumentSessionStore', () => {
     expect(inner.create).toHaveBeenCalledWith(createInput);
     expect(inner.list).toHaveBeenCalledTimes(1);
     expect(inner.get).toHaveBeenCalledWith('s1');
+    expect(inner.getSnapshot).toHaveBeenCalledWith('s1');
     expect(inner.saveSnapshot).toHaveBeenCalledTimes(1);
+    expect(inner.updateMeta).toHaveBeenCalledWith('s1', { name: 'n' });
     expect(inner.delete).toHaveBeenCalledWith('s1');
+    // Return values pass through unchanged (transparent decorator).
+    expect(listed).toEqual([]);
+    expect(got).toBeNull();
   });
 });
 

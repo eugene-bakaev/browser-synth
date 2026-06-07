@@ -42,15 +42,14 @@ export async function withDbSpan<T>(
   opts: DbSpanOpts<T> = {},
 ): Promise<T> {
   const tracer = trace.getTracer(TRACER);
-  const start = performance.now();
   return tracer.startActiveSpan(`db ${op}`, async (span) => {
     span.setAttribute('db.op', op);
+    // Start the clock inside the callback so duration measures only exec(), not
+    // span-open overhead — keeps db.duration_ms consistent with the span itself.
+    const start = performance.now();
+    let errored = false;
     try {
       const result = await exec();
-      const ms = performance.now() - start;
-      calls().add(1, { 'db.op': op });
-      duration().record(ms, { 'db.op': op });
-      span.setAttribute('db.duration_ms', ms);
       if (opts.rowsOf) span.setAttribute('db.rows', opts.rowsOf(result));
       if (isOtelEnabled()) {
         const bytes = opts.sizeOf ? opts.sizeOf(result) : opts.inputBytes ?? 0;
@@ -62,10 +61,19 @@ export async function withDbSpan<T>(
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (err) {
+      errored = true;
       span.recordException(err as Error);
       span.setStatus({ code: SpanStatusCode.ERROR });
       throw err;
     } finally {
+      // Count + time EVERY call, including failures: a Supabase timeout or
+      // pooler error is exactly the non-optimal interaction we're hunting, so
+      // the error path must increment the counter and record its (often long)
+      // duration, labelled so success vs. failure is distinguishable.
+      const ms = performance.now() - start;
+      span.setAttribute('db.duration_ms', ms);
+      calls().add(1, { 'db.op': op, error: errored });
+      duration().record(ms, { 'db.op': op, error: errored });
       span.end();
     }
   });
