@@ -134,6 +134,41 @@ export class Outbox {
     this.offlineQueue.clear();
   }
 
+  // Re-apply every un-acked local edit on top of a just-replaced project (server
+  // snapshot) and re-route it for delivery. Used by the reconcile-merge so a
+  // snapshot can never erase a pending change. Works whether the snapshot arrived
+  // via reconnect (offline → entries re-queue) or mid-session (live → resend).
+  // Coalesces all tiers by path, newest wins (offlineQueue < inFlight < pending).
+  // For a shared path the newest VALUE wins but the EARLIEST priorValue is kept
+  // (the true pre-edit baseline) so a later nack rolls back correctly — same rule
+  // as onClosed.
+  reassertPending(): void {
+    const merged = new Map<string, PendingEntry>();
+    const absorb = (entries: Iterable<PendingEntry>) => {
+      for (const e of entries) {
+        if (e.timer) clearTimeout(e.timer);
+        if (e.ackTimer) clearTimeout(e.ackTimer);
+        const key = pathKey(e.path);
+        const prev = merged.get(key);
+        merged.set(key, { ...e, priorValue: prev?.priorValue ?? e.priorValue });
+      }
+    };
+    absorb(this.offlineQueue.values());
+    absorb(this.inFlight.values());
+    absorb(this.pending.values());
+    this.offlineQueue.clear();
+    this.inFlight.clear();
+    this.pending.clear();
+
+    for (const [key, e] of merged) {
+      this.deps.applyLocal(e.path, e.value); // restore the edit on top of the snapshot
+      this.flushEntry(key, {
+        path: e.path, value: e.value, priorValue: e.priorValue,
+        clientSeq: null, timer: null, sent: false, resends: 0, ackTimer: null,
+      });
+    }
+  }
+
   /** WS live → closed. Move pending AND in-flight into the offline queue so a
    *  disconnect can't strand an op that was sent but never echoed. Coalesced by
    *  path; pending (newer) wins over in-flight (older); the earliest priorValue
