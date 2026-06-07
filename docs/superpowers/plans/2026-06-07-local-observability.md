@@ -150,7 +150,7 @@ Run:
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5080/web/
 ```
-Expected: `200` (or a `3xx` redirect to the login page — both mean it's serving). The UI logs in with `admin@fiddle.local` / `fiddle-dev-password`.
+Expected: `200` (or a `3xx` redirect to the login page — both mean it's serving). The UI logs in with `admin@fiddle.local` / `Fiddle-Dev-1!` (OpenObserve rejects weaker passwords at startup).
 
 - [ ] **Step 6: Commit**
 
@@ -325,7 +325,7 @@ In the signal loop, replace the `.then(() => process.exit(0))` line so OTel flus
 
 In `packages/server/package.json`, add to `scripts` (after `"dev"`):
 ```json
-    "dev:obs": "DATABASE_URL=postgres://fiddle:fiddle@localhost:5432/fiddle FIDDLE_OTEL=1 OTEL_SERVICE_NAME=fiddle-server OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5080/api/default OTEL_EXPORTER_OTLP_HEADERS=\"Authorization=Basic YWRtaW5AZmlkZGxlLmxvY2FsOmZpZGRsZS1kZXYtcGFzc3dvcmQ=\" tsx watch src/index.ts",
+    "dev:obs": "DATABASE_URL=postgres://fiddle:fiddle@localhost:5432/fiddle FIDDLE_OTEL=1 OTEL_SERVICE_NAME=fiddle-server OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5080/api/default OTEL_EXPORTER_OTLP_HEADERS=\"Authorization=Basic YWRtaW5AZmlkZGxlLmxvY2FsOkZpZGRsZS1EZXYtMSE=\" tsx watch src/index.ts",
 ```
 
 In root `package.json`, add to `scripts` (after `"dev"`):
@@ -334,7 +334,7 @@ In root `package.json`, add to `scripts` (after `"dev"`):
     "dev:obs": "npm-run-all --parallel dev:client dev:obs:server",
 ```
 
-(`DATABASE_URL` is set inline so it wins over the committed `.env` per Node env-file precedence; `SUPABASE_JWKS_URL` still loads from `.env`, so real login works. The base64 is the non-secret local OpenObserve dev credential `admin@fiddle.local:fiddle-dev-password`.)
+(`DATABASE_URL` is set inline so it wins over the committed `.env` per Node env-file precedence; `SUPABASE_JWKS_URL` still loads from `.env`, so real login works. The base64 is the non-secret local OpenObserve dev credential `admin@fiddle.local:Fiddle-Dev-1!` — OpenObserve enforces an 8–128 char password with upper/lower/digit/special, so the simpler `fiddle-dev-password` is rejected at container startup.)
 
 - [ ] **Step 8: Verify typecheck + the instrumented server boots and reports to OpenObserve**
 
@@ -352,7 +352,7 @@ In another terminal, generate a request and check the span landed:
 ```bash
 curl -s http://localhost:8787/api/sessions >/dev/null
 sleep 12
-curl -s -u 'admin@fiddle.local:fiddle-dev-password' \
+curl -s -u 'admin@fiddle.local:Fiddle-Dev-1!' \
   'http://localhost:5080/api/default/default/_search?type=traces' \
   -H 'content-type: application/json' \
   -d '{"query":{"sql":"SELECT service_name, name FROM default","start_time":0,"end_time":0}}' | head -c 400
@@ -942,7 +942,7 @@ npm run dev:obs                      # client (:5173) + instrumented server (:87
 ```
 
 - App:        http://localhost:5173
-- OpenObserve: http://localhost:5080  (login: admin@fiddle.local / fiddle-dev-password)
+- OpenObserve: http://localhost:5080  (login: admin@fiddle.local / Fiddle-Dev-1!)
 
 The server uses the **local** Postgres but the **real** Supabase JWKS, so Google
 login works and logged-in sessions persist locally (guest sessions self-prune —
