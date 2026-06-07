@@ -103,4 +103,29 @@ describe('Outbox', () => {
     vi.advanceTimersByTime(50);
     expect(h.sent.length).toBe(2);
   });
+
+  it('resends an un-echoed op after the ack timeout, same clientSeq', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 130, 120, true);
+    expect(h.sent.length).toBe(1);
+    const cs = h.sent[0].clientSeq;
+    vi.advanceTimersByTime(4000); // ACK_TIMEOUT_MS
+    expect(h.sent.length).toBe(2);
+    expect(h.sent[1].clientSeq).toBe(cs); // same seq → server dedupe recognises it
+  });
+
+  it('onEcho cancels the resend timer', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 130, 120, true);
+    h.outbox.onEcho(h.sent[0].clientSeq!);
+    vi.advanceTimersByTime(4000);
+    expect(h.sent.length).toBe(1); // no resend
+  });
+
+  it('stops resending after the cap', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 130, 120, true);
+    for (let i = 0; i < 10; i++) vi.advanceTimersByTime(4000);
+    expect(h.sent.length).toBe(1 + 3); // initial + MAX_RESENDS
+  });
 });

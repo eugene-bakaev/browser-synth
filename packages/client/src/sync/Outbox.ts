@@ -29,9 +29,13 @@ interface PendingEntry {
   timer: ReturnType<typeof setTimeout> | null;
   // For rollback bookkeeping after send:
   sent: boolean;
+  resends: number;
+  ackTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const THROTTLE_MS = 50;
+const ACK_TIMEOUT_MS = 4000;
+const MAX_RESENDS = 3;
 
 export interface OutboxDeps {
   /** Returns next clientSeq from WsClient/sessionStorage. */
@@ -65,6 +69,7 @@ export class Outbox {
         path, value,
         priorValue: existing?.priorValue ?? priorValue,
         clientSeq: null, timer: null, sent: false,
+        resends: 0, ackTimer: null,
       });
       return;
     }
@@ -77,6 +82,7 @@ export class Outbox {
       path, value,
       priorValue: existing?.priorValue ?? priorValue,
       clientSeq: null, timer: null, sent: false,
+      resends: 0, ackTimer: null,
     };
 
     if (gestureEnd) {
@@ -104,15 +110,18 @@ export class Outbox {
     this.flushEntry(key, entry);
   }
 
-  /** Server confirmed our op. Drop the in-flight tracking. */
+  /** Server confirmed our op (echo, including a duplicate echo). Drop tracking. */
   onEcho(clientSeq: number): void {
+    const entry = this.inFlight.get(clientSeq);
+    if (entry?.ackTimer) clearTimeout(entry.ackTimer);
     this.inFlight.delete(clientSeq);
   }
 
-  /** Server rejected our op. Roll back local state. */
+  /** Server rejected our op (validation / rate limit). Roll back local state. */
   onNack(clientSeq: number, _code: string): void {
     const entry = this.inFlight.get(clientSeq);
     if (!entry) return; // unknown clientSeq (e.g. server restarted); ignore
+    if (entry.ackTimer) clearTimeout(entry.ackTimer);
     this.inFlight.delete(clientSeq);
     this.deps.applyLocal(entry.path, entry.priorValue);
   }
@@ -137,17 +146,38 @@ export class Outbox {
   private flushEntry(key: string, entry: PendingEntry): void {
     this.pending.delete(key);
     if (!this.deps.isLive()) {
-      this.offlineQueue.set(key, { ...entry, timer: null });
+      this.offlineQueue.set(key, { ...entry, timer: null, ackTimer: null });
       return;
     }
     const clientSeq = this.deps.nextClientSeq();
     entry.clientSeq = clientSeq;
     entry.sent = true;
+    entry.resends = 0;
     this.inFlight.set(clientSeq, entry);
     const op: SetOpClient = {
       v: 1, type: 'set', clientSeq,
       path: entry.path, value: entry.value,
     };
     this.deps.send(op);
+    entry.ackTimer = setTimeout(() => this.onAckTimeout(clientSeq), ACK_TIMEOUT_MS);
+  }
+
+  // Resend an op that was never echoed/nacked within ACK_TIMEOUT_MS. Same
+  // clientSeq so the server's (clientId, clientSeq) dedupe recognises it and
+  // echoes rather than re-applying. Caps at MAX_RESENDS; after that the entry
+  // stays tracked (a later echo still resolves it; a disconnect requeues it).
+  private onAckTimeout(clientSeq: number): void {
+    const entry = this.inFlight.get(clientSeq);
+    if (!entry) return;            // already echoed / nacked
+    entry.ackTimer = null;
+    if (!this.deps.isLive()) return;          // offline: onClosed will requeue it
+    if (entry.resends >= MAX_RESENDS) return; // give up resending; keep tracked
+    entry.resends += 1;
+    const op: SetOpClient = {
+      v: 1, type: 'set', clientSeq,
+      path: entry.path, value: entry.value,
+    };
+    this.deps.send(op);
+    entry.ackTimer = setTimeout(() => this.onAckTimeout(clientSeq), ACK_TIMEOUT_MS);
   }
 }
