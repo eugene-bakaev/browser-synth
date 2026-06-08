@@ -58,7 +58,15 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       // change.
       deps.outbox.reassertPending();
       return;
-    case 'set':
+    case 'set': {
+      // Peer-drift detection: a broadcast opId that skips ahead means we missed
+      // an op. Ask the server to replay from our last applied opId; per-path
+      // opId guards in applyOp keep the (newer) gapped op from being clobbered by
+      // the (older) replayed ones.
+      const lastSeen = deps.wsClient.opIdLastSeen();
+      if (msg.opId > lastSeen + 1) {
+        deps.wsClient.requestResync(lastSeen);
+      }
       if (msg.clientSeq != null) {
         // Echo of our own op.
         deps.outbox.onEcho(msg.clientSeq);
@@ -71,6 +79,7 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       }
       deps.wsClient.recordOpIdSeen(msg.opId);
       return;
+    }
     case 'sync.complete':
       deps.outbox.onLive();
       // Room is now caught up (via snapshot OR op replay) — open the outbound

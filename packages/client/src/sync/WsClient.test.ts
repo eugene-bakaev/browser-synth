@@ -326,4 +326,39 @@ describe('WsClient', () => {
     expect(client.isLive()).toBe(true);
     expect(MockWebSocket.instances).toHaveLength(2); // no spurious reconnect socket
   });
+
+  it('requestResync sends a resync frame when live', () => {
+    const { client } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    driveLive(client, sock);
+    sock.sent.length = 0;
+    client.requestResync(3);
+    const frame = JSON.parse(sock.sent.at(-1)!);
+    expect(frame).toMatchObject({ v: 1, type: 'resync', fromOpId: 3 });
+  });
+
+  it('suppresses a second resync until the next sync.complete', () => {
+    const { client } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    driveLive(client, sock);
+    sock.sent.length = 0;
+    client.requestResync(3);
+    client.requestResync(3); // suppressed — one outstanding
+    expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(1);
+    sock._msg(JSON.stringify({ v: 1, type: 'sync.complete', opId: 5 })); // clears the flag
+    client.requestResync(5);
+    expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(2);
+  });
+
+  it('requestResync is a no-op for a negative fromOpId (no known baseline)', () => {
+    const { client } = makeClient();
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    driveLive(client, sock);
+    sock.sent.length = 0;
+    client.requestResync(-1); // sentinel from opIdLastSeen() with no persisted state
+    expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(0);
+  });
 });

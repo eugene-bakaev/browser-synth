@@ -151,6 +151,8 @@ describe('sync integration', () => {
       isLive: () => true,
       nextClientSeq: () => ++seq,
       recordOpIdSeen: vi.fn(),
+      opIdLastSeen: vi.fn(() => 0),
+      requestResync: vi.fn(),
       getPersisted: () => null,
     };
   }
@@ -341,7 +343,8 @@ describe('session-scoped connection', () => {
       connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
       send(op: any) { this.sent.push(op); },
       isLive: () => true, nextClientSeq: () => ++seq,
-      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+      recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn(),
+      getPersisted: () => null,
     };
   }
 
@@ -541,7 +544,8 @@ describe('variable track count', () => {
       connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
       send(op: any) { this.sent.push(op); },
       isLive: () => true, nextClientSeq: () => ++seq,
-      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+      recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn(),
+      getPersisted: () => null,
     };
   }
 

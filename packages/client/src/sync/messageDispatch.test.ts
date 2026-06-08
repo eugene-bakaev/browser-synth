@@ -5,7 +5,7 @@ import { freshProject, TRACK_POOL_SIZE, type Project, type ServerMessage } from 
 function deps(project: Project): DispatchDeps {
   return {
     project,
-    wsClient: { recordOpIdSeen: vi.fn() } as unknown as DispatchDeps['wsClient'],
+    wsClient: { recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn() } as unknown as DispatchDeps['wsClient'],
     outbox: { onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn() } as unknown as DispatchDeps['outbox'],
     onFatalError: vi.fn(),
   };
@@ -31,5 +31,24 @@ describe('snapshot reconcile', () => {
     const d = deps(project);
     dispatchServerMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() }, d);
     expect(d.outbox.reassertPending).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('opId gap detection', () => {
+  it('requests a resync when an inbound set skips an opId', () => {
+    const project = freshProject();
+    const d = deps(project);
+    (d.wsClient as any).opIdLastSeen = () => 5; // applied up to opId 5
+    // opId 7 means opId 6 was missed.
+    dispatchServerMessage({ v: 1, type: 'set', opId: 7, clientId: 'peer', path: ['bpm'], value: 130 }, d);
+    expect(d.wsClient.requestResync).toHaveBeenCalledWith(5);
+  });
+
+  it('does not request a resync for a contiguous opId', () => {
+    const project = freshProject();
+    const d = deps(project);
+    (d.wsClient as any).opIdLastSeen = () => 5;
+    dispatchServerMessage({ v: 1, type: 'set', opId: 6, clientId: 'peer', path: ['bpm'], value: 130 }, d);
+    expect(d.wsClient.requestResync).not.toHaveBeenCalled();
   });
 });

@@ -61,6 +61,7 @@ export class WsClient {
 
   private socket: WebSocket | null = null;
   private backoff = INITIAL_BACKOFF_MS;
+  private resyncInFlight = false;
   private readonly maxBackoff = MAX_BACKOFF_MS;
   private reconnectTimer: number | null = null;
   private intentionallyClosed = false;
@@ -138,6 +139,26 @@ export class WsClient {
     return this.state === 'live';
   }
 
+  // Last opId this client has recorded as applied (from persisted sync state).
+  // Used by the dispatcher to detect a gap in the broadcast stream.
+  opIdLastSeen(): number {
+    return this.getPersisted()?.opIdLastSeen ?? -1;
+  }
+
+  // Ask the server to replay everything after `fromOpId` (peer-drift repair).
+  // No-op unless live. Guarded so a burst of gapped frames sends at most one
+  // outstanding request; the flag clears on the next sync.complete.
+  requestResync(fromOpId: number): void {
+    if (this.state !== 'live') return;
+    // No known baseline (opIdLastSeen sentinel, e.g. persisted state cleared
+    // mid-session). A negative fromOpId fails the server's nonnegative() schema
+    // and would trigger a fatal disconnect — drop it instead.
+    if (fromOpId < 0) return;
+    if (this.resyncInFlight) return;
+    this.resyncInFlight = true;
+    this.send({ v: 1, type: 'resync', fromOpId });
+  }
+
   // Outbox uses this to stamp outbound `set` ops. Throws if called before
   // `welcome` populated the persisted record: writing a `clientSeq` against
   // an empty `clientId` would get wiped when the next welcome reset the seq
@@ -203,6 +224,7 @@ export class WsClient {
       }
       case 'sync.complete': {
         this.recordOpIdSeen(msg.opId);
+        this.resyncInFlight = false;
         this.setState('live');
         this.backoff = INITIAL_BACKOFF_MS;
         break;
