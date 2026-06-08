@@ -189,6 +189,14 @@ export class ConnectionHandler {
       }
       return;
     }
+
+    if (msg.type === 'resync') {
+      if (!this.clientId) return;
+      if (!this.bucket.consume()) return; // drop spammy resync requests silently
+      const { opIdHead } = await this.store.getOrCreate(this.roomId, freshProject);
+      await this.sendCatchUp(msg.fromOpId, opIdHead);
+      return;
+    }
   }
 
   async onClose(): Promise<void> {
@@ -354,6 +362,31 @@ export class ConnectionHandler {
 
     // Catch-up: replay from ring buffer when possible, otherwise snapshot.
     const resumeFrom = msg.resumeFromOpId ?? -1;
+    await this.sendCatchUp(resumeFrom, opIdHead);
+
+    // Tell remaining peers the new client is now present. They've already got
+    // each other in their rosters; this update brings us into view.
+    const presence: PresenceUpdateMessage = {
+      v: 1,
+      type: 'presence.update',
+      roster,
+    };
+    for (const peer of this.pool.others(this.roomId, this.socket)) {
+      peer.send(presence);
+    }
+
+    this.heartbeat.start();
+
+    this.log('client live', {
+      roomId: this.roomId,
+      clientId: this.clientId,
+      handle: this.identity.handle,
+    });
+  }
+
+  // Replay ops after `resumeFrom` (or snapshot if evicted / fresh), then
+  // sync.complete. Shared by the hello handshake and mid-session resync.
+  private async sendCatchUp(resumeFrom: number, opIdHead: number): Promise<void> {
     if (resumeFrom >= 0 && resumeFrom <= opIdHead) {
       const ops = await this.store.getOpsSince(this.roomId, resumeFrom);
       if (ops === null) {
@@ -394,25 +427,6 @@ export class ConnectionHandler {
       opId: opIdHead,
     };
     this.socket.send(complete);
-
-    // Tell remaining peers the new client is now present. They've already got
-    // each other in their rosters; this update brings us into view.
-    const presence: PresenceUpdateMessage = {
-      v: 1,
-      type: 'presence.update',
-      roster,
-    };
-    for (const peer of this.pool.others(this.roomId, this.socket)) {
-      peer.send(presence);
-    }
-
-    this.heartbeat.start();
-
-    this.log('client live', {
-      roomId: this.roomId,
-      clientId: this.clientId,
-      handle: this.identity.handle,
-    });
   }
 
   private async sendSnapshot(opIdHead: number): Promise<void> {

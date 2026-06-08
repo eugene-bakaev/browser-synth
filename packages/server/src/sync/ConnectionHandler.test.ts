@@ -678,6 +678,26 @@ describe('ConnectionHandler', () => {
     });
   });
 
+  it('resync replays ops since fromOpId then sync.complete', async () => {
+    const socket = makeMockSocket();
+    const pool = new FakePool();
+    pool.add('room1', socket);
+    const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+    await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+    // Apply two ops so the room head advances to opId 2.
+    await handler.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 130 });
+    await handler.onMessage({ v: 1, type: 'set', clientSeq: 2, path: ['bpm'], value: 131 });
+    socket.sent.length = 0;
+
+    // Client claims it only applied up to opId 1 → expects op 2 replayed.
+    await handler.onMessage({ v: 1, type: 'resync', fromOpId: 1 });
+
+    const replayed = socket.sent.filter((m) => m.type === 'set');
+    expect(replayed.map((m) => (m.type === 'set' ? m.opId : -1))).toEqual([2]);
+    expect(socket.sent.at(-1)!.type).toBe('sync.complete');
+  });
+
   describe('hello deadline', () => {
     it('closes a connection that never completes hello after the deadline', () => {
       vi.useFakeTimers();
