@@ -95,6 +95,17 @@ export class Outbox {
     }
   }
 
+  /** Flush every throttled pending entry immediately (gesture-end semantics).
+   *  Called on leave / tab-close so a closing socket still delivers the last
+   *  edits. flushEntry routes to the offline queue if the socket is already
+   *  closed, so this never throws. */
+  flushAllPending(): void {
+    for (const [key, entry] of [...this.pending]) {
+      if (entry.timer) clearTimeout(entry.timer);
+      this.flushEntry(key, entry);
+    }
+  }
+
   /**
    * Flush the pending throttled entry for `path` immediately (gesture end —
    * e.g. knob mouseup). The final drag value is already sitting in `pending`

@@ -186,6 +186,15 @@ describe('Outbox', () => {
     expect(h.sent[0].value).toBe(130);
   });
 
+  it('flushAllPending sends throttled entries immediately', () => {
+    const h = harness();
+    h.outbox.enqueue(['bpm'], 144, 120, false); // throttled, not yet sent
+    expect(h.sent.length).toBe(0);
+    h.outbox.flushAllPending();
+    expect(h.sent.length).toBe(1);
+    expect(h.sent[0].value).toBe(144);
+  });
+
   it('coalesces a shared path on disconnect: pending value wins, earliest priorValue kept', () => {
     const h = harness();
     // In-flight: value 130 (priorValue 120), sent immediately, not yet echoed.
