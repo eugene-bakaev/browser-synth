@@ -52,6 +52,11 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
         exitSuppress();
       }
       resetApplyOpState();
+      // Non-destructive reconcile: the snapshot just overwrote local state. Re-apply
+      // any un-acked local edits on top and re-queue them for delivery so a server
+      // repair (mid-session resync or reconnect eviction) can never erase a pending
+      // change.
+      deps.outbox.reassertPending();
       return;
     case 'set':
       if (msg.clientSeq != null) {

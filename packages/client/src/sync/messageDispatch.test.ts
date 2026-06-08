@@ -6,7 +6,7 @@ function deps(project: Project): DispatchDeps {
   return {
     project,
     wsClient: { recordOpIdSeen: vi.fn() } as unknown as DispatchDeps['wsClient'],
-    outbox: { onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn() } as unknown as DispatchDeps['outbox'],
+    outbox: { onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn() } as unknown as DispatchDeps['outbox'],
     onFatalError: vi.fn(),
   };
 }
@@ -22,5 +22,14 @@ describe('snapshot normalization', () => {
 
     expect(target.tracks).toHaveLength(TRACK_POOL_SIZE);
     expect(target.tracks.slice(0, 4).every((t) => t.enabled)).toBe(true);
+  });
+});
+
+describe('snapshot reconcile', () => {
+  it('re-asserts pending edits after applying a snapshot', () => {
+    const project = freshProject();
+    const d = deps(project);
+    dispatchServerMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() }, d);
+    expect(d.outbox.reassertPending).toHaveBeenCalledTimes(1);
   });
 });
