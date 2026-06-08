@@ -50,6 +50,11 @@ interface PersistedSyncState {
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
+// How long to wait for a sync.complete after a resync before assuming the
+// request was dropped (e.g. the server rate-limited it) and re-arming so the
+// next detected gap can retry. Without this the in-flight guard would wedge and
+// silently disable all future gap repair until a full reconnect.
+const RESYNC_TIMEOUT_MS = 5000;
 
 export class WsClient {
   state: WsState = 'closed';
@@ -62,6 +67,7 @@ export class WsClient {
   private socket: WebSocket | null = null;
   private backoff = INITIAL_BACKOFF_MS;
   private resyncInFlight = false;
+  private resyncTimer: number | null = null;
   private readonly maxBackoff = MAX_BACKOFF_MS;
   private reconnectTimer: number | null = null;
   private intentionallyClosed = false;
@@ -123,6 +129,8 @@ export class WsClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearResyncTimer();
+    this.resyncInFlight = false;
     this.socket?.close();
     this.socket = null;
     this.setState('closed');
@@ -147,7 +155,8 @@ export class WsClient {
 
   // Ask the server to replay everything after `fromOpId` (peer-drift repair).
   // No-op unless live. Guarded so a burst of gapped frames sends at most one
-  // outstanding request; the flag clears on the next sync.complete.
+  // outstanding request; the flag clears on the next sync.complete, or re-arms
+  // after RESYNC_TIMEOUT_MS if the request was dropped (e.g. rate-limited).
   requestResync(fromOpId: number): void {
     if (this.state !== 'live') return;
     // No known baseline (opIdLastSeen sentinel, e.g. persisted state cleared
@@ -157,6 +166,19 @@ export class WsClient {
     if (this.resyncInFlight) return;
     this.resyncInFlight = true;
     this.send({ v: 1, type: 'resync', fromOpId });
+    this.resyncTimer = setTimeout(() => {
+      // No sync.complete arrived in time — assume the request was dropped and
+      // clear the guard so the next detected gap can retry.
+      this.resyncTimer = null;
+      this.resyncInFlight = false;
+    }, RESYNC_TIMEOUT_MS);
+  }
+
+  private clearResyncTimer(): void {
+    if (this.resyncTimer !== null) {
+      clearTimeout(this.resyncTimer);
+      this.resyncTimer = null;
+    }
   }
 
   // Outbox uses this to stamp outbound `set` ops. Throws if called before
@@ -224,6 +246,7 @@ export class WsClient {
       }
       case 'sync.complete': {
         this.recordOpIdSeen(msg.opId);
+        this.clearResyncTimer();
         this.resyncInFlight = false;
         this.setState('live');
         this.backoff = INITIAL_BACKOFF_MS;

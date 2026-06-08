@@ -361,4 +361,26 @@ describe('WsClient', () => {
     client.requestResync(-1); // sentinel from opIdLastSeen() with no persisted state
     expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(0);
   });
+
+  it('re-arms resync after a timeout when no sync.complete arrives (dropped/rate-limited)', () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = makeClient();
+      client.connect();
+      const sock = MockWebSocket.instances[0];
+      driveLive(client, sock);
+      sock.sent.length = 0;
+      client.requestResync(3);
+      client.requestResync(3); // suppressed while one is outstanding
+      expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(1);
+      // The server dropped the resync (token bucket exhausted by the client's own
+      // edits): no sync.complete ever arrives. Without a re-arm the flag would
+      // wedge true and suppress all future gap repairs until a full reconnect.
+      vi.advanceTimersByTime(5000); // RESYNC_TIMEOUT_MS
+      client.requestResync(3); // flag re-armed → request goes out again
+      expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
