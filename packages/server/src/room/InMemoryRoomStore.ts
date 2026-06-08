@@ -31,6 +31,7 @@ export class InMemoryRoomStore implements RoomStore {
         connected: new Set(),
         graceTimer: null,
         dirty: false,
+        version: 0,
       };
       this.rooms.set(roomId, room);
     }
@@ -63,6 +64,7 @@ export class InMemoryRoomStore implements RoomStore {
     }
     room.nextOpId += 1;
     room.dirty = true;
+    room.version += 1;
 
     return { ok: true, op };
   }
@@ -167,9 +169,15 @@ export class InMemoryRoomStore implements RoomStore {
     return ids;
   }
 
-  async clearDirty(roomId: string): Promise<void> {
+  async roomVersion(roomId: string): Promise<number | null> {
+    return this.rooms.get(roomId)?.version ?? null;
+  }
+
+  async clearDirty(roomId: string, ifVersion?: number): Promise<void> {
     const room = this.rooms.get(roomId);
-    if (room) room.dirty = false;
+    if (!room) return;
+    if (ifVersion !== undefined && room.version !== ifVersion) return; // op landed mid-flush
+    room.dirty = false;
   }
 
   async roomMemberCounts(): Promise<Map<string, number>> {

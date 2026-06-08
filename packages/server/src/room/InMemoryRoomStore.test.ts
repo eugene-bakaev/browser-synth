@@ -174,3 +174,22 @@ describe('InMemoryRoomStore', () => {
     ).rejects.toThrow(/not found/);
   });
 });
+
+describe('InMemoryRoomStore version-gated clearDirty', () => {
+  it('bumps version per op and only clears dirty when version is unchanged', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r', freshProject);
+    await store.appendOp('r', { clientId: 'c', clientSeq: 1, path: ['bpm'], value: 130 });
+    const v1 = await store.roomVersion('r');
+
+    // An op lands after we captured v1 (simulates a mid-flush write).
+    await store.appendOp('r', { clientId: 'c', clientSeq: 2, path: ['bpm'], value: 131 });
+
+    await store.clearDirty('r', v1!);                 // stale version → must NOT clear
+    expect(await store.listDirtyRoomIds()).toContain('r');
+
+    const v2 = await store.roomVersion('r');
+    await store.clearDirty('r', v2!);                 // current version → clears
+    expect(await store.listDirtyRoomIds()).not.toContain('r');
+  });
+});

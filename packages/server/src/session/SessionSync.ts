@@ -29,26 +29,25 @@ export class SessionSync {
   // Persist one room's current project. Clears the dirty flag on success; on
   // failure the flag is left set so the next sweep retries.
   //
-  // Known limitation (deferred): the peekProject → saveSnapshot → clearDirty
-  // sequence has a lost-update window against an async store. With the current
-  // in-memory store the project is a shared mutable reference, so any edit that
-  // lands mid-flush is already part of what we persist and nothing is lost.
-  // Against a future Postgres store the save is a real async write: an op
-  // applied between saveSnapshot and clearDirty would have its dirty flag
-  // cleared here without that op having been persisted. The proper fix is a
-  // versioned/conditional clearDirty on the RoomStore interface (clear only if
-  // the version is unchanged since peek); deferred until the Postgres write path
-  // is load-bearing.
+  // The peekProject → saveSnapshot → clearDirty sequence is protected against
+  // the lost-update window by a version-gated clearDirty: the version is
+  // captured right after peek and passed to clearDirty, which clears the flag
+  // only if no op has landed since. An op applied mid-flush advances the version,
+  // so clearDirty no-ops and the room stays dirty for the next sweep.
   async flushRoom(roomId: string): Promise<void> {
     const project = await this.rooms.peekProject(roomId);
     if (!project) return; // room gone (pruned) — nothing to persist
+    // Capture the version at read time; clearDirty below only clears if no op
+    // has landed since, so a write racing the async save isn't lost (it stays
+    // dirty and the next sweep retries).
+    const version = await this.rooms.roomVersion(roomId);
     try {
       // Repair invariants at the persistence boundary: the server is the only
       // writer, so normalizing here guarantees a malformed in-memory project
       // (e.g. driven to 0 enabled tracks by a stream of leaf ops) can never
       // reach the DB. Idempotent — a well-formed project is unchanged.
       await this.sessions.saveSnapshot(roomId, normalizeProject(project));
-      await this.rooms.clearDirty(roomId);
+      await this.rooms.clearDirty(roomId, version ?? undefined);
     } catch (err) {
       this.log('session flush failed', { roomId, err });
     }

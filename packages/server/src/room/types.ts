@@ -32,4 +32,8 @@ export interface RoomState {
   // Set true by appendOp on every accepted op; cleared by the autosave flusher
   // after it persists the project. Lets the 60s sweep skip rooms with no edits.
   dirty: boolean;
+  // Monotonic counter bumped by appendOp on every accepted op. Lets the autosave
+  // flusher clear `dirty` conditionally — only if no op has landed since it read
+  // the project — closing the peek→save→clearDirty lost-update window.
+  version: number;
 }

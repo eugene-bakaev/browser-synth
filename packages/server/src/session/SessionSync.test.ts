@@ -27,6 +27,30 @@ describe('SessionSync', () => {
     expect(await rooms.listDirtyRoomIds()).toEqual([]);
   });
 
+  it('flushRoom keeps the room dirty when an op lands mid-save (lost-update window closed)', async () => {
+    const rooms = new InMemoryRoomStore();
+    const sessions = new InMemorySessionStore();
+    await sessions.create(sessionInput());
+    await rooms.getOrCreate('r1', freshProject);
+    await rooms.appendOp('r1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 130 });
+
+    // Simulate an op arriving DURING the async snapshot save — i.e. between the
+    // version capture and clearDirty. The version-gated clearDirty must then
+    // no-op, so the mid-flush edit isn't lost: the room stays dirty for the next
+    // sweep. (Without the version gate, clearDirty would wipe the flag and op 2
+    // would never persist until the next unrelated edit re-dirtied the room.)
+    const realSave = sessions.saveSnapshot.bind(sessions);
+    sessions.saveSnapshot = vi.fn(async (id: string, project) => {
+      await rooms.appendOp('r1', { clientId: 'c1', clientSeq: 2, path: ['bpm'], value: 131 });
+      return realSave(id, project);
+    });
+
+    const sync = new SessionSync(rooms, sessions);
+    await sync.flushRoom('r1');
+
+    expect(await rooms.listDirtyRoomIds()).toContain('r1');
+  });
+
   it('flushRoom repairs an invalid project (0 enabled tracks) before persisting', async () => {
     const rooms = new InMemoryRoomStore();
     const sessions = new InMemorySessionStore();
