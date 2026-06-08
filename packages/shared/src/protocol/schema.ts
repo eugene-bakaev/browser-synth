@@ -27,8 +27,14 @@ export const PongSchema = VersionEnvelope.extend({
   type: z.literal('pong'),
 });
 
+export const ResyncSchema = VersionEnvelope.extend({
+  type: z.literal('resync'),
+  fromOpId: z.number().int().nonnegative(),
+});
+
 export const ClientMessageSchema = z.discriminatedUnion('type', [
   HelloSchema,
   SetOpClientSchema,
   PongSchema,
+  ResyncSchema,
 ]);
