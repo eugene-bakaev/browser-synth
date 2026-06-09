@@ -14,6 +14,13 @@ import {
   type RoomStore,
 } from './RoomStore.js';
 
+// Composite key for the (clientId, clientSeq) dedup index. NUL separator —
+// clientIds are caller-supplied strings, so a printable separator could be
+// forged into a colliding key.
+function opIndexKey(clientId: string, clientSeq: number): string {
+  return `${clientId}\u0000${clientSeq}`;
+}
+
 export class InMemoryRoomStore implements RoomStore {
   private readonly rooms = new Map<string, RoomState>();
 
@@ -26,6 +33,7 @@ export class InMemoryRoomStore implements RoomStore {
       room = {
         project: freshProject(),
         opLog: [],
+        opIndex: new Map(),
         nextOpId: 1,
         identities: new Map(),
         connected: new Set(),
@@ -40,12 +48,13 @@ export class InMemoryRoomStore implements RoomStore {
 
   async appendOp(roomId: string, input: AppendOpInput): Promise<AppendOpResult> {
     const room = this.requireRoom(roomId);
-    // Dedup on (clientId, clientSeq). Linear scan is fine while the log is
-    // capped at RING_BUFFER_CAPACITY entries.
-    for (const entry of room.opLog) {
-      if (entry.clientId === input.clientId && entry.clientSeq === input.clientSeq) {
-        return { ok: false, reason: 'duplicate', op: entry };
-      }
+    // Dedup on (clientId, clientSeq) via the O(1) opIndex mirror of the ring
+    // buffer (appendOp is the hottest server path — a scan over up to
+    // RING_BUFFER_CAPACITY entries per inbound op adds up at the rate cap).
+    const dedupKey = opIndexKey(input.clientId, input.clientSeq);
+    const duplicate = room.opIndex.get(dedupKey);
+    if (duplicate) {
+      return { ok: false, reason: 'duplicate', op: duplicate };
     }
 
     const op: AppliedOp = {
@@ -59,8 +68,14 @@ export class InMemoryRoomStore implements RoomStore {
     setDeep(room.project as unknown as Record<string, unknown>, op.path, op.value);
 
     room.opLog.push(op);
+    room.opIndex.set(dedupKey, op);
     if (room.opLog.length > RING_BUFFER_CAPACITY) {
-      room.opLog.splice(0, room.opLog.length - RING_BUFFER_CAPACITY);
+      // Evict the index entries in the same splice so the two structures
+      // always hold the same ops.
+      const evicted = room.opLog.splice(0, room.opLog.length - RING_BUFFER_CAPACITY);
+      for (const e of evicted) {
+        room.opIndex.delete(opIndexKey(e.clientId, e.clientSeq));
+      }
     }
     room.nextOpId += 1;
     room.dirty = true;

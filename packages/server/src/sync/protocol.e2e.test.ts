@@ -129,7 +129,11 @@ describe('protocol e2e', () => {
     c.close();
   });
 
-  it('duplicate clientSeq is nacked op.duplicate', async () => {
+  // A duplicate (clientId, clientSeq) is an Outbox resend of an op whose echo
+  // got lost — the server must echo its STORED op (so the client's in-flight
+  // entry resolves) rather than nack or re-apply the new value. Mirrors the
+  // ConnectionHandler unit test over a real socket.
+  it('duplicate clientSeq is echoed with the stored op (not nacked, not re-applied)', async () => {
     const room = await createSession();
     const c = connect(room);
     await c.opened;
@@ -140,9 +144,13 @@ describe('protocol e2e', () => {
     await c.waitFor((m) => m.type === 'set');
 
     c.send({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 131 });
-    const nack = await c.waitFor((m) => m.type === 'nack');
-    if (nack.type !== 'nack') throw new Error('unreachable');
-    expect(nack.code).toBe('op.duplicate');
+    // Wait for the SECOND set frame — the duplicate echo.
+    await c.waitFor(() => c.recv.filter((m) => m.type === 'set').length >= 2);
+    const sets = c.recv.filter((m) => m.type === 'set');
+    if (sets[0]!.type !== 'set' || sets[1]!.type !== 'set') throw new Error('unreachable');
+    expect(sets[1]).toMatchObject({ clientSeq: 1, value: 130 }); // stored op, not 131
+    expect(sets[1]!.opId).toBe(sets[0]!.opId); // same applied op, no re-apply
+    expect(c.recv.find((m) => m.type === 'nack')).toBeUndefined();
     c.close();
   });
 
