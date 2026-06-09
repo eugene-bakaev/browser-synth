@@ -2,6 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemoryRoomStore } from './InMemoryRoomStore.js';
 
+describe('InMemoryRoomStore.appendOp dedupe', () => {
+  it('returns the original op when the same (clientId, clientSeq) is re-appended', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r', freshProject);
+
+    const first = await store.appendOp('r', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 130 });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error('unreachable');
+
+    const dup = await store.appendOp('r', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 130 });
+    expect(dup.ok).toBe(false);
+    if (dup.ok) throw new Error('unreachable');
+    expect(dup.reason).toBe('duplicate');
+    expect(dup.op).toEqual(first.op); // carries the already-applied op
+  });
+});
+
 describe('InMemoryRoomStore', () => {
   it('creates a fresh room with opIdHead = 0 and a default Project', async () => {
     const store = new InMemoryRoomStore();
@@ -47,7 +64,7 @@ describe('InMemoryRoomStore', () => {
       path: ['bpm'],
       value: 999,
     });
-    expect(dup).toEqual({ ok: false, reason: 'duplicate' });
+    expect(dup).toMatchObject({ ok: false, reason: 'duplicate' });
   });
 
   it('getOpsSince(0) returns the full log', async () => {
@@ -155,5 +172,24 @@ describe('InMemoryRoomStore', () => {
         value: 140,
       }),
     ).rejects.toThrow(/not found/);
+  });
+});
+
+describe('InMemoryRoomStore version-gated clearDirty', () => {
+  it('bumps version per op and only clears dirty when version is unchanged', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r', freshProject);
+    await store.appendOp('r', { clientId: 'c', clientSeq: 1, path: ['bpm'], value: 130 });
+    const v1 = await store.roomVersion('r');
+
+    // An op lands after we captured v1 (simulates a mid-flush write).
+    await store.appendOp('r', { clientId: 'c', clientSeq: 2, path: ['bpm'], value: 131 });
+
+    await store.clearDirty('r', v1!);                 // stale version → must NOT clear
+    expect(await store.listDirtyRoomIds()).toContain('r');
+
+    const v2 = await store.roomVersion('r');
+    await store.clearDirty('r', v2!);                 // current version → clears
+    expect(await store.listDirtyRoomIds()).not.toContain('r');
   });
 });

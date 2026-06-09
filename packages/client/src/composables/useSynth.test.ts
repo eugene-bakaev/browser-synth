@@ -151,6 +151,8 @@ describe('sync integration', () => {
       isLive: () => true,
       nextClientSeq: () => ++seq,
       recordOpIdSeen: vi.fn(),
+      opIdLastSeen: vi.fn(() => 0),
+      requestResync: vi.fn(),
       getPersisted: () => null,
     };
   }
@@ -182,6 +184,7 @@ describe('sync integration', () => {
     vi.stubGlobal('window', {
       location: { pathname: '/r/testroom1' },
       history: { replaceState: vi.fn() },
+      addEventListener: vi.fn(),
     });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/r/testroom1' });
   });
@@ -319,6 +322,17 @@ describe('sync integration', () => {
     await nextTick();
     expect(fake.reconnect).toHaveBeenCalled();
   });
+
+  it('leaveSession flushes throttled pending edits before the socket closes', async () => {
+    const { fake, synth, mod } = await bootWithFakeSocket();
+    // volume is a continuous field — gestureEndForLeaf('volume') === false → throttled (pending).
+    synth.project.tracks[1].mixer.volume = 0.42;
+    fake.sent.length = 0; // clear any previous ops
+    mod.leaveSession();
+    expect(fake.sent.some((o: any) =>
+      JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']) && o.value === 0.42,
+    )).toBe(true);
+  });
 });
 
 describe('session-scoped connection', () => {
@@ -329,12 +343,13 @@ describe('session-scoped connection', () => {
       connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
       send(op: any) { this.sent.push(op); },
       isLive: () => true, nextClientSeq: () => ++seq,
-      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+      recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn(),
+      getPersisted: () => null,
     };
   }
 
   beforeEach(() => {
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() } });
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
 
@@ -529,12 +544,13 @@ describe('variable track count', () => {
       connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
       send(op: any) { this.sent.push(op); },
       isLive: () => true, nextClientSeq: () => ++seq,
-      recordOpIdSeen: vi.fn(), getPersisted: () => null,
+      recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn(),
+      getPersisted: () => null,
     };
   }
 
   beforeEach(() => {
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() } });
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
 

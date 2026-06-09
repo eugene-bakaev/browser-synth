@@ -28,7 +28,7 @@ export interface AppendOpInput {
 
 export type AppendOpResult =
   | { ok: true; op: AppliedOp }
-  | { ok: false; reason: 'duplicate' };
+  | { ok: false; reason: 'duplicate'; op: AppliedOp };
 
 export interface RoomStore {
   // Returns the room's current project + the latest opId (0 for a fresh room).
@@ -74,8 +74,14 @@ export interface RoomStore {
   // Room ids with unsaved edits since their last flush.
   listDirtyRoomIds(): Promise<string[]>;
 
-  // Clears a room's dirty flag (called after a successful snapshot save).
-  clearDirty(roomId: string): Promise<void>;
+  // Monotonic version of a room's project (bumped per op); null if absent. Read
+  // before a flush and passed back to clearDirty to detect mid-flush writes.
+  roomVersion(roomId: string): Promise<number | null>;
+
+  // Clears a room's dirty flag after a successful snapshot save. When `ifVersion`
+  // is given, clears ONLY if the room's version is unchanged since it was read —
+  // so an op applied mid-flush keeps the room dirty for the next sweep.
+  clearDirty(roomId: string, ifVersion?: number): Promise<void>;
 
   // Live member count per existing room (size of the connected set). Drives the
   // lobby's member-count / "live" column and the guest "listed only while

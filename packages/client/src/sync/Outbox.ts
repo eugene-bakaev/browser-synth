@@ -29,9 +29,13 @@ interface PendingEntry {
   timer: ReturnType<typeof setTimeout> | null;
   // For rollback bookkeeping after send:
   sent: boolean;
+  resends: number;
+  ackTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const THROTTLE_MS = 50;
+const ACK_TIMEOUT_MS = 4000;
+const MAX_RESENDS = 3;
 
 export interface OutboxDeps {
   /** Returns next clientSeq from WsClient/sessionStorage. */
@@ -65,6 +69,7 @@ export class Outbox {
         path, value,
         priorValue: existing?.priorValue ?? priorValue,
         clientSeq: null, timer: null, sent: false,
+        resends: 0, ackTimer: null,
       });
       return;
     }
@@ -77,6 +82,7 @@ export class Outbox {
       path, value,
       priorValue: existing?.priorValue ?? priorValue,
       clientSeq: null, timer: null, sent: false,
+      resends: 0, ackTimer: null,
     };
 
     if (gestureEnd) {
@@ -86,6 +92,17 @@ export class Outbox {
         this.flushEntry(key, this.pending.get(key) ?? entry);
       }, THROTTLE_MS);
       this.pending.set(key, entry);
+    }
+  }
+
+  /** Flush every throttled pending entry immediately (gesture-end semantics).
+   *  Called on leave / tab-close so a closing socket still delivers the last
+   *  edits. flushEntry routes to the offline queue if the socket is already
+   *  closed, so this never throws. */
+  flushAllPending(): void {
+    for (const [key, entry] of [...this.pending]) {
+      if (entry.timer) clearTimeout(entry.timer);
+      this.flushEntry(key, entry);
     }
   }
 
@@ -104,15 +121,18 @@ export class Outbox {
     this.flushEntry(key, entry);
   }
 
-  /** Server confirmed our op. Drop the in-flight tracking. */
+  /** Server confirmed our op (echo, including a duplicate echo). Drop tracking. */
   onEcho(clientSeq: number): void {
+    const entry = this.inFlight.get(clientSeq);
+    if (entry?.ackTimer) clearTimeout(entry.ackTimer);
     this.inFlight.delete(clientSeq);
   }
 
-  /** Server rejected our op. Roll back local state. */
+  /** Server rejected our op (validation / rate limit). Roll back local state. */
   onNack(clientSeq: number, _code: string): void {
     const entry = this.inFlight.get(clientSeq);
     if (!entry) return; // unknown clientSeq (e.g. server restarted); ignore
+    if (entry.ackTimer) clearTimeout(entry.ackTimer);
     this.inFlight.delete(clientSeq);
     this.deps.applyLocal(entry.path, entry.priorValue);
   }
@@ -125,29 +145,99 @@ export class Outbox {
     this.offlineQueue.clear();
   }
 
-  /** Called when the WS goes from live → closed. Move pending into offline queue. */
-  onClosed(): void {
-    for (const [key, entry] of this.pending) {
-      if (entry.timer) clearTimeout(entry.timer);
-      this.offlineQueue.set(key, { ...entry, timer: null });
+  // Re-apply every un-acked local edit on top of a just-replaced project (server
+  // snapshot) and re-route it for delivery. Used by the reconcile-merge so a
+  // snapshot can never erase a pending change. Works whether the snapshot arrived
+  // via reconnect (offline → entries re-queue) or mid-session (live → resend).
+  // Coalesces all tiers by path, newest wins (offlineQueue < inFlight < pending).
+  // For a shared path the newest VALUE wins but the EARLIEST priorValue is kept
+  // (the true pre-edit baseline) so a later nack rolls back correctly — same rule
+  // as onClosed.
+  reassertPending(): void {
+    const merged = new Map<string, PendingEntry>();
+    const absorb = (entries: Iterable<PendingEntry>) => {
+      for (const e of entries) {
+        if (e.timer) clearTimeout(e.timer);
+        if (e.ackTimer) clearTimeout(e.ackTimer);
+        const key = pathKey(e.path);
+        const prev = merged.get(key);
+        merged.set(key, { ...e, priorValue: prev?.priorValue ?? e.priorValue });
+      }
+    };
+    absorb(this.offlineQueue.values());
+    absorb(this.inFlight.values());
+    absorb(this.pending.values());
+    this.offlineQueue.clear();
+    this.inFlight.clear();
+    this.pending.clear();
+
+    for (const [key, e] of merged) {
+      this.deps.applyLocal(e.path, e.value); // restore the edit on top of the snapshot
+      this.flushEntry(key, {
+        path: e.path, value: e.value, priorValue: e.priorValue,
+        clientSeq: null, timer: null, sent: false, resends: 0, ackTimer: null,
+      });
     }
+  }
+
+  /** WS live → closed. Move pending AND in-flight into the offline queue so a
+   *  disconnect can't strand an op that was sent but never echoed. Coalesced by
+   *  path; pending (newer) wins over in-flight (older); the earliest priorValue
+   *  is preserved for rollback. */
+  onClosed(): void {
+    const requeue = (entry: PendingEntry) => {
+      if (entry.timer) clearTimeout(entry.timer);
+      if (entry.ackTimer) clearTimeout(entry.ackTimer);
+      const key = pathKey(entry.path);
+      const existing = this.offlineQueue.get(key);
+      this.offlineQueue.set(key, {
+        path: entry.path,
+        value: entry.value,
+        priorValue: existing?.priorValue ?? entry.priorValue,
+        clientSeq: null, timer: null, sent: false, resends: 0, ackTimer: null,
+      });
+    };
+    for (const entry of this.inFlight.values()) requeue(entry);
+    this.inFlight.clear();
+    for (const entry of this.pending.values()) requeue(entry);
     this.pending.clear();
   }
 
   private flushEntry(key: string, entry: PendingEntry): void {
     this.pending.delete(key);
     if (!this.deps.isLive()) {
-      this.offlineQueue.set(key, { ...entry, timer: null });
+      this.offlineQueue.set(key, { ...entry, timer: null, ackTimer: null });
       return;
     }
     const clientSeq = this.deps.nextClientSeq();
     entry.clientSeq = clientSeq;
     entry.sent = true;
+    entry.resends = 0;
     this.inFlight.set(clientSeq, entry);
     const op: SetOpClient = {
       v: 1, type: 'set', clientSeq,
       path: entry.path, value: entry.value,
     };
     this.deps.send(op);
+    entry.ackTimer = setTimeout(() => this.onAckTimeout(clientSeq), ACK_TIMEOUT_MS);
+  }
+
+  // Resend an op that was never echoed/nacked within ACK_TIMEOUT_MS. Same
+  // clientSeq so the server's (clientId, clientSeq) dedupe recognises it and
+  // echoes rather than re-applying. Caps at MAX_RESENDS; after that the entry
+  // stays tracked (a later echo still resolves it; a disconnect requeues it).
+  private onAckTimeout(clientSeq: number): void {
+    const entry = this.inFlight.get(clientSeq);
+    if (!entry) return;            // already echoed / nacked
+    entry.ackTimer = null;
+    if (!this.deps.isLive()) return;          // offline: onClosed will requeue it
+    if (entry.resends >= MAX_RESENDS) return; // give up resending; keep tracked
+    entry.resends += 1;
+    const op: SetOpClient = {
+      v: 1, type: 'set', clientSeq,
+      path: entry.path, value: entry.value,
+    };
+    this.deps.send(op);
+    entry.ackTimer = setTimeout(() => this.onAckTimeout(clientSeq), ACK_TIMEOUT_MS);
   }
 }

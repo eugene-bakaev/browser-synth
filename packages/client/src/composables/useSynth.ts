@@ -135,6 +135,17 @@ const roomLoading = ref(false);
 // shell/sidebar can react (e.g. show the Leave control only inside a session).
 const currentRoomId = ref<string | null>(null);
 let authWatcherInstalled = false;
+let leaveFlushInstalled = false;
+function installLeaveFlushHandler(): void {
+  if (leaveFlushInstalled) return;
+  if (typeof window === 'undefined') return;
+  leaveFlushInstalled = true;
+  window.addEventListener('beforeunload', () => {
+    // Best-effort: the socket is usually still open during beforeunload, so a
+    // synchronous flush gets the last throttled edits onto the wire.
+    outbox?.flushAllPending();
+  });
+}
 
 // Flush the outbox entry for `path` immediately — called from a knob's
 // gesture-end (mouseup) so the final drag value goes out without waiting out
@@ -258,6 +269,7 @@ function buildSyncState(roomId: string): void {
     },
     isLive: () => !!wsClient?.isLive(),
   });
+  installLeaveFlushHandler();
 }
 
 // Installed once (the shell never unmounts). Re-handshakes the live socket when
@@ -394,6 +406,9 @@ function disposeSyncWatchers(): void {
 }
 
 function teardownConnection(): void {
+  // Deliver any throttled pending edits to the (still-live) socket before we
+  // close it, so leaving a room / switching rooms can't strand the last edits.
+  outbox?.flushAllPending();
   if (wsClient) {
     wsClient.disconnect();
     wsClient = null;

@@ -60,6 +60,18 @@ describe('ClientMessageSchema', () => {
   });
 });
 
+describe('ResyncSchema', () => {
+  it('parses a valid resync message', () => {
+    const r = ClientMessageSchema.safeParse({ v: 1, type: 'resync', fromOpId: 7 });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects resync with a negative fromOpId', () => {
+    const r = ClientMessageSchema.safeParse({ v: 1, type: 'resync', fromOpId: -1 });
+    expect(r.success).toBe(false);
+  });
+});
+
 describe('HelloSchema token field', () => {
   it('accepts a hello with a token', () => {
     const r = HelloSchema.safeParse({ v: 1, type: 'hello', schemaVersion: 2, token: 'jwt.abc.def' });

@@ -50,7 +50,13 @@ export interface PongMessage {
   type: 'pong';
 }
 
-export type ClientMessage = HelloMessage | SetOpClient | PongMessage;
+export interface ResyncMessage {
+  v: 1;
+  type: 'resync';
+  fromOpId: number; // last opId the client has applied; replay everything after it
+}
+
+export type ClientMessage = HelloMessage | SetOpClient | PongMessage | ResyncMessage;
 
 // === Server → Client ===
 
