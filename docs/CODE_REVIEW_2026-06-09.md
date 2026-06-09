@@ -29,7 +29,7 @@ Status column is for tracking as items get picked up.
 | [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | open |
 | [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | fixed on `fix/m2-self-echo-overwrite` |
 | [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | open |
-| [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | open |
+| [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | fixed on `perf/e2-dedup-index` |
 | [M3a](#m3a) | 🟦 | Connections | Grace-expiry vs. hello race can recreate a room blank | open |
 | [M3b](#m3b) | 🟦 | Connections | Duplicated browser tab → two sockets resume one clientId | open |
 | [M4](#m4) | 🟦 | Connections | `POST /api/sessions` unlimited; never-joined guest sessions never pruned | open |

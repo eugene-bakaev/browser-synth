@@ -109,6 +109,22 @@ describe('InMemoryRoomStore', () => {
     expect(tail![0]!.opId).toBe(1001);
   });
 
+  it('dedup index follows ring-buffer eviction', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('room1', freshProject);
+    for (let i = 1; i <= 1001; i++) {
+      await store.appendOp('room1', { clientId: 'c1', clientSeq: i, path: ['bpm'], value: 120 + (i % 60) });
+    }
+    // seq 1's op was evicted from the ring, so re-appending it is treated as
+    // NEW (same as the old scan behavior) — proving its index entry was
+    // evicted in the same splice rather than left to dedup forever.
+    const revived = await store.appendOp('room1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 125 });
+    expect(revived.ok).toBe(true);
+    // An op still inside the ring keeps deduping.
+    const dup = await store.appendOp('room1', { clientId: 'c1', clientSeq: 500, path: ['bpm'], value: 999 });
+    expect(dup).toMatchObject({ ok: false, reason: 'duplicate' });
+  });
+
   it('round-trips identities', async () => {
     const store = new InMemoryRoomStore();
     await store.getOrCreate('room1', freshProject);

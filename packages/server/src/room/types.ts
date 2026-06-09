@@ -19,6 +19,11 @@ export interface AppliedOp {
 export interface RoomState {
   project: Project;
   opLog: AppliedOp[];
+  // (clientId, clientSeq) → AppliedOp mirror of opLog, so the per-op duplicate
+  // check (resend dedup) is O(1) instead of a scan over the ring buffer —
+  // appendOp is the hottest server path. Entries are evicted in the same splice
+  // that prunes opLog; the two structures always hold the same ops.
+  opIndex: Map<string, AppliedOp>;
   nextOpId: number;
   identities: Map<string, Identity>;
   // clientIds with a live socket right now. The roster (presence) is built from
