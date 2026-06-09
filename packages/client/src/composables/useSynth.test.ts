@@ -135,6 +135,64 @@ describe('useSynth narrow watchers (A2)', () => {
   });
 });
 
+describe('lazy per-slot engines (E1)', () => {
+  // Same module bootstrap as the narrow-watchers suite above.
+  beforeEach(async () => {
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+    const mod = await import('./useSynth');
+    useSynth = mod.useSynth;
+    disposeSynth = mod.disposeSynth;
+    mod.setSyncEnabled(false);
+    disposeSynth();
+  });
+
+  it('builds engines only for enabled slots', async () => {
+    const synth = useSynth();
+    const state = await synth.ensureAudio();
+    const enabledCount = synth.project.tracks.filter((t: any) => t.enabled).length;
+    const builtCount = state.engines.filter((e: any) => e !== undefined).length;
+    expect(builtCount).toBe(enabledCount); // 4 on a fresh project, not 32
+    expect(state.engines[0]).toBeDefined();
+    expect(state.engines[TRACK_POOL_SIZE - 1]).toBeUndefined();
+  });
+
+  it('constructs the engine on enable and fade-disposes it on disable', async () => {
+    vi.useFakeTimers();
+    const synth = useSynth();
+    const state = await synth.ensureAudio();
+    expect(state.engines[10]).toBeUndefined();
+
+    // Enable: the flush:'sync' watcher builds the engine immediately.
+    synth.project.tracks[10].enabled = true;
+    const engine = state.engines[10];
+    expect(engine).toBeDefined();
+    const disposeSpy = vi.spyOn(engine, 'dispose');
+
+    // Disable: the slot empties at once; dispose waits out the anti-click fade.
+    synth.project.tracks[10].enabled = false;
+    expect(state.engines[10]).toBeUndefined();
+    expect(disposeSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(30);
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('pre-enable param edits land when the engine is built on enable', async () => {
+    const synth = useSynth();
+    const state = await synth.ensureAudio();
+    // Edit a disabled slot's slice — no engine yet, nothing to crash.
+    synth.project.tracks[10].engines.synth.filterCutoff = 1234;
+    expect(state.engines[10]).toBeUndefined();
+
+    synth.project.tracks[10].enabled = true;
+    // syncTrackToEngine applies the whole slice at construction — SynthEngine
+    // records the cutoff in baseCutoff.
+    expect(state.engines[10]).toBeDefined();
+    expect((state.engines[10] as any).baseCutoff).toBe(1234);
+  });
+});
+
 describe('sync integration', () => {
   // A minimal stand-in for WsClient: records what the Outbox hands it and lets
   // the test drive inbound messages via the captured onMessage callback. Wired
@@ -549,10 +607,17 @@ describe('variable track count', () => {
     };
   }
 
+  let bootedMod: any = null;
+
   beforeEach(() => {
     vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
+
+  // Settle this test's fade-dispose timers while ITS module instance is still
+  // current — the next test's resetModules would strand them, and they'd fire
+  // after another suite unstubs the AudioNode global.
+  afterEach(() => { bootedMod?.disposeSynth(); bootedMod = null; });
 
   async function boot() {
     try { localStorage.removeItem('fiddle:project'); } catch {}
@@ -564,6 +629,7 @@ describe('variable track count', () => {
     mod.disposeSynth();
     const synth = mod.useSynth();
     await synth.ensureAudio(); // installs the per-track sync watchers
+    bootedMod = mod;
     return { mod, synth, built };
   }
 
