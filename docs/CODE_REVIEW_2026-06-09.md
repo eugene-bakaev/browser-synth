@@ -27,7 +27,7 @@ Status column is for tracking as items get picked up.
 | [M1](#m1) | 🟧 | Connections | Guest session row deleted 5 min before its in-memory room dies | open |
 | [E1](#e1) | 🟧 | Effectiveness | Audio graph builds all 32 pool slots → ~190 always-running oscillators | fixed on `perf/e1-lazy-audio-graph` |
 | [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | open |
-| [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | open |
+| [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | fixed on `fix/m2-self-echo-overwrite` |
 | [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | open |
 | [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | open |
 | [M3a](#m3a) | 🟦 | Connections | Grace-expiry vs. hello race can recreate a room blank | open |

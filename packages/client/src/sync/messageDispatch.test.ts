@@ -1,12 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { dispatchServerMessage, type DispatchDeps } from './messageDispatch.js';
+import { resetApplyOpState } from './applyOp.js';
 import { freshProject, TRACK_POOL_SIZE, type Project, type ServerMessage } from '@fiddle/shared';
 
 function deps(project: Project): DispatchDeps {
   return {
     project,
     wsClient: { recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn() } as unknown as DispatchDeps['wsClient'],
-    outbox: { onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn() } as unknown as DispatchDeps['outbox'],
+    outbox: {
+      onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn(),
+      hasPendingForPath: vi.fn(() => false),
+    } as unknown as DispatchDeps['outbox'],
     onFatalError: vi.fn(),
   };
 }
@@ -31,6 +35,69 @@ describe('snapshot reconcile', () => {
     const d = deps(project);
     dispatchServerMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() }, d);
     expect(d.outbox.reassertPending).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('self-echo skip (M2)', () => {
+  // The per-path opId watermark in applyOp is module state — reset it so the
+  // small opIds these cases use aren't rejected as stale by a previous test.
+  beforeEach(() => { resetApplyOpState(); });
+
+  it('does not write a self-echo when a newer local edit is pending for the path', () => {
+    const project = freshProject();
+    project.bpm = 150; // local state has advanced past the echoed value
+    const d = deps(project);
+    (d.outbox as any).hasPendingForPath = vi.fn(() => true);
+
+    dispatchServerMessage(
+      { v: 1, type: 'set', opId: 1, clientId: 'me', clientSeq: 7, path: ['bpm'], value: 140 },
+      d,
+    );
+
+    expect(project.bpm).toBe(150); // echo of the older value did not snap it back
+    expect(d.outbox.onEcho).toHaveBeenCalledWith(7);
+    expect(d.wsClient.recordOpIdSeen).toHaveBeenCalledWith(1);
+  });
+
+  it('still advances the per-path opId watermark on a skipped echo', () => {
+    const project = freshProject();
+    const d = deps(project);
+    (d.outbox as any).hasPendingForPath = vi.fn(() => true);
+
+    // Skipped self-echo at opId 5...
+    dispatchServerMessage(
+      { v: 1, type: 'set', opId: 5, clientId: 'me', clientSeq: 7, path: ['bpm'], value: 140 },
+      d,
+    );
+    // ...must make an older replayed op (opId 3) for the same path a no-op.
+    (d.wsClient as any).opIdLastSeen = () => 5;
+    dispatchServerMessage(
+      { v: 1, type: 'set', opId: 3, clientId: 'peer', path: ['bpm'], value: 99 },
+      d,
+    );
+    expect(project.bpm).not.toBe(99);
+  });
+
+  it('applies a self-echo normally when nothing newer is pending', () => {
+    const project = freshProject();
+    const d = deps(project);
+    dispatchServerMessage(
+      { v: 1, type: 'set', opId: 1, clientId: 'me', clientSeq: 7, path: ['bpm'], value: 140 },
+      d,
+    );
+    expect(project.bpm).toBe(140);
+  });
+
+  it('never skips a peer op (clientSeq absent), pending or not', () => {
+    const project = freshProject();
+    const d = deps(project);
+    (d.outbox as any).hasPendingForPath = vi.fn(() => true);
+    dispatchServerMessage(
+      { v: 1, type: 'set', opId: 1, clientId: 'peer', path: ['bpm'], value: 133 },
+      d,
+    );
+    expect(project.bpm).toBe(133);
+    expect((d.outbox as any).hasPendingForPath).not.toHaveBeenCalled();
   });
 });
 

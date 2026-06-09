@@ -277,6 +277,31 @@ describe('sync integration', () => {
     expect(fake.sent.length).toBe(0);
   });
 
+  it('a self-echo does not snap a knob back mid-drag (M2)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    // Drag starts: first value flushes after the throttle window → in flight.
+    synth.project.tracks[0].engines.synth.filterCutoff = 1000;
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.length).toBe(1);
+    const seq = fake.sent[0].clientSeq;
+
+    // Drag continues: a newer local value is sitting throttled.
+    synth.project.tracks[0].engines.synth.filterCutoff = 1100;
+
+    // The echo of the OLDER flushed value arrives (~RTT later). It must not
+    // overwrite the newer local value.
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'me', clientSeq: seq,
+      path: ['tracks', 0, 'engines', 'synth', 'filterCutoff'], value: 1000,
+    });
+    expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(1100);
+
+    // The newer value still goes out on the next throttle flush.
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.length).toBe(2);
+    expect(fake.sent[1].value).toBe(1100);
+  });
+
   it('rolls back the local value on nack', async () => {
     const { fake, synth } = await bootWithFakeSocket();
     synth.project.tracks[0].engines.synth.filterCutoff = 1500;

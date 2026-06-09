@@ -34,11 +34,22 @@ export function exitSuppress(): void { applyingFromNetwork = false; }
 // older op cannot overwrite a newer one.
 const lastAppliedOpIdForPath = new Map<string, number>();
 
-export function applyOp(project: Project, op: SetOpBroadcast): boolean {
-  const key = pathKey(op.path);
+// Advance the per-path opId watermark without writing the value. Returns false
+// if `opId` is stale (already at or behind the watermark). Used directly by the
+// self-echo skip in messageDispatch: when a newer local edit is still pending
+// for the path, the echoed value must NOT be written (it would snap the knob
+// backward), but the watermark must still advance so older replayed ops stay
+// rejected.
+export function advanceOpIdForPath(path: SetOpBroadcast['path'], opId: number): boolean {
+  const key = pathKey(path);
   const prev = lastAppliedOpIdForPath.get(key) ?? -1;
-  if (op.opId <= prev) return false;  // stale; ignore
-  lastAppliedOpIdForPath.set(key, op.opId);
+  if (opId <= prev) return false;  // stale; ignore
+  lastAppliedOpIdForPath.set(key, opId);
+  return true;
+}
+
+export function applyOp(project: Project, op: SetOpBroadcast): boolean {
+  if (!advanceOpIdForPath(op.path, op.opId)) return false;
 
   enterSuppress();
   try {

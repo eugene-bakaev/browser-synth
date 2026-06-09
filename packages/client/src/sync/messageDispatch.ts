@@ -16,7 +16,7 @@ import type { ServerMessage, Project } from '@fiddle/shared';
 import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
-import { applyOp, resetApplyOpState, enterSuppress, exitSuppress } from './applyOp.js';
+import { applyOp, advanceOpIdForPath, resetApplyOpState, enterSuppress, exitSuppress } from './applyOp.js';
 import { roster, selfClientId, noteRemoteTouch } from './presence.js';
 import { replaceProject } from '../project/storage.js';
 
@@ -67,13 +67,23 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       if (msg.opId > lastSeen + 1) {
         deps.wsClient.requestResync(lastSeen);
       }
+      let skipWrite = false;
       if (msg.clientSeq != null) {
         // Echo of our own op.
         deps.outbox.onEcho(msg.clientSeq);
-        // Local state already matches (optimistic UI); applyOp still
-        // updates lastAppliedOpIdForPath, which is what we want.
+        // During a continuous drag the echo carries the value from ~RTT ago,
+        // while the local field has since advanced (a newer edit is throttled
+        // or in flight). Writing the echo back would snap the knob — and its
+        // sound — backward, so skip the write but still advance the per-path
+        // opId watermark below. When nothing newer is pending, local state
+        // already matches the echo (optimistic UI) and the write is a no-op.
+        skipWrite = deps.outbox.hasPendingForPath(msg.path);
       }
-      applyOp(deps.project, msg);
+      if (skipWrite) {
+        advanceOpIdForPath(msg.path, msg.opId);
+      } else {
+        applyOp(deps.project, msg);
+      }
       if (msg.clientId !== selfClientId.value) {
         noteRemoteTouch(msg.path, msg.clientId);
       }

@@ -87,6 +87,29 @@ describe('Outbox', () => {
     expect(h.applied).toEqual([{ path: ['bpm'], value: 120 }]);
   });
 
+  it('hasPendingForPath sees throttled, in-flight, and offline entries — and clears on echo', () => {
+    const h = harness();
+    expect(h.outbox.hasPendingForPath(['bpm'])).toBe(false);
+
+    // Throttled (pending tier).
+    h.outbox.enqueue(['bpm'], 121, 120, false);
+    expect(h.outbox.hasPendingForPath(['bpm'])).toBe(true);
+    expect(h.outbox.hasPendingForPath(['tracks', 0, 'mixer', 'volume'])).toBe(false);
+
+    // Sent, awaiting echo (inFlight tier).
+    vi.advanceTimersByTime(50);
+    expect(h.outbox.hasPendingForPath(['bpm'])).toBe(true);
+
+    // Echo resolves it.
+    h.outbox.onEcho(h.sent[0].clientSeq!);
+    expect(h.outbox.hasPendingForPath(['bpm'])).toBe(false);
+
+    // Offline queue tier.
+    h.live.current = false;
+    h.outbox.enqueue(['bpm'], 122, 121, false);
+    expect(h.outbox.hasPendingForPath(['bpm'])).toBe(true);
+  });
+
   it('onEcho clears in-flight entry (no rollback)', () => {
     const h = harness();
     h.outbox.enqueue(['bpm'], 140, 120, true);
