@@ -106,7 +106,15 @@ interface AudioState {
   ctx: AudioContext;
   trackAnalysers: AnalyserNode[];
   trackGains: GainNode[];
-  engines: SoundEngine[];
+  // Sparse: a slot has an engine only while its track is enabled. Disabled
+  // slots are `undefined` — building all TRACK_POOL_SIZE engines eagerly cost
+  // ~190 always-running oscillators rendering silence (a SoundEngine's
+  // oscillators start at construction and never stop; gain=0 does not stop a
+  // Web Audio subgraph from being processed every quantum).
+  engines: (SoundEngine | undefined)[];
+  // Engines mid anti-click fade, waiting on their dispose timer. disposeSynth
+  // settles these immediately so no timer outlives the AudioContext.
+  pendingDisposes: Map<ReturnType<typeof setTimeout>, SoundEngine>;
   scope: EffectScope;
 }
 
@@ -490,6 +498,10 @@ async function buildAudioState(): Promise<AudioState> {
 
   // Per-track analysers tee off each trackGain so the focused panel's
   // oscilloscope shows only that channel, not the summed mix.
+  // Gains + analysers stay eager for all pool slots (unlike engines): with no
+  // source connected they render nothing per quantum, and a fixed dense array
+  // keeps the Visualizer's by-index binding trivial. The expensive part — the
+  // engines' always-running oscillators — is built lazily per enabled slot.
   const trackGains: GainNode[] = [];
   const trackAnalysers: AnalyserNode[] = [];
   for (let i = 0; i < TRACK_POOL_SIZE; i++) {
@@ -503,27 +515,45 @@ async function buildAudioState(): Promise<AudioState> {
     trackAnalysers.push(a);
   }
 
-  const engines: SoundEngine[] = [];
+  const engines: (SoundEngine | undefined)[] = new Array(TRACK_POOL_SIZE).fill(undefined);
+
+  const pendingDisposes: Map<ReturnType<typeof setTimeout>, SoundEngine> = new Map();
+
+  // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop()
+  // doesn't click, then dispose and restore gains (D4 semantics). Shared by
+  // engine-type swaps and slot disables. The timer is tracked in
+  // pendingDisposes so disposeSynth can settle it early.
+  const fadeOutAndDispose = (i: number, engine: SoundEngine) => {
+    trackGains[i].gain.setTargetAtTime(0, ctx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
+    const timer = setTimeout(() => {
+      pendingDisposes.delete(timer);
+      engine.dispose();
+      updateMixerGains();
+    }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+    pendingDisposes.set(timer, engine);
+  };
 
   const syncTrackToEngine = (i: number) => {
     const track = project.tracks[i];
-    const targetType = track.engineType;
     const existing = engines[i];
 
-    if (!existing || existing.engineType !== targetType) {
+    // Disabled slot: no engine at all. Tear down whatever is there so a
+    // disabled track costs zero audio-thread time, not just zero gain.
+    if (!track.enabled) {
       if (existing) {
-        // Fade trackGain to 0 over ~20ms so dispose()'s synchronous osc.stop() doesn't click.
-        trackGains[i].gain.setTargetAtTime(0, ctx.currentTime, ENGINE_SWAP_FADE_SECONDS / 3);
-        const oldEngine = existing;
-        setTimeout(() => {
-          oldEngine.dispose();
-          updateMixerGains();
-        }, (ENGINE_SWAP_FADE_SECONDS * 1000) + 5);
+        engines[i] = undefined;
+        fadeOutAndDispose(i, existing);
       }
+      return;
+    }
+
+    const targetType = track.engineType;
+    if (!existing || existing.engineType !== targetType) {
+      if (existing) fadeOutAndDispose(i, existing);
       engines[i] = engineFactories[targetType](ctx, trackGains[i]);
     }
 
-    engines[i].applyParams(track.engines[targetType] as Record<string, any>);
+    engines[i]!.applyParams(track.engines[targetType] as Record<string, any>);
   };
 
   const updateMixerGains = () => {
@@ -541,7 +571,9 @@ async function buildAudioState(): Promise<AudioState> {
     }
   };
 
-  // Build engines + apply current project tracks (which may already carry pre-play knob edits).
+  // Build engines for ENABLED slots only + apply their current project tracks
+  // (which may already carry pre-play knob edits). Disabled slots stay empty
+  // until their `enabled` watcher fires.
   for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     syncTrackToEngine(i);
   }
@@ -576,11 +608,13 @@ async function buildAudioState(): Promise<AudioState> {
           () => snapshot(project.tracks[i].engines[slice]),
           (newVal, oldVal) => {
             if (project.tracks[i].engineType !== slice) return;
+            const engine = engines[i];
+            if (!engine) return; // disabled slot — params apply on enable via syncTrackToEngine
             const changed = diffParams(
               newVal as unknown as Record<string, unknown>,
               oldVal as unknown as Record<string, unknown>,
             );
-            if (changed) engines[i].applyParams(changed);
+            if (changed) engine.applyParams(changed);
           },
           { flush: 'sync' },
         );
@@ -593,17 +627,22 @@ async function buildAudioState(): Promise<AudioState> {
         { flush: 'sync' },
       );
 
-      // enabled re-gates audio: a disabled slot's gain is zeroed (the sequencer
-      // tick also skips it).
+      // enabled toggles the slot's engine lifecycle: enable constructs the
+      // engine (and applies the slice), disable fade-disposes it — engines
+      // exist only for enabled slots. updateMixerGains re-gates the trackGain
+      // either way. Fires for remote toggles too.
       watch(
         () => project.tracks[i].enabled,
-        () => { updateMixerGains(); },
+        () => {
+          syncTrackToEngine(i);
+          updateMixerGains();
+        },
         { flush: 'sync' },
       );
     }
   });
 
-  return { ctx, trackAnalysers, trackGains, engines, scope };
+  return { ctx, trackAnalysers, trackGains, engines, pendingDisposes, scope };
 }
 
 // Single-flight bootstrap. Concurrent ensureAudio() calls during the
@@ -626,8 +665,15 @@ export function disposeSynth() {
   const state = audioState.value;
   if (!state) return;
   state.scope.stop();
-  for (const engine of state.engines) {
+  // Settle in-flight fade-disposes first so their timers never fire against a
+  // closed AudioContext (or, in tests, after globals are torn down).
+  for (const [timer, engine] of state.pendingDisposes) {
+    clearTimeout(timer);
     engine.dispose();
+  }
+  state.pendingDisposes.clear();
+  for (const engine of state.engines) {
+    engine?.dispose(); // sparse — disabled slots have no engine
   }
   state.ctx.close().catch(() => { /* ctx may already be closed */ });
   audioState.value = null;
@@ -698,6 +744,11 @@ export function useSynth() {
         for (let i = 0; i < TRACK_POOL_SIZE; i++) {
           const track = project.tracks[i];
           if (!track.enabled) continue;
+          // Engine construction rides the synchronous enabled watcher, so an
+          // enabled track always has one — guard anyway so a scheduling tick
+          // racing a toggle can't crash the audio callback.
+          const engine = state.engines[i];
+          if (!engine) continue;
           const step = track.steps[stepIndex % track.patternLength];
           if (step.note && !step.muted) {
             const engineTypeI = track.engineType;
@@ -707,17 +758,17 @@ export function useSynth() {
               const duration = step.length * tickDuration;
               if (currentMode === 'poly') {
                 const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                state.engines[i].trigger(freqs, duration, time, step.velocity);
+                engine.trigger(freqs, duration, time, step.velocity);
               } else {
                 const freq = noteToFreq(step.note, step.octave);
-                state.engines[i].trigger(freq, duration, time, step.velocity);
+                engine.trigger(freq, duration, time, step.velocity);
               }
             } else {
               // Drums are fire-and-forget: pitch + decay come from the engine's
               // Tune/Decay knobs, not from step data. freq/duration are passed
               // as 0 — every drum engine ignores them. step.note here is used
               // only as a trigger flag (null = no trigger) by the outer if.
-              state.engines[i].trigger(0, 0, time, step.velocity);
+              engine.trigger(0, 0, time, step.velocity);
             }
           }
         }
