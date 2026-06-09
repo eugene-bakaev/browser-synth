@@ -121,6 +121,20 @@ export class Outbox {
     this.flushEntry(key, entry);
   }
 
+  /** True if a local edit for `path` is still awaiting delivery or echo —
+   *  throttled (pending), sent-but-unconfirmed (inFlight), or queued offline.
+   *  Used by the self-echo path in messageDispatch: a pending entry means the
+   *  local value is newer than the echoed one, so the echo must not be written
+   *  back over it. Call AFTER onEcho so the just-confirmed entry doesn't count. */
+  hasPendingForPath(path: Path): boolean {
+    const key = pathKey(path);
+    if (this.pending.has(key) || this.offlineQueue.has(key)) return true;
+    for (const entry of this.inFlight.values()) {
+      if (pathKey(entry.path) === key) return true;
+    }
+    return false;
+  }
+
   /** Server confirmed our op (echo, including a duplicate echo). Drop tracking. */
   onEcho(clientSeq: number): void {
     const entry = this.inFlight.get(clientSeq);
