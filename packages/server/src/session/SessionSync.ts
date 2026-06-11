@@ -10,8 +10,13 @@ export const FLUSH_INTERVAL_MS = 60_000;
 //   - flushRoom / flushAllDirty: write the in-memory project to SessionStore.
 //   - a periodic sweep (start/stop) that flushes rooms with unsaved edits.
 //   - handleDisconnect: a flush on every disconnect (a network-blip / crash
-//     boundary) plus a guest-session prune when the room empties (guest rooms are
-//     unreachable once empty, so we drop the row to keep the lobby/tables clean).
+//     boundary). Deliberately non-destructive — the in-memory room survives the
+//     grace window so a reconnect can resume it, and the session row must
+//     survive with it (deleting it here made every post-rejoin flush a silent
+//     no-op; see CODE_REVIEW_2026-06-09 M1).
+//   - handleGraceExpiry: the room's true end of life (grace timer fired with no
+//     reconnect). Final flush, then prune a guest-owned session row (now truly
+//     unreachable), then drop the in-memory room.
 //   - the Fastify onClose hook calls flushAllDirty on graceful shutdown (SIGTERM).
 //
 // saveSnapshot is a no-op when the session row is absent (see SessionStore), so
@@ -63,16 +68,26 @@ export class SessionSync {
   }
 
   // Called by the ws route after a socket closes. Always flush (disconnect is a
-  // good persistence boundary); when the room is now empty, also prune a
-  // guest-owned session (it is unreachable from here on).
-  async handleDisconnect(roomId: string, roomNowEmpty: boolean): Promise<void> {
+  // good persistence boundary). Nothing is deleted here: an empty room is still
+  // reachable for the whole grace window, so destruction waits for
+  // handleGraceExpiry.
+  async handleDisconnect(roomId: string): Promise<void> {
     await this.flushRoom(roomId);
-    if (!roomNowEmpty) return;
+  }
+
+  // Called when the grace timer fires: no one reconnected, so the room is now
+  // truly unreachable. Ordering matters — flush while the in-memory room still
+  // exists (last chance for edits whose disconnect flush failed), then prune
+  // the guest session row (a guest has no way back to it; cascades the
+  // snapshot), then drop the in-memory room.
+  async handleGraceExpiry(roomId: string): Promise<void> {
+    await this.flushRoom(roomId);
     const record = await this.sessions.get(roomId);
     if (record && record.ownerUserId === null) {
       await this.sessions.delete(roomId); // cascades the snapshot
-      this.log('guest session pruned on empty', { roomId });
+      this.log('guest session pruned after grace', { roomId });
     }
+    await this.rooms.pruneRoom(roomId);
   }
 
   // Timer wrapper around flushAllDirty: skips the tick if a sweep is still in

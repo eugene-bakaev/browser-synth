@@ -86,21 +86,23 @@ describe('SessionSync', () => {
     expect((await sessions.getSnapshot('r2'))?.bpm).toBe(freshProject().bpm); // untouched
   });
 
-  it('handleDisconnect flushes, then prunes a guest session when the room empties', async () => {
+  it('handleDisconnect flushes but keeps the guest session row (prune waits for grace expiry)', async () => {
     const rooms = new InMemoryRoomStore();
     const sessions = new InMemorySessionStore();
     await sessions.create(sessionInput({ id: 'g', ownerUserId: null, ownerClientId: 'c1' }));
     await rooms.getOrCreate('g', freshProject);
-    await rooms.appendOp('g', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 120 });
+    await rooms.appendOp('g', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 133 });
 
     const sync = new SessionSync(rooms, sessions);
-    await sync.handleDisconnect('g', true);
+    await sync.handleDisconnect('g');
 
-    expect(await sessions.get('g')).toBeNull();
-    expect(await sessions.getSnapshot('g')).toBeNull();
+    // The room is still reachable for the whole grace window: a guest who
+    // refreshes resumes it, and flushes must keep persisting (M1).
+    expect(await sessions.get('g')).not.toBeNull();
+    expect((await sessions.getSnapshot('g'))?.bpm).toBe(133);
   });
 
-  it('handleDisconnect keeps a logged-in session when the room empties', async () => {
+  it('handleDisconnect flushes a logged-in session', async () => {
     const rooms = new InMemoryRoomStore();
     const sessions = new InMemorySessionStore();
     await sessions.create(sessionInput({ id: 'r1', ownerUserId: 'u1' }));
@@ -108,10 +110,42 @@ describe('SessionSync', () => {
     await rooms.appendOp('r1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 88 });
 
     const sync = new SessionSync(rooms, sessions);
-    await sync.handleDisconnect('r1', true);
+    await sync.handleDisconnect('r1');
 
     expect(await sessions.get('r1')).not.toBeNull();
     expect((await sessions.getSnapshot('r1'))?.bpm).toBe(88);
+  });
+
+  it('handleGraceExpiry flushes, prunes a guest session row + snapshot, and drops the room', async () => {
+    const rooms = new InMemoryRoomStore();
+    const sessions = new InMemorySessionStore();
+    await sessions.create(sessionInput({ id: 'g', ownerUserId: null, ownerClientId: 'c1' }));
+    await rooms.getOrCreate('g', freshProject);
+    await rooms.appendOp('g', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 142 });
+
+    const sync = new SessionSync(rooms, sessions);
+    await sync.handleGraceExpiry('g');
+
+    expect(await sessions.get('g')).toBeNull();
+    expect(await sessions.getSnapshot('g')).toBeNull();
+    expect(await rooms.peekProject('g')).toBeNull(); // in-memory room pruned
+  });
+
+  it('handleGraceExpiry keeps a logged-in session row, persists dirty edits, and drops the room', async () => {
+    const rooms = new InMemoryRoomStore();
+    const sessions = new InMemorySessionStore();
+    await sessions.create(sessionInput({ id: 'r1', ownerUserId: 'u1' }));
+    await rooms.getOrCreate('r1', freshProject);
+    // Dirty edit whose disconnect-time flush "failed" (never ran) — expiry is
+    // the last chance to persist it, and must do so BEFORE pruning the room.
+    await rooms.appendOp('r1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 77 });
+
+    const sync = new SessionSync(rooms, sessions);
+    await sync.handleGraceExpiry('r1');
+
+    expect(await sessions.get('r1')).not.toBeNull();
+    expect((await sessions.getSnapshot('r1'))?.bpm).toBe(77);
+    expect(await rooms.peekProject('r1')).toBeNull();
   });
 
   it('flushRoom on a pruned/unknown room is a no-op', async () => {

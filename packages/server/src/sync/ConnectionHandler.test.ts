@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { SESSION_LOAD_TIMEOUT_MS, HELLO_DEADLINE_MS } from './ConnectionHandler.js';
+import { GRACE_MS } from '../room/RoomStore.js';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemoryProfileStore } from '../profile/InMemoryProfileStore.js';
@@ -259,6 +260,51 @@ describe('ConnectionHandler', () => {
       expect(sockA2.sent.find((m) => m.type === 'error' && m.code === 'resume.unknown_client')).toBeUndefined();
       // A is live again.
       expect((await store.listConnected('room1')).map((i) => i.clientId)).toContain(aId);
+    });
+  });
+
+  describe('grace expiry', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('last-socket close fires the injected onGraceExpire after GRACE_MS (room end-of-life is delegated)', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const onGraceExpire = vi.fn(async () => {});
+      const handler = new ConnectionHandler(
+        'room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        undefined, undefined, onGraceExpire,
+      );
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      pool.remove('room1', socket);
+      await handler.onClose();
+      expect(onGraceExpire).not.toHaveBeenCalled(); // grace window, not socket close
+
+      await vi.advanceTimersByTimeAsync(GRACE_MS);
+      expect(onGraceExpire).toHaveBeenCalledWith('room1');
+      // pruneRoom is the delegate's job now — the handler must not race it.
+      expect(await store.peekProject('room1')).not.toBeNull();
+    });
+
+    it('without an injected onGraceExpire, the default still prunes the in-memory room', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      pool.remove('room1', socket);
+      await handler.onClose();
+      expect(await store.peekProject('room1')).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(GRACE_MS);
+      expect(await store.peekProject('room1')).toBeNull();
     });
   });
 

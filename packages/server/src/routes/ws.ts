@@ -30,6 +30,7 @@ interface Deps {
   profiles: ProfileStore;
   sessionSync: SessionSync;
   loadSession: SessionLoader;
+  onGraceExpire: (roomId: string) => Promise<void>;
   log: Log;
 }
 
@@ -68,6 +69,8 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
       deps.verify,
       deps.profiles,
       deps.loadSession,
+      undefined,
+      deps.onGraceExpire,
     );
     // Arm the hello deadline immediately so a socket that opens but never
     // completes the handshake can't squat in the pool (no heartbeat pre-hello).
@@ -88,16 +91,16 @@ export async function wsRoute(app: FastifyInstance, deps: Deps) {
     socket.on('close', (code: number) => {
       // Remove from pool BEFORE onClose so pool.size === 0 means "last socket".
       deps.pool.remove(roomId, adapted);
-      const roomNowEmpty = deps.pool.size(roomId) === 0;
       app.log.info(
         { roomId, code, conns: deps.pool.totalConnections(), rooms: deps.pool.roomCount() },
         'ws close',
       );
       handler.onClose().catch((err) => app.log.error({ err }, 'ws onClose'));
-      // Persist the room's project on every disconnect (and prune guest sessions
-      // when the room empties). Independent of onClose; both read live state.
+      // Persist the room's project on every disconnect. Independent of onClose;
+      // both read live state. Guest-session pruning happens at grace expiry
+      // (onGraceExpire), not here — the room is still reachable until then.
       deps.sessionSync
-        .handleDisconnect(roomId, roomNowEmpty)
+        .handleDisconnect(roomId)
         .catch((err) => app.log.error({ err }, 'session disconnect'));
     });
   });
