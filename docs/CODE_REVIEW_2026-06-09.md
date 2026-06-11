@@ -24,7 +24,7 @@ Status column is for tracking as items get picked up.
 
 | # | Sev | Lens | Title | Status |
 |---|-----|------|-------|--------|
-| [M1](#m1) | 🟧 | Connections | Guest session row deleted 5 min before its in-memory room dies | open |
+| [M1](#m1) | 🟧 | Connections | Guest session row deleted 5 min before its in-memory room dies | fixed on `fix/m1-guest-prune-grace` |
 | [E1](#e1) | 🟧 | Effectiveness | Audio graph builds all 32 pool slots → ~190 always-running oscillators | fixed on `perf/e1-lazy-audio-graph` |
 | [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | open |
 | [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | fixed on `fix/m2-self-echo-overwrite` |
