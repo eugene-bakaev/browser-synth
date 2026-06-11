@@ -26,7 +26,7 @@ Status column is for tracking as items get picked up.
 |---|-----|------|-------|--------|
 | [M1](#m1) | 🟧 | Connections | Guest session row deleted 5 min before its in-memory room dies | fixed on `fix/m1-guest-prune-grace` |
 | [E1](#e1) | 🟧 | Effectiveness | Audio graph builds all 32 pool slots → ~190 always-running oscillators | fixed on `perf/e1-lazy-audio-graph` |
-| [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | open |
+| [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | fixed on `docs/d1-b1-architecture-refresh` |
 | [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | fixed on `fix/m2-self-echo-overwrite` |
 | [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | fixed on `fix/s1-e3-s2-client-hygiene` |
 | [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | fixed on `perf/e2-dedup-index` |
@@ -36,7 +36,7 @@ Status column is for tracking as items get picked up.
 | [D2](#d2) | 🟦 | Docs | Sync path never runs deep repair (the documented normalize split's open half) | fixed on `fix/d2-sync-deep-repair` |
 | [E3](#e3) | 🟦 | Effectiveness | sessionStorage read/parse/write per op during peer knob drags | fixed on `fix/s1-e3-s2-client-hygiene` |
 | [S2](#s2) | 🟦 | Simplicity | Knob drag listeners not removed on unmount | fixed on `fix/s1-e3-s2-client-hygiene` |
-| [B1](#b1) | 🟦 | Docs | Stale BACKLOG entry (empty-snapshot clobber) overtaken by session-scoped rooms | open |
+| [B1](#b1) | 🟦 | Docs | Stale BACKLOG entry (empty-snapshot clobber) overtaken by session-scoped rooms | fixed on `docs/d1-b1-architecture-refresh` |
 
 **Suggested priority order:** M1 → E1 → D1 → M2 → S1 → the rest opportunistically.
 Rationale: M1 is silent user data loss; E1 taxes every user on every PLAY; D1 makes
