@@ -23,6 +23,9 @@ function opIndexKey(clientId: string, clientSeq: number): string {
 
 export class InMemoryRoomStore implements RoomStore {
   private readonly rooms = new Map<string, RoomState>();
+  // In-flight grace-expiry chains, keyed by roomId. Kept off RoomState because
+  // the chain itself prunes the room — the promise must outlive the entry.
+  private readonly expiries = new Map<string, Promise<void>>();
 
   async getOrCreate(
     roomId: string,
@@ -148,20 +151,38 @@ export class InMemoryRoomStore implements RoomStore {
     );
   }
 
-  async startGrace(roomId: string, onExpire: () => void): Promise<void> {
+  async startGrace(roomId: string, onExpire: () => void | Promise<void>): Promise<void> {
     const room = this.requireRoom(roomId);
     if (room.graceTimer) {
       clearTimeout(room.graceTimer);
     }
-    room.graceTimer = setTimeout(onExpire, GRACE_MS);
+    room.graceTimer = setTimeout(() => {
+      room.graceTimer = null;
+      // Track the (possibly async) expiry chain so cancelGrace can wait it
+      // out — a hello must never race a room that is mid-teardown (M3a).
+      // onExpire owns its own error logging; the catch only keeps a rejected
+      // chain from becoming an unhandled rejection via the map.
+      const run = Promise.resolve()
+        .then(onExpire)
+        .catch(() => {})
+        .finally(() => {
+          this.expiries.delete(roomId);
+        });
+      this.expiries.set(roomId, run);
+    }, GRACE_MS);
   }
 
   async cancelGrace(roomId: string): Promise<void> {
-    const room = this.requireRoom(roomId);
-    if (room.graceTimer) {
+    // No requireRoom: hello settles grace state before it knows whether the
+    // room is live, and an expiry chain may already have pruned it.
+    const room = this.rooms.get(roomId);
+    if (room?.graceTimer) {
       clearTimeout(room.graceTimer);
       room.graceTimer = null;
     }
+    // Timer already fired? Wait for the expiry chain to finish so the caller
+    // observes a settled room (fully pruned), never a half-expired one.
+    await this.expiries.get(roomId);
   }
 
   async pruneRoom(roomId: string): Promise<void> {

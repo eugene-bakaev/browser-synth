@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemoryRoomStore } from './InMemoryRoomStore.js';
+import { GRACE_MS } from './RoomStore.js';
 
 describe('InMemoryRoomStore.appendOp dedupe', () => {
   it('returns the original op when the same (clientId, clientSeq) is re-appended', async () => {
@@ -207,5 +208,61 @@ describe('InMemoryRoomStore version-gated clearDirty', () => {
     const v2 = await store.roomVersion('r');
     await store.clearDirty('r', v2!);                 // current version → clears
     expect(await store.listDirtyRoomIds()).not.toContain('r');
+  });
+});
+
+describe('InMemoryRoomStore grace lifecycle (M3a)', () => {
+  let store: InMemoryRoomStore;
+  beforeEach(() => {
+    store = new InMemoryRoomStore();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('cancelGrace is a no-op for an unknown room (hello settles grace before the room exists)', async () => {
+    await expect(store.cancelGrace('nope')).resolves.toBeUndefined();
+  });
+
+  it('cancelGrace before expiry stops the timer (onExpire never runs)', async () => {
+    await store.getOrCreate('r', freshProject);
+    const onExpire = vi.fn();
+    await store.startGrace('r', onExpire);
+    await store.cancelGrace('r');
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
+    expect(onExpire).not.toHaveBeenCalled();
+  });
+
+  it('cancelGrace waits out an in-flight async expiry chain', async () => {
+    await store.getOrCreate('r', freshProject);
+    let release!: () => void;
+    const gate = new Promise<void>((res) => { release = res; });
+    const order: string[] = [];
+    await store.startGrace('r', async () => {
+      order.push('expiry start');
+      await gate; // simulates the flush / DB work in SessionSync.handleGraceExpiry
+      await store.pruneRoom('r');
+      order.push('expiry done');
+    });
+
+    await vi.advanceTimersByTimeAsync(GRACE_MS); // timer fires; chain parks on the gate
+    const cancelled = store.cancelGrace('r').then(() => order.push('cancel resolved'));
+    release();
+    await cancelled;
+
+    // cancelGrace must resolve only after the teardown finished — the caller
+    // sees a fully-pruned room, never a half-expired one.
+    expect(order).toEqual(['expiry start', 'expiry done', 'cancel resolved']);
+    expect(await store.peekProject('r')).toBeNull();
+  });
+
+  it('a rejected expiry chain still settles cancelGrace (no unhandled rejection)', async () => {
+    await store.getOrCreate('r', freshProject);
+    await store.startGrace('r', async () => {
+      throw new Error('flush failed');
+    });
+    await vi.advanceTimersByTimeAsync(GRACE_MS);
+    await expect(store.cancelGrace('r')).resolves.toBeUndefined();
   });
 });
