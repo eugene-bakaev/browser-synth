@@ -10,6 +10,22 @@ import type { Project } from '@fiddle/shared';
 import type { SessionStore } from '../session/SessionStore.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
 import { buildLobbyList } from '../session/lobby.js';
+import { KeyedTokenBucket } from './rate-limit.js';
+
+// Creation rate limit, per IP: each create writes a session row plus a full
+// project snapshot (~hundreds of KB packed), so an unthrottled loop fills the
+// DB and the lobby. Burst 5 covers any human flow; refill 1 per 30s caps
+// sustained creation at 2/min per IP. Keyed by req.ip — real client IPs need
+// trustProxy on the Fastify instance (set in buildServer; Render terminates
+// at its proxy). SESSION_CREATE_BURST overrides the burst for test harnesses
+// that legitimately create many sessions from one IP (the e2e suite).
+export const CREATE_BURST = 5;
+export const CREATE_REFILL_MS = 30_000;
+
+function configuredBurst(): number {
+  const raw = Number(process.env.SESSION_CREATE_BURST);
+  return Number.isFinite(raw) && raw > 0 ? raw : CREATE_BURST;
+}
 
 interface Deps {
   sessions: SessionStore;
@@ -17,6 +33,8 @@ interface Deps {
   // Live member counts per room, injected so the route stays decoupled from the
   // RoomStore type (buildServer passes () => roomStore.roomMemberCounts()).
   liveCounts: () => Promise<Map<string, number>>;
+  // Override for tests; defaults to the per-IP creation limiter above.
+  createLimiter?: KeyedTokenBucket;
 }
 
 function bearer(req: FastifyRequest): string | null {
@@ -56,8 +74,13 @@ export async function sessionsRoute(app: FastifyInstance, deps: Deps) {
     };
   });
 
+  const createLimiter = deps.createLimiter ?? new KeyedTokenBucket(configuredBurst(), CREATE_REFILL_MS);
+
   // Create. Bearer JWT → logged-in owner; otherwise guest (needs clientId).
   app.post('/api/sessions', async (req, reply) => {
+    if (!createLimiter.consume(req.ip)) {
+      return reply.code(429).send({ error: 'too many sessions created, try again shortly' });
+    }
     const parsed = CreateSessionBodySchema.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: 'invalid body', details: parsed.error.flatten() });

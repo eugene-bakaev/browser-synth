@@ -17,6 +17,9 @@ let app: ReturnType<typeof buildServer>;
 let port: number;
 
 beforeAll(async () => {
+  // Every test creates its session from 127.0.0.1 — lift the per-IP create
+  // burst so the suite doesn't trip the M4 rate limit it isn't testing.
+  process.env.SESSION_CREATE_BURST = '1000';
   app = buildServer();
   await app.listen({ port: 0, host: '127.0.0.1' });
   port = (app.server.address() as AddressInfo).port;
