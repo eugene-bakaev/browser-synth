@@ -1,6 +1,5 @@
-import { toRaw, watch, type WatchStopHandle } from 'vue';
+import { toRaw } from 'vue';
 import { deepMerge } from '../utils/deepMerge';
-import { debounce } from '../utils/debounce';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine }  from '../engine/KickEngine';
 import { HatEngine }   from '../engine/HatEngine';
@@ -16,9 +15,6 @@ import {
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
 import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, STEP_BUFFER_SIZE, coerceBpm } from '@fiddle/shared';
-
-const STORAGE_KEY = 'fiddle:project';
-const SAVE_DEBOUNCE_MS = 500;
 
 function reconcileSteps(loaded: unknown, defaults: Step[]): Step[] {
   if (!Array.isArray(loaded)) {
@@ -87,55 +83,16 @@ export function reconcileWithDefaults(loaded: unknown): Project {
   return out;
 }
 
-export function loadProject(): Project {
-  let raw: string | null = null;
-  try {
-    raw = localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return freshProject();
-  }
-  if (raw === null) return freshProject();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (e) {
-    console.warn('Project load failed (invalid JSON), starting fresh:', e);
-    return freshProject();
-  }
-
-  const migrated = migrateToLatest(parsed);
-  return reconcileWithDefaults(migrated);
-}
-
-export function installAutoSave(project: Project): () => void {
-  const save = debounce(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toRaw(project)));
-    } catch (e) {
-      console.warn('Project save failed:', e);
-    }
-  }, SAVE_DEBOUNCE_MS);
-
-  const stop: WatchStopHandle = watch(project, save, { deep: true });
-
-  return () => {
-    save.cancel();
-    stop();
-  };
-}
-
-// JSON snapshot suitable for writing to disk or localStorage. Going through
+// JSON snapshot suitable for writing to disk. Going through
 // toRaw strips Vue's reactive proxies so JSON.stringify can't trip on proxy
 // metadata or circular reactive structures.
 export function serializeProject(project: Project): string {
   return JSON.stringify(toRaw(project));
 }
 
-// Inverse of serializeProject. Mirrors loadProject's parse step: invalid
-// JSON warns + returns a freshProject; valid JSON goes through
-// migrateToLatest + reconcileWithDefaults. Future-schemaVersion still
-// throws (the only unrecoverable case).
+// Inverse of serializeProject: invalid JSON warns + returns a freshProject;
+// valid JSON goes through migrateToLatest + reconcileWithDefaults.
+// Future-schemaVersion still throws (the only unrecoverable case).
 export function deserializeProject(text: string): Project {
   let parsed: unknown;
   try {

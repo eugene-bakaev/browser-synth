@@ -20,8 +20,6 @@ import {
   type Project,
   type ProjectTrack,
   type EngineType,
-  loadProject,
-  installAutoSave,
   freshProject,
   replaceProject,
 } from '../project';
@@ -37,10 +35,14 @@ import { roster, selfClientId, resetPresence } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
 import type { Path } from '@fiddle/shared';
 
-// === Pure data state — built from localStorage (or fresh) at module init. ===
+// === Pure data state — fresh at module init. ===
+//
+// The app is session-only: connectToSession resets this to fresh before the
+// room snapshot replaces it, so nothing ever rendered a locally-persisted
+// project. The old localStorage load/autosave path was removed (review S1) —
+// file save/open (file-io.ts) is the offline persistence story.
 
-const project: Project = reactive(loadProject());
-installAutoSave(project);   // debounced localStorage writes
+const project: Project = reactive(freshProject());
 
 const sequencer = reactive(new Sequencer());
 

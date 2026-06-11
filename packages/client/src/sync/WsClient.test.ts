@@ -362,6 +362,42 @@ describe('WsClient', () => {
     expect(sock.sent.filter((s) => JSON.parse(s).type === 'resync')).toHaveLength(0);
   });
 
+  it('caches persisted state in memory — per-op reads never hit storage, writes still go through (E3)', () => {
+    // A peer dragging a knob is ~20 inbound ops/sec; each op consults
+    // opIdLastSeen (gap check) and records the new opId. Pre-fix that was two
+    // synchronous getItem+JSON.parse per op. The cache must eliminate the reads
+    // while keeping every mutation written through (crash-resume depends on
+    // storage always holding the latest clientSeq/opIdLastSeen).
+    const inner = memoryStorage();
+    let reads = 0;
+    const counting: Storage = {
+      ...inner,
+      getItem: (k) => {
+        reads += 1;
+        return inner.getItem(k);
+      },
+      setItem: (k, v) => inner.setItem(k, v),
+    };
+    const { client } = makeClient({ storage: counting });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    driveLive(client, sock);
+    const readsAfterHandshake = reads;
+
+    // Simulate a 100-op peer drag plus our own outbound numbering.
+    for (let opId = 1; opId <= 100; opId++) {
+      client.opIdLastSeen();
+      client.recordOpIdSeen(opId);
+    }
+    client.nextClientSeq();
+    expect(reads).toBe(readsAfterHandshake); // zero storage reads per op
+
+    // Write-through intact: storage holds the latest state for crash-resume.
+    const stored = JSON.parse(inner.getItem('fiddle:sync:room')!);
+    expect(stored.opIdLastSeen).toBe(100);
+    expect(stored.clientSeq).toBe(1);
+  });
+
   it('re-arms resync after a timeout when no sync.complete arrives (dropped/rate-limited)', () => {
     vi.useFakeTimers();
     try {
