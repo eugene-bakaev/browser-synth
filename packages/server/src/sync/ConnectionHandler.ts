@@ -227,11 +227,14 @@ export class ConnectionHandler {
       // The callback runs from a bare timer, so rejections must be caught here
       // or they become unhandled.
       const expire = this.onGraceExpire ?? ((roomId: string) => this.store.pruneRoom(roomId));
-      await this.store.startGrace(this.roomId, () => {
+      // Return the chain so the store can track it: cancelGrace awaits an
+      // in-flight expiry, which is what keeps a reconnect hello from racing
+      // the teardown (M3a).
+      await this.store.startGrace(this.roomId, () =>
         expire(this.roomId)
           .then(() => this.log('room pruned after grace', { roomId: this.roomId }))
-          .catch((err) => this.log('grace expiry cleanup failed', { roomId: this.roomId, err }));
-      });
+          .catch((err) => this.log('grace expiry cleanup failed', { roomId: this.roomId, err })),
+      );
       return;
     }
 
@@ -269,6 +272,13 @@ export class ConnectionHandler {
     // session. If it isn't already live in memory, load its durable project; a
     // null result means "no such session" — reject so the client bounces to the
     // lobby. Auto-mint is gone.
+    // Settle the room's grace state BEFORE deciding the seed (M3a). Cancelling
+    // up front means the timer can't fire between the alreadyLive peek and
+    // getOrCreate (which would recreate the room blank); and if the expiry
+    // chain is already in flight, cancelGrace waits for it to finish, so the
+    // peek sees a fully-pruned room and we take the durable-load path instead.
+    await this.store.cancelGrace(this.roomId);
+
     let seed: () => Project = freshProject;
     const alreadyLive = (await this.store.peekProject(this.roomId)) !== null;
     if (!alreadyLive) {
@@ -295,7 +305,6 @@ export class ConnectionHandler {
       seed = () => normalizeProject(project);
     }
     const { opIdHead } = await this.store.getOrCreate(this.roomId, seed);
-    await this.store.cancelGrace(this.roomId);
 
     let identity: Identity | null = null;
     let resumeIdentityWarning: 'unknown_client' | null = null;

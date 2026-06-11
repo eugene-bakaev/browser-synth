@@ -62,8 +62,13 @@ export interface RoomStore {
   listConnected(roomId: string): Promise<Identity[]>;
 
   // Lifecycle: empty rooms enter a grace window before being pruned so brief
-  // disconnects don't wipe state.
-  startGrace(roomId: string, onExpire: () => void): Promise<void>;
+  // disconnects don't wipe state. onExpire may be async (flush → row prune →
+  // pruneRoom); the store tracks the in-flight chain.
+  startGrace(roomId: string, onExpire: () => void | Promise<void>): Promise<void>;
+  // Settles the room's grace state: clears a pending timer, and if the timer
+  // already fired, waits for the in-flight expiry chain to finish — so a caller
+  // never observes a room that is mid-teardown (M3a). No-op for unknown rooms
+  // (hello calls this before it knows whether the room is live).
   cancelGrace(roomId: string): Promise<void>;
   pruneRoom(roomId: string): Promise<void>;
 

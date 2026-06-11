@@ -306,6 +306,69 @@ describe('ConnectionHandler', () => {
       await vi.advanceTimersByTimeAsync(GRACE_MS);
       expect(await store.peekProject('room1')).toBeNull();
     });
+
+    it('hello during an in-flight grace expiry waits for teardown and reloads durably (M3a)', async () => {
+      // The race: the grace timer fires, the async expiry chain (flush → row
+      // prune → pruneRoom) is mid-flight, and a reconnect hello arrives.
+      // Pre-fix the hello peeked a still-live room (alreadyLive), skipped the
+      // durable load, and the prune then deleted the room underneath the new
+      // socket — the served snapshot was the doomed in-memory copy and the
+      // next op crashed on "Room not found".
+      const pool = new FakePool();
+      // Fresh object per call, like a real DB read — the room seeds from the
+      // loaded project by reference, so a shared mock object would alias the
+      // live room and absorb its edits.
+      const loadSession = vi.fn(async () => {
+        const durable = freshProject();
+        durable.bpm = 99;
+        return { project: durable };
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((res) => { release = res; });
+      const onGraceExpire = vi.fn(async (roomId: string) => {
+        await gate; // parks the chain mid-teardown, like a slow flush
+        await store.pruneRoom(roomId);
+      });
+
+      const sockA = makeMockSocket();
+      pool.add('room1', sockA);
+      const handlerA = new ConnectionHandler(
+        'room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        loadSession, undefined, onGraceExpire,
+      );
+      await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      // A local edit that will (correctly) be lost: grace genuinely expired,
+      // so the room must come back from the durable snapshot, not this copy.
+      await handlerA.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 150 });
+      pool.remove('room1', sockA);
+      await handlerA.onClose();
+
+      await vi.advanceTimersByTimeAsync(GRACE_MS); // timer fires; chain parks on the gate
+      expect(onGraceExpire).toHaveBeenCalledWith('room1');
+
+      const sockB = makeMockSocket();
+      pool.add('room1', sockB);
+      const handlerB = new ConnectionHandler(
+        'room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        loadSession, undefined, onGraceExpire,
+      );
+      const helloB = handlerB.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      release();
+      await helloB;
+
+      // The hello waited out the teardown and took the durable-load path.
+      expect(loadSession).toHaveBeenCalledTimes(2);
+      const snapshot = sockB.sent.find((m) => m.type === 'snapshot');
+      if (!snapshot || snapshot.type !== 'snapshot') throw new Error('no snapshot served');
+      expect(snapshot.project.bpm).toBe(99); // durable seed, not the pruned in-memory copy
+
+      // And the recreated room is genuinely live: an op after the (now
+      // complete) expiry sticks instead of crashing on a missing room.
+      sockB.sent.length = 0;
+      await handlerB.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 101 });
+      expect(sockB.sent.find((m) => m.type === 'set')).toBeDefined();
+      expect((await store.peekProject('room1'))?.bpm).toBe(101);
+    });
   });
 
   describe('set op handling', () => {
