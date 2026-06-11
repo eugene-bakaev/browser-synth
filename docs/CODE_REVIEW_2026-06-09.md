@@ -31,8 +31,8 @@ Status column is for tracking as items get picked up.
 | [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | open |
 | [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | fixed on `perf/e2-dedup-index` |
 | [M3a](#m3a) | 🟦 | Connections | Grace-expiry vs. hello race can recreate a room blank | fixed on `fix/m3a-grace-hello-race` |
-| [M3b](#m3b) | 🟦 | Connections | Duplicated browser tab → two sockets resume one clientId | open |
-| [M4](#m4) | 🟦 | Connections | `POST /api/sessions` unlimited; never-joined guest sessions never pruned | open |
+| [M3b](#m3b) | 🟦 | Connections | Duplicated browser tab → two sockets resume one clientId | fixed on `fix/m3b-m4-connections-hygiene` |
+| [M4](#m4) | 🟦 | Connections | `POST /api/sessions` unlimited; never-joined guest sessions never pruned | fixed on `fix/m3b-m4-connections-hygiene` |
 | [D2](#d2) | 🟦 | Docs | Sync path never runs deep repair (the documented normalize split's open half) | fixed on `fix/d2-sync-deep-repair` |
 | [E3](#e3) | 🟦 | Effectiveness | sessionStorage read/parse/write per op during peer knob drags | open |
 | [S2](#s2) | 🟦 | Simplicity | Knob drag listeners not removed on unmount | open |

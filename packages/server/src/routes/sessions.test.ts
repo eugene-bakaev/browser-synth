@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
 import { freshProject, DEFAULT_SESSION_SETTINGS, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { InMemorySessionStore } from '../session/InMemorySessionStore.js';
-import { sessionsRoute } from './sessions.js';
+import { sessionsRoute, CREATE_BURST } from './sessions.js';
 import type { VerifiedClaims } from '../auth/verifyToken.js';
 import type { CreateSessionInput } from '../session/SessionStore.js';
 
@@ -63,6 +63,23 @@ describe('sessions HTTP API', () => {
     const rec = await sessions.get(id);
     expect(rec?.ownerUserId).toBeNull();
     expect(rec?.ownerClientId).toBe('client-9');
+    await app.close();
+  });
+
+  it('POST is rate-limited per IP once the burst is spent (M4)', async () => {
+    const { app } = build();
+    // inject() reports the same remote address for every request, so this
+    // exercises the per-IP budget end to end with the production defaults.
+    for (let i = 0; i < CREATE_BURST; i++) {
+      const ok = await app.inject({
+        method: 'POST', url: '/api/sessions', payload: { name: `s${i}`, clientId: 'c1' },
+      });
+      expect(ok.statusCode).toBe(201);
+    }
+    const limited = await app.inject({
+      method: 'POST', url: '/api/sessions', payload: { name: 'overflow', clientId: 'c1' },
+    });
+    expect(limited.statusCode).toBe(429);
     await app.close();
   });
 

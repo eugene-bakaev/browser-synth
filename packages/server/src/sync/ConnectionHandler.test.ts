@@ -261,6 +261,50 @@ describe('ConnectionHandler', () => {
       // A is live again.
       expect((await store.listConnected('room1')).map((i) => i.clientId)).toContain(aId);
     });
+
+    it('a duplicated tab presenting a still-connected clientId gets a fresh identity, not a resume (M3b)', async () => {
+      // Chrome's tab-duplicate copies sessionStorage, so both tabs hello with
+      // the same clientId. Resuming both would collide their clientSeq counters
+      // and the dedup index would swallow the second tab's ops as duplicates.
+      const sockA = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sockA);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      const aId = clientIdOf(sockA);
+
+      // Tab B connects while A is still live, presenting A's clientId.
+      const sockB = makeMockSocket();
+      pool.add('room1', sockB);
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handlerB.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        clientId: aId,
+        resumeFromOpId: 0,
+      });
+
+      const w = sockB.sent.find((m) => m.type === 'welcome');
+      if (!w || w.type !== 'welcome') throw new Error('no welcome');
+      expect(w.clientId).not.toBe(aId); // fresh identity minted
+      const warn = sockB.sent.find((m) => m.type === 'error');
+      expect(warn).toBeDefined();
+      if (!warn || warn.type !== 'error') throw new Error('unreachable');
+      expect(warn.code).toBe('resume.duplicate_client');
+      expect(warn.fatal).toBe(false);
+
+      // Both tabs are distinct live members now.
+      const connected = (await store.listConnected('room1')).map((i) => i.clientId);
+      expect(connected.sort()).toEqual([aId, w.clientId].sort());
+
+      // The regression that motivated this: identical clientSeq from both tabs
+      // must land as two distinct ops, not dedup into one.
+      sockA.sent.length = 0;
+      await handlerA.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 130 });
+      await handlerB.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 140 });
+      expect((await store.peekProject('room1'))?.bpm).toBe(140); // B's op applied, not swallowed
+    });
   });
 
   describe('grace expiry', () => {

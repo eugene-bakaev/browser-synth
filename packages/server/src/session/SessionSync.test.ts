@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { freshProject, DEFAULT_SESSION_SETTINGS, PROJECT_SCHEMA_VERSION } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
 import { InMemorySessionStore } from './InMemorySessionStore.js';
-import { SessionSync } from './SessionSync.js';
+import { SessionSync, STALE_GUEST_SESSION_MS } from './SessionSync.js';
 import type { CreateSessionInput } from './SessionStore.js';
 
 function sessionInput(over: Partial<CreateSessionInput> = {}): CreateSessionInput {
@@ -197,5 +197,65 @@ describe('SessionSync', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('pruneStaleGuestSessions (M4)', () => {
+    const WEEK = STALE_GUEST_SESSION_MS;
+
+    async function createAged(
+      sessions: InMemorySessionStore,
+      over: Partial<CreateSessionInput>,
+      ageMs: number,
+    ): Promise<void> {
+      await sessions.create(sessionInput(over));
+      const record = await sessions.get(over.id ?? 'r1');
+      record!.updatedAt = new Date(Date.now() - ageMs);
+    }
+
+    it('deletes a stale never-joined guest session (row + snapshot)', async () => {
+      const rooms = new InMemoryRoomStore();
+      const sessions = new InMemorySessionStore();
+      await createAged(sessions, { id: 'g1', ownerUserId: null, ownerClientId: 'c1' }, WEEK + 1);
+
+      const sync = new SessionSync(rooms, sessions);
+      await sync.pruneStaleGuestSessions();
+
+      expect(await sessions.get('g1')).toBeNull();
+      expect(await sessions.getSnapshot('g1')).toBeNull();
+    });
+
+    it('keeps a guest session younger than the threshold', async () => {
+      const rooms = new InMemoryRoomStore();
+      const sessions = new InMemorySessionStore();
+      await createAged(sessions, { id: 'g1', ownerUserId: null, ownerClientId: 'c1' }, WEEK - 60_000);
+
+      const sync = new SessionSync(rooms, sessions);
+      await sync.pruneStaleGuestSessions();
+
+      expect(await sessions.get('g1')).not.toBeNull();
+    });
+
+    it('keeps a stale guest session whose room is live (updatedAt tracks metadata, not edits)', async () => {
+      const rooms = new InMemoryRoomStore();
+      const sessions = new InMemorySessionStore();
+      await createAged(sessions, { id: 'g1', ownerUserId: null, ownerClientId: 'c1' }, WEEK + 1);
+      await rooms.getOrCreate('g1', freshProject); // live (or in-grace) room
+
+      const sync = new SessionSync(rooms, sessions);
+      await sync.pruneStaleGuestSessions();
+
+      expect(await sessions.get('g1')).not.toBeNull();
+    });
+
+    it('never touches owned sessions, however stale', async () => {
+      const rooms = new InMemoryRoomStore();
+      const sessions = new InMemorySessionStore();
+      await createAged(sessions, { id: 'o1', ownerUserId: 'u1' }, WEEK * 52);
+
+      const sync = new SessionSync(rooms, sessions);
+      await sync.pruneStaleGuestSessions();
+
+      expect(await sessions.get('o1')).not.toBeNull();
+    });
   });
 });

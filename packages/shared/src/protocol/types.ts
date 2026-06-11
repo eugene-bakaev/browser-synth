@@ -119,6 +119,7 @@ export type ErrorCode =
   | 'room.full'
   | 'session.not_found'
   | 'resume.unknown_client'
+  | 'resume.duplicate_client'
   | 'resume.client_ahead'
   | 'overloaded'
   | 'internal';

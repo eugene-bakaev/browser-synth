@@ -23,7 +23,11 @@ import { instrumentSessionStore, instrumentProfileStore } from './otel/db.js';
 import { makeLog } from './otel/log.js';
 
 export function buildServer(): FastifyInstance {
-  const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+  // trustProxy: Render terminates TLS at its proxy, so req.ip is the proxy
+  // address unless x-forwarded-for is honored. The per-IP create rate limit
+  // needs the real client IP; direct connections bypassing the proxy aren't
+  // possible on Render, so trusting the header is safe there.
+  const app = Fastify({ logger: process.env.NODE_ENV !== 'test', trustProxy: true });
   const log = makeLog(app);
   const store = new InMemoryRoomStore();
   const pool = new ConnectionPool();
