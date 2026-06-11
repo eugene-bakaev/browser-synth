@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE, STEP_BUFFER_SIZE } from '@fiddle/shared';
 import { SESSION_LOAD_TIMEOUT_MS, HELLO_DEADLINE_MS } from './ConnectionHandler.js';
 import type { ServerMessage } from '@fiddle/shared';
 import { InMemoryRoomStore } from '../room/InMemoryRoomStore.js';
@@ -675,6 +675,34 @@ describe('ConnectionHandler', () => {
       const servedProject = snap.project;
       expect(servedProject.tracks).toHaveLength(TRACK_POOL_SIZE);
       expect(servedProject.tracks.slice(0, 4).every((t) => t.enabled)).toBe(true);
+    });
+
+    it('deep-repairs a legacy 16-step session before serving (D2)', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('legacy16', socket);
+      const legacy = freshProject();
+      legacy.tracks.forEach((t) => { (t as { steps: unknown }).steps = t.steps.slice(0, 16); });
+      legacy.tracks[0].steps[3].note = 'C';
+      const handler = new ConnectionHandler(
+        'legacy16', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore(),
+        async () => ({ project: legacy }),
+      );
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const snap = socket.sent.find((m) => m.type === 'snapshot');
+      if (!snap || snap.type !== 'snapshot') throw new Error('unreachable');
+      // Every track served over the wire carries the full step buffer…
+      expect(snap.project.tracks.every((t) => t.steps.length === STEP_BUFFER_SIZE)).toBe(true);
+      // …with stored steps kept in place, so patterns survive the migration.
+      expect(snap.project.tracks[0].steps[3].note).toBe('C');
+
+      // The in-memory room is dense too: an op past the legacy length lands in
+      // a real step object instead of creating a sparse array via setDeep.
+      await handler.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['tracks', 0, 'steps', 40, 'note'], value: 'E' });
+      const room = await store.peekProject('legacy16');
+      expect(room!.tracks[0].steps[40]).toMatchObject({ note: 'E', velocity: expect.any(Number) });
     });
   });
 

@@ -15,7 +15,7 @@ import {
 } from './types';
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
-import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, coerceBpm } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, STEP_BUFFER_SIZE, coerceBpm } from '@fiddle/shared';
 
 const STORAGE_KEY = 'fiddle:project';
 const SAVE_DEBOUNCE_MS = 500;
@@ -49,7 +49,7 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
     // range) would otherwise cause `stepIndex % 0 = NaN` at playback. The UI path
     // clamps too; this hardens the persistence path.
     patternLength: typeof t.patternLength === 'number'
-      ? Math.max(1, Math.min(64, t.patternLength))
+      ? Math.max(1, Math.min(STEP_BUFFER_SIZE, t.patternLength))
       : fresh.patternLength,
     steps: reconcileSteps(t.steps, fresh.steps),
     // A stored explicit boolean wins; otherwise fall back to the slot default
@@ -175,7 +175,7 @@ export function replaceProject(target: Project, source: Project): void {
 
     Object.assign(t.mixer, s.mixer);
 
-    for (let j = 0; j < 64; j++) {
+    for (let j = 0; j < STEP_BUFFER_SIZE; j++) {
       Object.assign(t.steps[j], s.steps[j]);
     }
   }

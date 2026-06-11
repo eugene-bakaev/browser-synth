@@ -15,6 +15,8 @@ export {
   DEFAULT_BPM,
   BPM_MIN,
   BPM_MAX,
+  STEP_BUFFER_SIZE,
+  DEFAULT_PATTERN_LENGTH,
 } from './constants.js';
 export { ProjectSchema, Schemas } from './schema.js';
 export {

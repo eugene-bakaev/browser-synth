@@ -7,7 +7,13 @@ import {
 } from '../engines/index.js';
 import { DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project, ProjectTrack, Step } from './types.js';
-import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, DEFAULT_BPM } from './constants.js';
+import {
+  TRACK_POOL_SIZE,
+  DEFAULT_ENABLED_TRACKS,
+  DEFAULT_BPM,
+  STEP_BUFFER_SIZE,
+  DEFAULT_PATTERN_LENGTH,
+} from './constants.js';
 
 export { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS };
 
@@ -34,8 +40,8 @@ export function freshTrack(enabled = true): ProjectTrack {
       clap:  structuredClone(DEFAULT_CLAP_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
-    patternLength: 16,
-    steps: Array.from({ length: 64 }, () => freshStep()),
+    patternLength: DEFAULT_PATTERN_LENGTH,
+    steps: Array.from({ length: STEP_BUFFER_SIZE }, () => freshStep()),
     enabled,
   };
 }
