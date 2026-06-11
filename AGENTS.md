@@ -5,16 +5,19 @@ then the canonical docs linked below before touching the relevant subsystem.
 
 ## What this is
 
-A browser-based **4-track step sequencer + synthesizer** (Vue 3 + TypeScript +
-Vite + Web Audio API). Each track runs one of five sound engines (Synth, Kick,
-Hat, Snare, Clap) with independent loop lengths (polymeter). All editable state
-lives in a `Project` object auto-saved to `localStorage`.
+A browser-based **multi-user step sequencer + synthesizer** (Vue 3 + TypeScript +
+Vite + Web Audio API). Users create or join durable *sessions* from a lobby; a
+project is a fixed 32-slot track pool (4 enabled by default), each track running
+one of five sound engines (Synth, Kick, Hat, Snare, Clap) with independent loop
+lengths (polymeter). All editable state lives in a `Project` object persisted
+**server-side** (session snapshots in Supabase Postgres); file Save/Open is the
+offline story — there is no localStorage project autosave.
 
 A **Fastify WebSocket sync server** powers live multi-user collaboration:
 project state is synced over WS (per-field last-write-wins) while audio renders
-locally in each browser. Deployed with the client on Vercel and the server on
-Render. Optional Supabase Google sign-in layers on top without changing the
-guest flow.
+locally in each browser. Deployed with the client on Vercel, the server on
+Render, and the database on Supabase. Optional Supabase Google sign-in layers
+on top without changing the guest flow.
 
 ## Repo layout
 
