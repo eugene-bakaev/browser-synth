@@ -307,7 +307,7 @@ export class ConnectionHandler {
     const { opIdHead } = await this.store.getOrCreate(this.roomId, seed);
 
     let identity: Identity | null = null;
-    let resumeIdentityWarning: 'unknown_client' | null = null;
+    let resumeIdentityWarning: 'unknown_client' | 'duplicate_client' | null = null;
 
     if (msg.token) {
       const claims = await this.verify(msg.token);
@@ -323,16 +323,26 @@ export class ConnectionHandler {
       });
       await this.store.setIdentity(this.roomId, identity);
     } else {
-      // Guest path (unchanged): resume an existing identity if the client
-      // presented a known clientId, else mint a fresh one. Assign a
-      // color/handle distinct from currently-connected peers (departed members
-      // free their color for reuse).
+      // Guest path: resume an existing identity if the client presented a
+      // known clientId, else mint a fresh one. Assign a color/handle distinct
+      // from currently-connected peers (departed members free their color for
+      // reuse).
       if (msg.clientId) {
         const existing = await this.store.getIdentity(this.roomId, msg.clientId);
-        if (existing) {
-          identity = existing;
-        } else {
+        if (!existing) {
           resumeIdentityWarning = 'unknown_client';
+        } else {
+          // A duplicated browser tab copies sessionStorage, so two live sockets
+          // can present the same clientId. Resuming both would collide their
+          // clientSeq counters — the dedup index then swallows the second tab's
+          // ops as "duplicates" of the first's. Mint a fresh identity instead;
+          // the client resets clientSeq when the welcome carries a new clientId.
+          const connected = await this.store.listConnected(this.roomId);
+          if (connected.some((c) => c.clientId === msg.clientId)) {
+            resumeIdentityWarning = 'duplicate_client';
+          } else {
+            identity = existing;
+          }
         }
       }
       if (!identity) {
@@ -365,14 +375,17 @@ export class ConnectionHandler {
     this.socket.send(welcome);
 
     // Intentional ordering: the welcome lands first (so the client has its
-    // identity context), then the informational error tells it the resumed
-    // clientId wasn't recognised and a fresh identity was minted.
-    if (resumeIdentityWarning === 'unknown_client') {
+    // identity context), then the informational error tells it why the
+    // presented clientId wasn't resumed and a fresh identity was minted.
+    if (resumeIdentityWarning) {
       const err: ErrorMessage = {
         v: 1,
         type: 'error',
-        code: 'resume.unknown_client',
-        message: `clientId ${msg.clientId} not found in room (grace expired or never seen)`,
+        code: resumeIdentityWarning === 'unknown_client' ? 'resume.unknown_client' : 'resume.duplicate_client',
+        message:
+          resumeIdentityWarning === 'unknown_client'
+            ? `clientId ${msg.clientId} not found in room (grace expired or never seen)`
+            : `clientId ${msg.clientId} is already connected on another socket (duplicated tab?); minted a fresh identity`,
         fatal: false,
       };
       this.socket.send(err);
