@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeProject, coerceBpm } from './normalize.js';
 import { freshProject, freshTrack, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
-import { DEFAULT_BPM, BPM_MIN, BPM_MAX } from './constants.js';
+import {
+  DEFAULT_BPM,
+  BPM_MIN,
+  BPM_MAX,
+  STEP_BUFFER_SIZE,
+  DEFAULT_PATTERN_LENGTH,
+} from './constants.js';
 import { ProjectSchema } from './schema.js';
 import { PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project } from './types.js';
@@ -136,6 +142,76 @@ describe('normalizeProject', () => {
   it('preserves a valid bpm via the fast path (returns input by reference)', () => {
     const p = freshProject();
     p.bpm = 140;
+    expect(normalizeProject(p)).toBe(p);
+  });
+
+  // --- deep track repair (D2) ----------------------------------------------
+  // The bug this guards: the sync path (durable snapshot → wire → client)
+  // never ran deep repair, so a legacy 16-step snapshot reached clients with
+  // short step buffers, and a server-side op for steps.40 against a 16-element
+  // array built a sparse array. normalizeProject is the single boundary both
+  // directions share, so the structural invariants are enforced here.
+
+  it('pads a legacy 16-step track to STEP_BUFFER_SIZE, preserving stored steps in place', () => {
+    const p = freshProject();
+    const stored = p.tracks[0].steps.slice(0, 16);
+    stored[3] = { ...stored[3], note: 'C', velocity: 0.5 };
+    (p.tracks[0] as { steps: unknown }).steps = stored;
+
+    const out = normalizeProject(p);
+    expect(out).not.toBe(p);
+    expect(out.tracks[0].steps).toHaveLength(STEP_BUFFER_SIZE);
+    expect(out.tracks[0].steps[3]).toMatchObject({ note: 'C', velocity: 0.5 }); // position kept
+    expect(out.tracks[0].steps[40]).toMatchObject({ note: null }); // padding is fresh
+    // Untouched tracks ride through by reference.
+    expect(out.tracks[1]).toBe(p.tracks[1]);
+  });
+
+  it('fills holes in a sparse step buffer (setDeep on an out-of-range index)', () => {
+    const p = freshProject();
+    const sparse = p.tracks[2].steps.slice(0, 16);
+    sparse[40] = { ...freshTrack().steps[0], note: 'E' }; // length 41, holes 16..39
+    (p.tracks[2] as { steps: unknown }).steps = sparse;
+
+    const out = normalizeProject(p);
+    expect(out.tracks[2].steps).toHaveLength(STEP_BUFFER_SIZE);
+    expect(out.tracks[2].steps[40]).toMatchObject({ note: 'E' });
+    expect(out.tracks[2].steps[20]).toMatchObject({ note: null }); // hole filled
+    expect(out.tracks[2].steps.every(s => typeof s === 'object' && s !== null)).toBe(true);
+  });
+
+  it('truncates an over-long step buffer to STEP_BUFFER_SIZE', () => {
+    const p = freshProject();
+    (p.tracks[0] as { steps: unknown }).steps = Array.from({ length: 100 }, () => freshTrack().steps[0]);
+    expect(normalizeProject(p).tracks[0].steps).toHaveLength(STEP_BUFFER_SIZE);
+  });
+
+  it('fills a missing engine slice from defaults, keeping present slices by reference', () => {
+    const p = freshProject();
+    const kept = p.tracks[1].engines.kick;
+    delete (p.tracks[1].engines as { synth?: unknown }).synth;
+
+    const out = normalizeProject(p);
+    expect(out.tracks[1].engines.synth).toBeDefined();
+    expect(out.tracks[1].engines.kick).toBe(kept); // slice-level repair only
+  });
+
+  it('repairs a missing/garbage patternLength and clamps out-of-range values', () => {
+    const p = freshProject();
+    delete (p.tracks[0] as { patternLength?: unknown }).patternLength;
+    (p.tracks[1] as { patternLength: unknown }).patternLength = 0;
+    (p.tracks[2] as { patternLength: unknown }).patternLength = 999;
+
+    const out = normalizeProject(p);
+    expect(out.tracks[0].patternLength).toBe(DEFAULT_PATTERN_LENGTH);
+    expect(out.tracks[1].patternLength).toBe(1);
+    expect(out.tracks[2].patternLength).toBe(STEP_BUFFER_SIZE);
+  });
+
+  it('keeps the fast path: a structurally valid project is returned by reference', () => {
+    const p = freshProject();
+    p.tracks[0].steps[5].note = 'G';
+    p.tracks[0].patternLength = 32;
     expect(normalizeProject(p)).toBe(p);
   });
 

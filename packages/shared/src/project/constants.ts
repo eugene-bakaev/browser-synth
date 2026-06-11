@@ -10,6 +10,15 @@ export const TRACK_POOL_SIZE = 32;
 // users see today). The rest of the pool is present but disabled.
 export const DEFAULT_ENABLED_TRACKS = 4;
 
+// Every track's `steps` is always a fixed buffer of this many elements, on the
+// wire and in memory; `patternLength` (1..STEP_BUFFER_SIZE) is the play/render
+// window within it. Single source for the factory, the boundary repair
+// (normalizeProject), and the client's reconcile/replace paths.
+export const STEP_BUFFER_SIZE = 64;
+
+// patternLength default for a fresh track (and the repair fallback).
+export const DEFAULT_PATTERN_LENGTH = 16;
+
 // Transport tempo. Single source of truth for the bpm range + default: the
 // prototype (freshProject), the wire schema (ProjectSchema), and the boundary
 // repair (coerceBpm / reconcileWithDefaults) all derive from these so the

@@ -33,7 +33,7 @@ Status column is for tracking as items get picked up.
 | [M3a](#m3a) | 🟦 | Connections | Grace-expiry vs. hello race can recreate a room blank | open |
 | [M3b](#m3b) | 🟦 | Connections | Duplicated browser tab → two sockets resume one clientId | open |
 | [M4](#m4) | 🟦 | Connections | `POST /api/sessions` unlimited; never-joined guest sessions never pruned | open |
-| [D2](#d2) | 🟦 | Docs | Sync path never runs deep repair (the documented normalize split's open half) | open |
+| [D2](#d2) | 🟦 | Docs | Sync path never runs deep repair (the documented normalize split's open half) | fixed on `fix/d2-sync-deep-repair` |
 | [E3](#e3) | 🟦 | Effectiveness | sessionStorage read/parse/write per op during peer knob drags | open |
 | [S2](#s2) | 🟦 | Simplicity | Knob drag listeners not removed on unmount | open |
 | [B1](#b1) | 🟦 | Docs | Stale BACKLOG entry (empty-snapshot clobber) overtaken by session-scoped rooms | open |
