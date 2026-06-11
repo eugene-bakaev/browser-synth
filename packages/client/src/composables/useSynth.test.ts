@@ -702,54 +702,48 @@ describe('variable track count', () => {
   });
 });
 
-describe('Project boot integration', () => {
-  // The vitest environment (node/jsdom-less) has no real localStorage — stub one.
+describe('Project boot (S1: no localStorage path)', () => {
+  // The app is session-only: connectToSession resets state before the room
+  // snapshot replaces it, so a localStorage-loaded project was never rendered —
+  // and autosave silently overwrote the "local project" with whatever room the
+  // user last visited. The boot path must therefore never touch localStorage.
   let lsStore: Map<string, string>;
   const lsImpl = {
-    getItem: (k: string) => lsStore.has(k) ? lsStore.get(k)! : null,
-    setItem: (k: string, v: string) => { lsStore.set(k, v); },
+    getItem: vi.fn((k: string) => lsStore.has(k) ? lsStore.get(k)! : null),
+    setItem: vi.fn((k: string, v: string) => { lsStore.set(k, v); }),
     removeItem: (k: string) => { lsStore.delete(k); },
     clear: () => { lsStore.clear(); },
   };
 
   beforeEach(() => {
     lsStore = new Map();
+    lsImpl.getItem.mockClear();
+    lsImpl.setItem.mockClear();
     vi.stubGlobal('localStorage', lsImpl);
-    try { localStorage.removeItem('fiddle:project'); } catch {}
     vi.resetModules();
   });
 
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('loads a seeded V1 project from localStorage on first useSynth call', async () => {
-    const seed = {
-      schemaVersion: 1 as const,
-      bpm: 144,
-      tracks: [/* 4 partial tracks — reconciler fills in defaults */
-        { engineType: 'synth', engines: { synth: { filterCutoff: 1234 } } },
-        {}, {}, {},
-      ],
-    };
-    localStorage.setItem('fiddle:project', JSON.stringify(seed));
+  it('boots a fresh project, ignoring an old fiddle:project key', async () => {
+    const seed = { schemaVersion: 1, bpm: 144, tracks: [{}, {}, {}, {}] };
+    lsStore.set('fiddle:project', JSON.stringify(seed));
 
     const { useSynth: useSynthFresh } = await import('../composables/useSynth');
     const synth = useSynthFresh();
-    expect(synth.project.bpm).toBe(144);
-    expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(1234);
+    expect(synth.project.bpm).toBe(120); // fresh, not the stored 144
+    expect(lsImpl.getItem).not.toHaveBeenCalled();
   });
 
-  it('persists a knob mutation to localStorage after debounce', async () => {
+  it('does not autosave mutations to localStorage', async () => {
     vi.useFakeTimers();
     const { useSynth: useSynthFresh } = await import('../composables/useSynth');
     const synth = useSynthFresh();
     synth.project.tracks[0].engines.synth.filterCutoff = 5678;
     await Promise.resolve();
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(1000); // past the old 500ms debounce
     vi.useRealTimers();
 
-    const raw = localStorage.getItem('fiddle:project');
-    expect(raw).not.toBeNull();
-    const parsed = JSON.parse(raw!);
-    expect(parsed.tracks[0].engines.synth.filterCutoff).toBe(5678);
+    expect(lsImpl.setItem).not.toHaveBeenCalled();
   });
 });

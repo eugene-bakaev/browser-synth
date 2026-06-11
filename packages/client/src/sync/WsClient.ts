@@ -65,6 +65,13 @@ export class WsClient {
   private readonly storageKey: string;
 
   private socket: WebSocket | null = null;
+  // In-memory copy of the persisted sync state; sessionStorage is write-through
+  // only. Read lazily once, then every save updates this field AND storage —
+  // so the per-inbound-op reads (gap check + recordOpIdSeen) and per-edit
+  // clientSeq bumps cost no getItem/JSON.parse on the main thread (E3).
+  // Crash-resume semantics are unchanged: every mutation still hits storage
+  // synchronously. `undefined` = not yet read; `null` = read, nothing stored.
+  private persisted: PersistedSyncState | null | undefined = undefined;
   private backoff = INITIAL_BACKOFF_MS;
   private resyncInFlight = false;
   private resyncTimer: number | null = null;
@@ -299,6 +306,13 @@ export class WsClient {
   // === Persistence (public so the Outbox + applyOp layers can read/advance them) ===
 
   getPersisted(): PersistedSyncState | null {
+    if (this.persisted === undefined) {
+      this.persisted = this.readPersistedFromStorage();
+    }
+    return this.persisted;
+  }
+
+  private readPersistedFromStorage(): PersistedSyncState | null {
     const raw = this.storage.getItem(this.storageKey);
     if (!raw) return null;
     try {
@@ -309,6 +323,7 @@ export class WsClient {
   }
 
   private savePersisted(s: PersistedSyncState): void {
+    this.persisted = s;
     this.storage.setItem(this.storageKey, JSON.stringify(s));
   }
 

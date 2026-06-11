@@ -28,14 +28,14 @@ Status column is for tracking as items get picked up.
 | [E1](#e1) | 🟧 | Effectiveness | Audio graph builds all 32 pool slots → ~190 always-running oscillators | fixed on `perf/e1-lazy-audio-graph` |
 | [D1](#d1) | 🟨 | Docs | ARCHITECTURE.md materially lags the code (last updated 2026-05-31) | open |
 | [M2](#m2) | 🟨 | Sync correctness | Self-echo overwrites a newer local value mid-drag under latency | fixed on `fix/m2-self-echo-overwrite` |
-| [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | open |
+| [S1](#s1) | 🟨 | Simplicity | localStorage project path is vestigial and now misleading | fixed on `fix/s1-e3-s2-client-hygiene` |
 | [E2](#e2) | 🟨 | Effectiveness | `appendOp` dedup linear-scans the 1000-op ring buffer per inbound op | fixed on `perf/e2-dedup-index` |
 | [M3a](#m3a) | 🟦 | Connections | Grace-expiry vs. hello race can recreate a room blank | fixed on `fix/m3a-grace-hello-race` |
 | [M3b](#m3b) | 🟦 | Connections | Duplicated browser tab → two sockets resume one clientId | fixed on `fix/m3b-m4-connections-hygiene` |
 | [M4](#m4) | 🟦 | Connections | `POST /api/sessions` unlimited; never-joined guest sessions never pruned | fixed on `fix/m3b-m4-connections-hygiene` |
 | [D2](#d2) | 🟦 | Docs | Sync path never runs deep repair (the documented normalize split's open half) | fixed on `fix/d2-sync-deep-repair` |
-| [E3](#e3) | 🟦 | Effectiveness | sessionStorage read/parse/write per op during peer knob drags | open |
-| [S2](#s2) | 🟦 | Simplicity | Knob drag listeners not removed on unmount | open |
+| [E3](#e3) | 🟦 | Effectiveness | sessionStorage read/parse/write per op during peer knob drags | fixed on `fix/s1-e3-s2-client-hygiene` |
+| [S2](#s2) | 🟦 | Simplicity | Knob drag listeners not removed on unmount | fixed on `fix/s1-e3-s2-client-hygiene` |
 | [B1](#b1) | 🟦 | Docs | Stale BACKLOG entry (empty-snapshot clobber) overtaken by session-scoped rooms | open |
 
 **Suggested priority order:** M1 → E1 → D1 → M2 → S1 → the rest opportunistically.

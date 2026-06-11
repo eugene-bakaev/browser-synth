@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount } from 'vue';
 import type { Path } from '@fiddle/shared';
 import { touchedFor } from '../sync/presence';
 
@@ -234,6 +234,15 @@ const onPointerUp = () => {
   // immediately (bypassing the 50ms throttle). Wiring is layered in later.
   emit('gesture-end');
 };
+
+// If the knob unmounts mid-drag (track switch / panel swap during a drag),
+// the window listeners would otherwise survive and keep emitting into the
+// unmounted component until the next pointerup anywhere (S2). Removing
+// never-added listeners is a no-op, so this is safe outside a drag too.
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+});
 
 const resetToDefault = () => {
   // No-op without a defaultValue. The old "snapshot modelValue at mount" fallback
