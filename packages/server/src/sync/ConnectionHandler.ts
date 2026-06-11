@@ -89,6 +89,11 @@ export class ConnectionHandler {
     private readonly profiles: ProfileStore,
     private readonly loadSession: SessionLoader = permissiveLoader,
     heartbeat?: Heartbeat,
+    // Room end-of-life hook, fired when the grace timer expires with no
+    // reconnect. Production injects SessionSync.handleGraceExpiry (flush →
+    // guest-row prune → pruneRoom); the default keeps the pre-injection
+    // behavior of just dropping the in-memory room.
+    private readonly onGraceExpire?: (roomId: string) => Promise<void>,
   ) {
     this.heartbeat = heartbeat ?? new Heartbeat(socket);
   }
@@ -219,9 +224,13 @@ export class ConnectionHandler {
     // The route layer removes this socket from the pool BEFORE invoking
     // onClose, so pool.size reflects the post-departure count.
     if (this.pool.size(this.roomId) === 0) {
+      // The callback runs from a bare timer, so rejections must be caught here
+      // or they become unhandled.
+      const expire = this.onGraceExpire ?? ((roomId: string) => this.store.pruneRoom(roomId));
       await this.store.startGrace(this.roomId, () => {
-        void this.store.pruneRoom(this.roomId);
-        this.log('room pruned after grace', { roomId: this.roomId });
+        expire(this.roomId)
+          .then(() => this.log('room pruned after grace', { roomId: this.roomId }))
+          .catch((err) => this.log('grace expiry cleanup failed', { roomId: this.roomId, err }));
       });
       return;
     }

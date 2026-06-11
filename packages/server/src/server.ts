@@ -71,7 +71,18 @@ export function buildServer(): FastifyInstance {
   app.register(async (a) =>
     sessionsRoute(a, { sessions, verify, liveCounts: () => store.roomMemberCounts() }),
   );
-  app.register(async (a) => wsRoute(a, { store, pool, verify, profiles, sessionSync, loadSession, log }));
+  app.register(async (a) =>
+    wsRoute(a, {
+      store,
+      pool,
+      verify,
+      profiles,
+      sessionSync,
+      loadSession,
+      onGraceExpire: (roomId) => sessionSync.handleGraceExpiry(roomId),
+      log,
+    }),
+  );
 
   // Autosave: periodic sweep of dirty rooms + a final flush on graceful shutdown
   // (SIGTERM → app.close() → onClose). stop() first so no sweep races the flush.

@@ -154,6 +154,47 @@ describe('protocol e2e', () => {
     c.close();
   });
 
+  // M1 regression: closing the LAST socket used to delete the guest session row
+  // immediately, while the in-memory room lived on for the 5-minute grace
+  // window — so a guest who refreshed rejoined a working-looking room whose
+  // edits could never persist again (saveSnapshot no-ops without a row) and
+  // whose settings panel 404'd. The row must survive until grace expiry.
+  it('guest session row survives last-socket close and a rejoin within grace', async () => {
+    const room = await createSession();
+    const a = connect(room);
+    await a.opened;
+    a.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+    const w = await a.waitFor((m) => m.type === 'welcome');
+    if (w.type !== 'welcome') throw new Error('unreachable');
+    a.send({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 150 });
+    await a.waitFor((m) => m.type === 'set');
+    a.close();
+
+    // The close handler runs async (flush + grace arm); poll until the server
+    // reports the room empty via the lobby's live count — simpler: just give
+    // the disconnect path a beat, then assert the row is still there.
+    await new Promise((r) => setTimeout(r, 100));
+    const res = await fetch(`http://127.0.0.1:${port}/api/sessions/${room}`);
+    expect(res.status).toBe(200); // pre-fix: 404, row deleted on empty
+
+    // Rejoin within grace: same identity resumes, and the room still works.
+    const a2 = connect(room);
+    await a2.opened;
+    a2.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION, clientId: w.clientId, resumeFromOpId: 1 });
+    const w2 = await a2.waitFor((m) => m.type === 'welcome');
+    await a2.waitFor((m) => m.type === 'sync.complete');
+    if (w2.type !== 'welcome') throw new Error('unreachable');
+    expect(w2.clientId).toBe(w.clientId);
+
+    // Post-rejoin edits are still accepted (and, with the row alive, can flush).
+    a2.send({ v: 1, type: 'set', clientSeq: 2, path: ['bpm'], value: 152 });
+    await a2.waitFor((m) => m.type === 'set' && m.value === 152);
+    a2.close();
+    await new Promise((r) => setTimeout(r, 100));
+    const res2 = await fetch(`http://127.0.0.1:${port}/api/sessions/${room}`);
+    expect(res2.status).toBe(200); // still inside grace — row intact
+  });
+
   it('reconnect with a known clientId resumes the same identity (no unknown_client)', async () => {
     const room = await createSession();
     const a = connect(room);
