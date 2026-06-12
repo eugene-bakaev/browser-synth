@@ -45,6 +45,7 @@ export class MorphOscillator {
     let sq50 = this.phase < 0.5 ? 1 : -1;
     sq50 += polyBLEP(this.phase, dt);
     let tFall50 = this.phase - 0.5;
+    // Wrap positions the falling-edge discontinuity at the BLEP window origin.
     if (tFall50 < 0) tFall50 += 1;
     sq50 -= polyBLEP(tFall50, dt);
     this.tri = TRI_LEAK * this.tri + 4 * dt * sq50;
@@ -64,10 +65,13 @@ export class MorphOscillator {
       case 0:
         return Math.sin(TWO_PI * this.phase);
       case 1: {
-        // Normalise to ≈±1 amplitude at the current frequency.
-        // Steady-state peak of the leaky integrator for a ±1 square at freq f:
-        //   peak = c * (1 - L^(1/(2*dt))) / (1 - L)  where c = 4*dt
-        // Dividing output by that peak gives unit amplitude.
+        // Normalizes the integrator's transient-corrected peak so output stays
+        // bounded: the startup transient otherwise breaches ±1.5 at high
+        // frequencies (the formula computes the peak the integrator reaches
+        // during that transient and divides it out). The steady-state triangle
+        // still sits below unity and rolls off with frequency — the known
+        // leaky-triangle tradeoff accepted for I1.
+        // TODO(I4): cache norm (changes only with dt) and revisit triangle loudness-matching under profiling.
         const norm = (1 - TRI_LEAK) / (4 * dt * (1 - Math.pow(TRI_LEAK, 0.5 / dt)));
         return this.tri * norm;
       }
@@ -80,6 +84,7 @@ export class MorphOscillator {
         let p = this.phase < pw ? 1 : -1;
         p += polyBLEP(this.phase, dt);
         let tFall = this.phase - pw;
+        // Wrap positions the falling-edge discontinuity at the BLEP window origin.
         if (tFall < 0) tFall += 1;
         p -= polyBLEP(tFall, dt);
         return p;

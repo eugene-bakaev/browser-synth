@@ -49,7 +49,7 @@ describe('MorphOscillator', () => {
 
   it('coarse tune shifts pitch by semitones', () => {
     const osc = makeOsc(0);
-    // reach into the coarse slot via a fresh osc instead: +12 semitones = 2x freq
+    // +12-semitone osc expects ~440Hz at base 220 (2x); untuned baseline expects ~220.
     const up = new MorphOscillator(
       slot('osc1.morph', 0, 3, 0),
       slot('osc1.pulseWidth', 0.05, 0.95, 0.5),
@@ -93,5 +93,57 @@ describe('MorphOscillator', () => {
     // 110Hz sine's natural per-sample slope is ~2π·dt ≈ 0.014; measured worst jump ≈ 0.018.
     // 0.1 gives ~5x headroom yet a hard-switch / discontinuous crossfade (~0.7+) fails.
     expect(maxJump).toBeLessThan(0.1);
+  });
+
+  it('fine tune shifts pitch by cents', () => {
+    // +100 cents = +1 semitone; at base 440Hz expect ~466.16Hz (440 * 2^(1/12)).
+    const osc = new MorphOscillator(
+      slot('osc1.morph', 0, 3, 0),
+      slot('osc1.pulseWidth', 0.05, 0.95, 0.5),
+      slot('osc1.coarse', -36, 36, 0),
+      slot('osc1.fine', -100, 100, 100),
+      SR,
+    );
+    const buf = render(osc, 440, SR); // 1 second
+    const crossings = positiveZeroCrossings(buf);
+    expect(crossings).toBeGreaterThanOrEqual(465);
+    expect(crossings).toBeLessThanOrEqual(468);
+  });
+
+  it('pulse width changes duty cycle', () => {
+    // morph 3 = pure pulse; pw=0.5 → ~50% of samples positive; pw=0.2 → ~20%.
+    function makeOscWithPw(pw: number) {
+      return new MorphOscillator(
+        slot('osc1.morph', 0, 3, 3),
+        slot('osc1.pulseWidth', 0.05, 0.95, pw),
+        slot('osc1.coarse', -36, 36, 0),
+        slot('osc1.fine', -100, 100, 0),
+        SR,
+      );
+    }
+    const freq = 440;
+    const warmup = Math.floor(SR / 4); // render and discard to let smoothing settle
+    const measure = 4096;
+
+    const osc50 = makeOscWithPw(0.5);
+    render(osc50, freq, warmup);
+    const buf50 = render(osc50, freq, measure);
+
+    const osc20 = makeOscWithPw(0.2);
+    render(osc20, freq, warmup);
+    const buf20 = render(osc20, freq, measure);
+
+    function positiveFraction(buf: Float32Array): number {
+      let count = 0;
+      for (let i = 0; i < buf.length; i++) if (buf[i] > 0) count++;
+      return count / buf.length;
+    }
+
+    const frac50 = positiveFraction(buf50);
+    const frac20 = positiveFraction(buf20);
+    expect(frac50).toBeGreaterThanOrEqual(0.45);
+    expect(frac50).toBeLessThanOrEqual(0.55);
+    expect(frac20).toBeGreaterThanOrEqual(0.15);
+    expect(frac20).toBeLessThanOrEqual(0.25);
   });
 });
