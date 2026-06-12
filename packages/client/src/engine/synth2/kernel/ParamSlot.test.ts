@@ -46,4 +46,39 @@ describe('ParamSlot', () => {
     for (let i = 0; i < SR * 0.05; i++) s.next();
     expect(s.next()).toBeCloseTo(2000, 0);
   });
+
+  it('applies negative linear mod and clamps to min', () => {
+    const s = new ParamSlot(lin, SR);
+    // default base=0.5, mod=-0.25 → 0.5 + (-0.25 × 1 × 1) = 0.25
+    s.mod = -0.25;
+    for (let i = 0; i < SR * 0.05; i++) s.next();
+    expect(s.next()).toBeCloseTo(0.25, 3);
+    // large negative mod → clamps to min=0
+    s.mod = -10;
+    expect(s.next()).toBeCloseTo(0, 3);
+  });
+
+  it('expOctaves negative mod shifts down and clamps to min', () => {
+    const s = new ParamSlot(exp, SR);
+    // default base=1000, mod=-1 → 1000 × 2^(-1×4) = 1000/16 = 62.5
+    s.mod = -1;
+    for (let i = 0; i < SR * 0.05; i++) s.next();
+    expect(s.next()).toBeCloseTo(62.5, 0);
+    // base at min=20, mod=-1 → 20 × 2^-4 = 1.25 → clamped up to min=20
+    s.mod = 0;
+    s.setBase(20);
+    for (let i = 0; i < SR * 0.05; i++) s.next();
+    s.mod = -1;
+    expect(s.next()).toBeCloseTo(20, 1);
+  });
+
+  it('mod applies to the settled (smoothed) base, not the default', () => {
+    const s = new ParamSlot(lin, SR);
+    s.setBase(0.8);
+    // settle ~50ms with mod=0
+    for (let i = 0; i < SR * 0.05; i++) s.next();
+    // now apply mod=0.1 → 0.8 + 0.1 × 1 × 1 = 0.9
+    s.mod = 0.1;
+    expect(s.next()).toBeCloseTo(0.9, 3);
+  });
 });
