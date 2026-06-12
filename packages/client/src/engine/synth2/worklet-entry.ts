@@ -10,6 +10,11 @@
 
 import { Synth2Kernel } from './kernel/Synth2Kernel';
 
+type Synth2Message =
+  | { type: 'params'; block: Float32Array }
+  | { type: 'trigger'; time: number; freq: number; duration: number; velocity: number }
+  | { type: 'dispose' };
+
 // AudioWorkletGlobalScope members — not in the DOM lib TS ships for the page.
 declare const sampleRate: number;
 declare const currentFrame: number;
@@ -31,7 +36,7 @@ class Synth2Processor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.port.onmessage = (e: MessageEvent) => {
-      const msg = e.data;
+      const msg = e.data as Synth2Message;
       if (msg.type === 'params') {
         this.kernel.applyParams(msg.block);
       } else if (msg.type === 'trigger') {
@@ -44,8 +49,8 @@ class Synth2Processor extends AudioWorkletProcessor {
 
   process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     const channels = outputs[0];
-    const mono = channels[0];
-    if (!mono) return this.alive;
+    const mono = channels?.[0];
+    if (!channels || !mono) return this.alive;
     this.kernel.process(mono, mono.length, currentFrame);
     for (let c = 1; c < channels.length; c++) channels[c].set(mono);
     return this.alive;
