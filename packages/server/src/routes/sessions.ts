@@ -105,6 +105,7 @@ export async function sessionsRoute(app: FastifyInstance, deps: Deps) {
     // { [x: string]: { [x: string]: ZodNumber } } rather than the specific
     // Synth2EngineParams interface. The Zod parse in the route handler already
     // validated the shape, so the runtime type is correct.
+    // TODO(synth2): remove once Synth2ParamsSchema in @fiddle/shared yields a precise z.infer (needs explicit nested literal instead of Object.fromEntries generation — own task).
     const project: Project = body.seed === 'default' ? freshProject() : (body.seed as unknown as Project);
     const id = randomBase32(9);
     await deps.sessions.create({
