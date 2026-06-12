@@ -1,8 +1,10 @@
 //
 // Top level (spec §6.2/§6.7): voice pool + sample-accurate event queue +
-// block renderer. Pure TS, zero allocation after construction. process()
-// takes the absolute frame the block starts at (the worklet passes
-// currentFrame; tests pass whatever they like).
+// block renderer. Pure TS, zero allocation after construction. process(out,
+// frames, blockStartFrame) renders audio into out; frames must equal
+// out.length (the code trusts frames, not out.length). blockStartFrame is the
+// absolute frame the block starts at (the worklet passes currentFrame; tests
+// pass whatever they like).
 //
 // I1 is mono: one voice, every note retriggers it (steal ramp keeps it
 // clickless). The queue is a fixed ring of preallocated events — events are
