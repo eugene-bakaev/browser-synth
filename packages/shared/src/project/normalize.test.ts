@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeProject, coerceBpm } from './normalize.js';
 import { freshProject, freshTrack, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
+import { DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
 import {
   DEFAULT_BPM,
   BPM_MIN,
@@ -233,6 +234,18 @@ describe('normalizeProject', () => {
       const out = normalizeProject(input as Project);
       expect(TopLevelScalars.safeParse(out).success).toBe(true);
     }
+  });
+});
+
+describe('synth2 slice healing (old-snapshot regression — spec §7 item 7)', () => {
+  it('fills a missing engines.synth2 from defaults and keeps other slices by reference', () => {
+    const p = freshProject();
+    delete (p.tracks[0].engines as any).synth2;
+    const out = normalizeProject(p);
+    expect(out).not.toBe(p); // fast path must NOT swallow the repair
+    expect(out.tracks[0].engines.synth2).toEqual(DEFAULT_SYNTH2_PARAMS);
+    expect(out.tracks[0].engines.synth).toBe(p.tracks[0].engines.synth);
+    expect(out.tracks[1]).toBe(p.tracks[1]); // valid tracks ride through by reference
   });
 });
 

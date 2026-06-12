@@ -3,7 +3,7 @@
 // live here. The fuller wire-format types (Project, ProjectTrack, the engine
 // param types) will move here as part of the sync-layer work.
 
-export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap';
+export type EngineType = 'synth' | 'kick' | 'hat' | 'snare' | 'clap' | 'synth2';
 
 export interface MixerState {
   volume: number;       // slider 0..1; log mapping is the consumer's job

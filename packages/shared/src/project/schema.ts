@@ -136,6 +136,7 @@ const EngineTypeSchema = z.union([
   z.literal('hat'),
   z.literal('snare'),
   z.literal('clap'),
+  z.literal('synth2'),
 ]);
 
 const EnginesMapSchema = z.object({
@@ -144,6 +145,7 @@ const EnginesMapSchema = z.object({
   hat: HatParamsSchema,
   snare: SnareParamsSchema,
   clap: ClapParamsSchema,
+  synth2: Synth2ParamsSchema,
 });
 
 const TrackSchema = z.object({

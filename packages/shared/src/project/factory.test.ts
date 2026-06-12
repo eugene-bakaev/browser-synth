@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { freshProject, freshTrack, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
+import { DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
 
 describe('freshProject track pool', () => {
   it('returns exactly TRACK_POOL_SIZE slots', () => {
@@ -21,4 +22,10 @@ describe('freshProject track pool', () => {
     expect(freshTrack(false).enabled).toBe(false);
     expect(freshTrack().enabled).toBe(true);
   });
+});
+
+it('freshTrack carries an independent synth2 slice at defaults', () => {
+  const t = freshTrack();
+  expect(t.engines.synth2).toEqual(DEFAULT_SYNTH2_PARAMS);
+  expect(t.engines.synth2).not.toBe(DEFAULT_SYNTH2_PARAMS); // structuredClone, D7
 });
