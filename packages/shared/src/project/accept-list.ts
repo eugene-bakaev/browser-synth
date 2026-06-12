@@ -19,7 +19,8 @@
 
 import { z } from 'zod';
 import { TRACK_POOL_SIZE } from './constants.js';
-import { Schemas } from './schema.js';
+import { Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
+import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
 
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -66,6 +67,9 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ['tracks', '*', 'engines', 'clap', 'decay'],
   ['tracks', '*', 'engines', 'clap', 'tone'],
   ['tracks', '*', 'engines', 'clap', 'sloppy'],
+  // Synth2 params — GENERATED from the descriptor table (spec §6.4): one
+  // leaf pattern per descriptor, nested as engines.synth2.<module>.<field>.
+  ...SYNTH2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'synth2', ...d.key.split('.')]),
   // Mixer.
   ['tracks', '*', 'mixer', 'volume'],
   ['tracks', '*', 'mixer', 'muted'],
@@ -197,6 +201,13 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
       if (envName !== 'filterEnv' && envName !== 'ampEnv') return null;
       const adsrField = tokens[5] as keyof typeof Schemas.ADSR.shape;
       return Schemas.ADSR.shape[adsrField] ?? null;
+    }
+
+    if (tokens.length === 6 && engineName === 'synth2') {
+      // tracks.<i>.engines.synth2.<module>.<field> — leaf schemas are
+      // generated alongside the nested schema; key format matches the
+      // descriptor table.
+      return SYNTH2_LEAF_SCHEMAS[`${tokens[4]}.${tokens[5]}`] ?? null;
     }
 
     return null;

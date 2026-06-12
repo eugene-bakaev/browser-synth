@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
+import { SYNTH2_DESCRIPTORS } from '../engines/index.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -110,6 +111,25 @@ describe('validatePathAndValue', () => {
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('value.invalid');
     }
+  });
+});
+
+describe('synth2 accept-list (generated from descriptors)', () => {
+  it('every descriptor key is a writable, validating path', () => {
+    for (const d of SYNTH2_DESCRIPTORS) {
+      const path = `tracks.0.engines.synth2.${d.key}`;
+      expect(pathIsWritable(path), path).toBe(true);
+      expect(validatePathAndValue(path, d.default)).toEqual({ ok: true });
+      const over = validatePathAndValue(path, d.max + 1);
+      expect(over.ok, path).toBe(false);
+      if (!over.ok) expect(over.code).toBe('value.invalid');
+    }
+  });
+
+  it('rejects unknown synth2 paths and whole-module writes', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.osc1.unknown')).toBe(false);
+    expect(pathIsWritable('tracks.0.engines.synth2.osc1')).toBe(false);
+    expect(pathIsWritable('tracks.0.engines.synth2')).toBe(false);
   });
 });
 
