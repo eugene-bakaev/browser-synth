@@ -10,6 +10,12 @@
 //
 // Gate timing is sample-counted: noteOn(gateFrames) starts release exactly
 // gateFrames samples later, mirroring the trigger(freq, duration, …) contract.
+//
+// CADENCE NOTE (I3): each ParamSlot advances only while its stage is active
+// (a during attack, d+s during decay, s during sustain, r during release) —
+// a deliberate deviation from ParamSlot's "exactly once per sample" doc. An
+// idle slot's 5ms smoother is paused until its stage runs. Revisit when the
+// I3 mod matrix takes over per-sample slot cadence.
 
 import type { ParamSlot } from './ParamSlot';
 
@@ -87,6 +93,8 @@ export class LoopEnvelope {
 
     // Gate countdown runs through steal/attack/decay/sustain; when it
     // expires, enter release from wherever the level currently is.
+    // Steal frames count against the gate: a sub-1ms gate on retrigger can go
+    // steal → release without ever attacking (harmless; sequencer gates are ≫1ms).
     if (this.stage !== 'idle' && this.stage !== 'release') {
       this.gateRemaining--;
       if (this.gateRemaining <= 0) {
