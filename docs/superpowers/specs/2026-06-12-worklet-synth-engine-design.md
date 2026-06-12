@@ -17,6 +17,20 @@ hard sync, and cross-modulation (FM); loopable envelopes; audio-rate LFOs; and a
 slot-based modulation matrix. The existing `synth` engine is **not** replaced,
 removed, or modified — `synth2` is a sixth engine type sitting beside it.
 
+Two architectural principles govern the kernel (§6.3):
+
+1. **Decoupled modules.** Every DSP block (oscillator, filter, envelope, LFO,
+   noise) is a self-contained module behind a uniform convention; only
+   `Voice.ts` — the "patch" — wires them together. Rearranging the synth means
+   editing one wiring file, never touching the blocks. Swappable filter models
+   (§5.3) are the first concrete payoff.
+2. **Heavy-modulation-ready by construction.** Every *continuous* parameter of
+   every module is a `ParamSlot` — a uniform base-value + modulation-input
+   cell registered in a descriptor table. The mod matrix can target any
+   registered slot; "is this modulatable?" is a descriptor flag, not plumbing.
+   The same table generates the schema, accept-list, panel ranges, and kernel
+   param-block layout (§6.4).
+
 The kernel is written in **TypeScript, not WASM**, but behind a WASM-shaped
 interface (flat typed arrays in/out, zero allocation in the hot path, no Web
 Audio types) so the inner loop can be ported to Rust/WASM later if a worst-case
@@ -53,9 +67,15 @@ explicitly deferred — see §10.
 - A new engine type `synth2` selectable per track like any other engine,
   fully participating in sync, sessions, file save/open, and the D7
   single-source-of-defaults pattern.
-- Voice architecture: **3 morphing oscillators + noise source → mixer → ZDF
-  state-variable filter → VCA**, with hard sync, through-zero FM, 3 loopable
-  envelopes, 2 wide-range LFOs, and an 8-slot mod matrix.
+- Voice architecture: **3 morphing oscillators + noise source → mixer →
+  swappable filter module (classic or morphing, both on a ZDF SVF core) →
+  VCA**, with hard sync, through-zero FM, 3 loopable envelopes, 2 wide-range
+  LFOs, and an 8-slot mod matrix.
+- **Decoupled DSP modules**: blocks composed only by the voice "patch" file,
+  rearrangeable without touching block internals (§6.3).
+- **Heavy-modulation-ready**: every continuous parameter of every block (osc,
+  filter, envelopes, LFOs, mixer levels) is a mod-matrix destination via the
+  uniform ParamSlot system — including envelope a/d/s/r and LFO rate/shape.
 - All DSP in a pure-TypeScript kernel, unit-testable in Node (Vitest) without a
   browser, bundled into one worklet file at build time.
 - Sample-accurate trigger scheduling compatible with the existing lookahead
@@ -89,7 +109,7 @@ explicitly deferred — see §10.
   level1                level2                 level3        noise → noiseLevel
    └──────────────────────┴───────────┬──────────┴─────────────┘
                                       ▼
-                          ZDF SVF filter (LP/BP/HP)
+                   filter module (swappable: classic | morph)
                                       ▼
                                   VCA (env1)
                                       ▼
@@ -119,23 +139,37 @@ Each of the 3 oscillators:
 - **`level` (0..1)** into the voice mixer.
 - **`sync` (boolean)** — see master/slave chain above; ignored on osc1.
 
-### 5.3 Filter
+### 5.3 Filter (two swappable modules)
 
-Trapezoidal-integration **zero-delay-feedback state-variable filter** (Andy
-Simper / Cytomic SVF formulation): cheap (~10 flops/sample), stable under
-audio-rate cutoff modulation (the express reason to abandon the biquad), and
-yields LP/BP/HP from one state.
+Both filters are built on one shared **trapezoidal-integration
+zero-delay-feedback state-variable core** (`SvfCore`, Andy Simper / Cytomic
+formulation): cheap (~10 flops/sample), stable under audio-rate cutoff
+modulation (the express reason to abandon the biquad), and yielding LP/BP/HP
+simultaneously from one state. They are two implementations of the
+`FilterModule` interface, selected per track by `filter.model` (§6.3):
 
-- `cutoff` 20..20000 Hz (log knob), `resonance` 0..1, `filterType`
-  `'lp' | 'bp' | 'hp'`.
-- `keyTrack` 0..1: cutoff follows note pitch (1 = 100%).
-- Hardwired `env2 → cutoff` amount in **bipolar octaves ±4** (`filterEnvAmount`),
-  consistent with D1. Matrix can add further cutoff modulation on top.
+- **`classic`** — fixed architecture: `type` enum `'lp' | 'bp' | 'hp'`,
+  picking one SVF output. Familiar, predictable, the v1 default.
+- **`morph`** — continuous `morph` param 0..2 sweeping LP → BP → HP by
+  equal-power blending adjacent SVF outputs. `morph` is itself a ParamSlot,
+  i.e. a mod-matrix destination — an LFO or envelope can sweep the filter
+  *architecture*, which the classic model structurally can't.
+
+Shared params (both models, all modulatable): `cutoff` 20..20000 Hz (log),
+`resonance` 0..1, `keyTrack` 0..1 (cutoff follows note pitch). Both param sets
+persist independently; switching models is non-destructive (same pattern as
+the per-track `engines` map). Hardwired `env2 → cutoff` amount in **bipolar
+octaves ±4** (`filterEnvAmount`), consistent with D1; the matrix can add
+further cutoff modulation on top.
 
 ### 5.4 Envelopes (3 × loopable ADSR)
 
 State-machine per voice (idle/attack/decay/sustain/release), computed
-per-sample — no AudioParam automation anywhere.
+per-sample — no AudioParam automation anywhere. The state machine is a
+**rate integrator** (each sample advances by `1/(stageTime × sampleRate)`
+toward the stage target) rather than a precomputed-duration ramp — so `a`,
+`d`, `s`, `r` are themselves ParamSlots, modulatable *while a stage is in
+flight* (e.g. LFO on decay time, velocity → attack).
 
 - `env1` is hardwired to the VCA (velocity scales its peak, preserving the
   existing `trigger.velocity` contract). `env2` is hardwired to cutoff (see
@@ -156,7 +190,8 @@ per-sample — no AudioParam automation anywhere.
   audio-rate modulation feature; at >20 Hz routed to pitch/cutoff/PW these are
   FM/filter-FM effects.
 - `shape` (0..4 morph): sine → triangle → saw-up → saw-down → square.
-  (Saw-down is the reverse saw, meaningful here.)
+  (Saw-down is the reverse saw, meaningful here.) Continuous, so `shape` is
+  a ParamSlot and modulatable like everything else.
 - Per-voice phase, retriggered on note-on (free-running/global LFOs are a
   later option, out of v1).
 
@@ -165,15 +200,18 @@ per-sample — no AudioParam automation anywhere.
 Each slot: `{ source, dest, amount }`, `amount` −1..+1 bipolar.
 
 - **Sources:** `none, lfo1, lfo2, env1, env2, env3, velocity, noise`.
-- **Destinations:** `none, pitch (all oscs), osc1Pitch, osc2Pitch, osc3Pitch,
-  osc1Morph, osc2Morph, osc3Morph, osc1Pw, osc2Pw, osc3Pw, osc1Level,
-  osc2Level, osc3Level, noiseLevel, cutoff, resonance, fm12, fm23, lfo1Rate,
-  lfo2Rate, amp`.
-- **Scaling per destination class:** pitch destinations are exponential,
-  ±24 semitones at |amount| = 1; cutoff is ±4 octaves; rate destinations are
-  exponential ±4 octaves; everything else is linear added to the base param,
-  clamped to the param's range. Multiple slots targeting one destination sum
-  before clamping.
+- **Destinations: every ParamSlot in the voice** (§6.3) — the `dest` enum is
+  generated from the descriptor table (§6.4), not hand-enumerated. That
+  covers: per-osc pitch/morph/pulseWidth/level, noise level + color, filter
+  cutoff/resonance/keyTrack and the morph filter's `morph`, `fm12`/`fm23`,
+  every envelope's a/d/s/r, both LFOs' rate and shape, and a synthetic
+  `pitch` (all oscs) plus `amp` (post-VCA) destination. Discrete params
+  (enums, toggles, matrix routing) are not destinations (§6.3 coverage rule).
+- **Scaling per destination:** from the descriptor's `taper` + `modScale` —
+  pitch destinations exponential ±24 semitones at |amount| = 1, cutoff/rate
+  destinations exponential ±4 octaves, linear params full-range-scaled,
+  always clamped to the slot's range after summing. Multiple slots targeting
+  one destination sum before clamping.
 - Matrix evaluation is per-sample for audio-rate correctness (sources are
   already per-sample values; the summing is a handful of multiply-adds).
 
@@ -189,7 +227,8 @@ Each slot: `{ source, dest, amount }`, `amount` −1..+1 bipolar.
 ### 5.8 Defaults
 
 Defaults make a sound immediately recognizable as "the new engine": osc1 saw
-(morph 2.0), osc2 saw +7 cents, osc3 level 0, noise 0, cutoff 2000 Hz,
+(morph 2.0), osc2 saw +7 cents, osc3 level 0, noise 0, filter model `classic`
+type `lp` (morph field at 0), cutoff 2000 Hz,
 res 0.15, filterEnvAmount +2.4 oct, env1/env2 = existing synth defaults with
 `loop: false`, env3 idle-ish (a 0.2/d 0.3/s 0/r 0.3, loop false), LFO1
 5 Hz sine, LFO2 0.5 Hz triangle, matrix all slots `none/none/0`, mode mono.
@@ -213,18 +252,26 @@ on engine swap works unchanged.
 ### 6.2 Code layout
 
 ```
+packages/shared/src/engines/
+  synth2.ts                  # Synth2EngineParams + DEFAULT_SYNTH2_PARAMS
+  synth2-descriptors.ts      # THE param descriptor table (see §6.4) — no DSP, plain data
+
 packages/client/src/engine/
   Synth2Engine.ts            # SoundEngine impl: node lifecycle, port protocol, applyParams diffing
   synth2/
     kernel/                  # PURE TS — no Web Audio, no DOM, no allocation in process path
       Synth2Kernel.ts        # top-level: voice pool, event queue, block renderer
-      Voice.ts               # per-voice: oscs, envs, lfos, filter, matrix evaluation
+      Voice.ts               # THE PATCH: instantiates modules, wires signal + mod routing
+      ParamSlot.ts           # base + mod-accumulator + taper + smoother cell (§6.3)
       MorphOscillator.ts     # shared-phase morph + PolyBLEP/BLAMP (+ sync & TZFM inputs)
-      SvfFilter.ts           # ZDF SVF
-      LoopEnvelope.ts        # ADSR state machine with loop mode
+      SvfCore.ts             # shared ZDF SVF state/coefficient math
+      ClassicFilter.ts       # FilterModule: discrete LP/BP/HP on SvfCore
+      MorphFilter.ts         # FilterModule: continuous LP↔BP↔HP morph on SvfCore
+      LoopEnvelope.ts        # rate-integrating ADSR state machine with loop mode
       Lfo.ts
       ModMatrix.ts
-      params.ts              # Float32Array param block layout + indices (the WASM-shaped ABI)
+      Noise.ts
+      params.ts              # Float32Array block layout — GENERATED ordering from descriptors
     worklet-entry.ts         # registerProcessor wrapper; the ONLY file touching AudioWorkletGlobalScope
 ```
 
@@ -233,7 +280,67 @@ thread) and Vitest specs (run in Node). This kills the duplicated-math problem
 the pulse worklet accepted for its 8 lines — a full kernel cannot be
 maintained twice.
 
-### 6.3 Worklet bundling
+### 6.3 Module & ParamSlot architecture (the modularity contract)
+
+The kernel is a tiny modular synth, and the code is shaped like one:
+
+- **`DspModule` convention.** Every block exposes: a constructor taking its
+  `ParamSlot`s, a `reset()` (note-on / voice-steal), and a per-sample or
+  per-block `process(...)` whose inputs/outputs are plain numbers or
+  caller-owned `Float32Array`s. Modules never import each other and never
+  reach into the voice; all inter-module signal flow (osc → mixer → filter,
+  master-phase-wrap → slave sync, modulator output → FM input) is passed
+  explicitly by `Voice.ts`. Rearranging the architecture — reordering blocks,
+  adding a second filter in series, swapping a module implementation — is a
+  `Voice.ts` edit only.
+- **`ParamSlot`.** One cell per continuous parameter:
+  `{ base, modAccum, taper, min, max, smoother }`. The smoothed `base` comes
+  from the param block (knob/sync); the matrix **adds** into `modAccum` each
+  sample; the module reads `slot.value()` = taper-applied
+  `clamp(base + modAccum)`. Tapers: `linear`, `expOctaves` (pitch/cutoff/rate
+  ±N octaves or semitones), per-descriptor. Slots make every module
+  modulation-agnostic — a filter doesn't know *what* modulates its cutoff.
+- **Swappable module seams.** Where alternatives exist (filters, later
+  oscillator models), a narrow interface (`FilterModule`) + a discrete
+  selector param chooses the implementation per voice. Both implementations
+  stay constructed (they're a few floats of state); switching is a pointer
+  swap at block boundary + `reset()` of the incoming module — no allocation,
+  no click beyond the filter-state restart.
+
+**Modulation coverage rule:** every *continuous* param is a slot and therefore
+a matrix destination by default. Excluded (discrete/structural, not
+modulatable): waveform-independent toggles (`sync`, `loop`), enum selectors
+(`filter.model`, `classic.type`, `mode`), and the matrix's own
+`source`/`dest`/`amount` routing fields (`amount` stays a plain param in v1 —
+modulating modulation depth is a deliberate non-goal until someone misses it).
+
+### 6.4 The descriptor table (single source of truth)
+
+`shared/src/engines/synth2-descriptors.ts` declares every param once:
+
+```ts
+{ key: 'osc1.morph', range: [0, 3], default: 2, taper: 'linear',
+  modulatable: true, modScale: 1.0 /* full-range at |amount|=1 */ }
+{ key: 'filter.cutoff', range: [20, 20000], default: 2000, taper: 'expOctaves',
+  modulatable: true, modScale: 4 /* ±4 octaves */ }
+```
+
+Generated/derived from this table (each with a contract test asserting the
+derivation, so the table cannot silently drift from a consumer):
+
+| Consumer | Derivation |
+|---|---|
+| Zod param schema (§7) | number leaves with range bounds; discrete params declared alongside as enum descriptors |
+| Accept-list `PATTERNS` (§7) | one pattern per leaf key (dots → path tokens) |
+| Mod-matrix `dest` enum | `keys where modulatable === true`, plus `none` |
+| Kernel param-block layout (`params.ts`) | descriptor order = Float32Array index (append-only) |
+| Panel knob ranges/tapers | knob component props read the descriptor |
+| Per-destination mod scaling (§5.6) | `taper` + `modScale` |
+
+The table is **append-only** once I1 merges (same discipline as the param
+block it generates).
+
+### 6.5 Worklet bundling
 
 `worklet-entry.ts` is bundled to a **single self-contained ES module file** at
 build time and loaded via `ctx.audioWorklet.addModule(url)` in
@@ -244,7 +351,7 @@ the iteration-1 task is to pick whichever produces one dependency-free file in
 both dev and production builds and lock it in. Acceptance test: engine
 produces sound in `npm run dev` **and** in `npm run build` + preview.
 
-### 6.4 Trigger & param protocol (main thread → kernel)
+### 6.6 Trigger & param protocol (main thread → kernel)
 
 All communication is via the node's `MessagePort`; **no AudioParams** on the
 worklet node. Rationale: the param surface is ~60 leaves (AudioParam-per-param
@@ -278,7 +385,7 @@ Continuous params are smoothed in-kernel by ~5 ms one-pole smoothers
 (replacing the `setTargetAtTime(…, 0.01)` idiom); discrete params (enums,
 booleans, matrix routing) switch at block boundaries.
 
-### 6.5 Kernel contract (the WASM-shaped ABI)
+### 6.7 Kernel contract (the WASM-shaped ABI)
 
 The kernel's hot path is constrained to be mechanically portable to Rust:
 
@@ -298,7 +405,7 @@ A future Rust port replaces the kernel module behind `worklet-entry.ts` with
 `WebAssembly.instantiate` + shared `Float32Array` views; `Synth2Engine`, the
 protocol, the schema, and the panel are untouched.
 
-### 6.6 DSP algorithm notes
+### 6.8 DSP algorithm notes
 
 - **Morph oscillator:** one phase accumulator; the four shapes are generated
   from it and the two adjacent shapes for the current morph position are
@@ -325,11 +432,19 @@ All additive; nothing existing changes shape.
 
 1. **`EngineType`** union (`shared/src/index.ts`): add `'synth2'`.
 2. **`shared/src/engines/synth2.ts`:** `Synth2EngineParams` interface +
-   `DEFAULT_SYNTH2_PARAMS` (D7). Nested objects: `env1/env2/env3`
-   (`{a,d,s,r,loop}`), `lfo1/lfo2` (`{rate,shape}`), `matrix` — a **fixed
+   `DEFAULT_SYNTH2_PARAMS` (D7). Params are **uniformly nested per module**,
+   mirroring descriptor keys (`osc1.morph` ⇒ `params.osc1.morph`):
+   `osc1/osc2/osc3` (`{morph, pulseWidth, coarse, fine, level, sync}`),
+   `env1/env2/env3`
+   (`{a,d,s,r,loop}`), `lfo1/lfo2` (`{rate,shape}`), `filter`
+   (`{model, type, morph, cutoff, resonance, keyTrack}` — flat, both models'
+   fields persisted so switching is non-destructive), `matrix` — a **fixed
    8-element array** of `{source,dest,amount}` (fixed-size like the step
    buffer and track pool, keeping the wire shape and accept-list bounds
-   static, per D15's precedent).
+   static, per D15's precedent). Plus **`synth2-descriptors.ts`**: the param
+   descriptor table (§6.4) lives in shared so schema, accept-list, panel,
+   and kernel all derive from the same data without shared importing any
+   client code.
 3. **`EngineParamsMap`** (`project/types.ts`): add `synth2` key.
 4. **Zod schema** (`project/schema.ts`): `Synth2ParamsSchema` with enums for
    `filterType`, matrix `source`/`dest`, morph ranges, etc.; registered in
@@ -398,7 +513,7 @@ All additive; nothing existing changes shape.
   releases, all matrix slots active) measured via `chrome://tracing` audio
   thread occupancy. **Decision rule:** if worst-case realistic sessions
   exceed ~60% of the render budget, schedule the Rust/WASM kernel port (the
-  ABI in §6.5 makes it a kernel-swap, not a redesign). Otherwise WASM stays
+  ABI in §6.7 makes it a kernel-swap, not a redesign). Otherwise WASM stays
   shelved.
 
 ## 11. Testing strategy
@@ -416,7 +531,9 @@ Kernel-first, browser-last (repo convention: no `.vue` mounting).
 - **Protocol tests:** `Synth2Engine` against a stubbed `AudioWorkletNode` —
   param block layout round-trips, trigger messages carry sequencer time,
   dispose sequencing.
-- **Shared contract tests:** schema validates defaults; accept-list accepts
+- **Shared contract tests:** every §6.4 derivation asserted against the
+  descriptor table (schema bounds, accept-list patterns, dest enum, param
+  block indices); schema validates defaults; accept-list accepts
   every panel-reachable path and rejects out-of-range matrix indices;
   normalize heals a snapshot missing `engines.synth2` (incl. the WS-path
   regression test from §7 item 7).
@@ -433,24 +550,30 @@ by the user.
 
 **I1 — Walking skeleton (the risk-killer).**
 `synth2` end-to-end with a deliberately tiny voice: **1 morph oscillator +
-env1 (non-looping) + voice gating, mono only**. Proves: worklet bundling in
-dev *and* prod build, addModule lifecycle, trigger/param port protocol with
-sample-accurate starts, all shared-package plumbing (§7), minimal panel
-(morph/tune/level + env1), engine swap fade (D4), sync round-trip of synth2
-leaves between two clients, old-snapshot healing. *Exit criterion: a second
-user in the same session hears your synth2 track and can turn your morph knob.*
+env1 (non-looping) + voice gating, mono only** — but built on the real
+foundations: the descriptor table + derivations (§6.4) and ParamSlot cells
+(§6.3) exist from day one, with osc1 + env1 params registered. Proves:
+worklet bundling in dev *and* prod build, addModule lifecycle, trigger/param
+port protocol with sample-accurate starts, all shared-package plumbing (§7),
+minimal panel (morph/tune/level + env1), engine swap fade (D4), sync
+round-trip of synth2 leaves between two clients, old-snapshot healing.
+*Exit criterion: a second user in the same session hears your synth2 track
+and can turn your morph knob.*
 
-**I2 — The oscillator section.**
+**I2 — The oscillator section + classic filter.**
 Oscs 2+3, noise channel, mixer levels, hard sync chain, TZFM (`fm12`/`fm23`),
-poly mode + 8-voice allocator, SVF filter with env2 (loop still disabled) and
-keytrack. This iteration delivers the headline sound-design features (sync +
-cross-mod + morph).
+poly mode + 8-voice allocator, the `FilterModule` seam with **`ClassicFilter`**
++ env2 (loop still disabled) and keytrack. This iteration delivers the
+headline sound-design features (sync + cross-mod + morph).
 
-**I3 — The modulation system.**
+**I3 — The modulation system + morph filter.**
 Loop mode on all three envelopes, env3, both LFOs (full 0.01 Hz–2 kHz range),
-the 8-slot mod matrix with all sources/destinations and per-class scaling,
-panel rows for matrix/LFOs. This iteration delivers audio-rate modulation and
-loopable ADSRs.
+the 8-slot mod matrix targeting **every registered slot** with
+descriptor-driven scaling, panel rows for matrix/LFOs, and **`MorphFilter`**
+behind the I2 seam (its `morph` slot arriving together with the matrix that
+makes it interesting — and proving the swappable-module seam with a second
+implementation). This iteration delivers audio-rate modulation and loopable
+ADSRs.
 
 **I4 — Hardening & headroom.**
 Profiling harness + worst-case session measurement (→ WASM go/no-go data),
@@ -466,7 +589,8 @@ already on `project`), free-running LFO mode, stereo voice spread.
 | Port-message timing vs very short lookahead | Sequencer lookahead (~0.1 s) ≫ message latency (<1 frame); late events degrade gracefully to immediate start |
 | Kernel CPU surprises (morph × 3 oscs × matrix) | Gating from I1; per-iteration micro-bench in Vitest (frames/sec of kernel render in Node as a coarse canary) |
 | Param-block ABI churn across iterations | `params.ts` layout is append-only; index constants, never positional literals, at call sites |
-| Accept-list/schema drift (60 new leaves) | Contract test generates paths from `DEFAULT_SYNTH2_PARAMS` shape and asserts acceptance — list can't silently miss a panel knob |
+| Accept-list/schema drift (60+ new leaves) | Schema/accept-list/dest-enum are *derived from the descriptor table* with contract tests asserting each derivation (§6.4) — a knob can't exist without its sync path |
+| Per-sample ParamSlot/matrix evaluation cost (uniform modulation isn't free) | Slot read is ~3 flops; matrix is 8 multiply-adds; both inside the per-voice budget (§10). Canary micro-bench per iteration; fall back to per-block evaluation for sub-audio destinations only if the canary regresses |
 | The latent sync-path migration gap bites old sessions | Explicit WS-path healing regression test in I1 (§7.7) |
 
 ## 14. Open questions (non-blocking, decide before/at the relevant iteration)
@@ -474,8 +598,7 @@ already on `project`), free-running LFO mode, stereo voice spread.
 1. Engine display name (`SYN2` placeholder) — decide before I1 merge.
 2. Free-running vs retriggered LFOs as a per-LFO toggle — default retriggered;
    toggle is an I4 nicety.
-3. Stereo: keep kernel signature stereo-ready (done in §6.5) but decide in I4
+3. Stereo: keep kernel signature stereo-ready (done in §6.7) but decide in I4
    whether voice spread ships.
-4. Whether `filterType` should be a continuous LP↔BP↔HP morph (the SVF gives
-   it almost free) instead of an enum — leaning enum for v1 UI simplicity;
-   revisit in I2.
+4. ~~Continuous filter morph vs enum~~ — **resolved**: both, as swappable
+   `FilterModule` implementations (`classic` enum + `morph` continuous), §5.3.
