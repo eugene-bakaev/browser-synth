@@ -71,7 +71,7 @@ describe('MorphOscillator', () => {
     }
   });
 
-  it('morphing is continuous: a slow sweep produces no per-sample jumps', () => {
+  it('crossfade adds no discontinuity over the continuous region (morph 0→1)', () => {
     const morphSlot = slot('osc1.morph', 0, 3, 0);
     const osc = new MorphOscillator(
       morphSlot,
@@ -80,22 +80,18 @@ describe('MorphOscillator', () => {
       slot('osc1.fine', -100, 100, 0),
       SR,
     );
-    const n = SR; // sweep morph 0 → 3 over 1s at 110Hz (long, smooth period)
+    const n = SR; // sweep morph 0 → 1 at 110Hz; sine and triangle are both continuous,
+                  // so NO band-limited edges exist — every jump is the crossfade + slope.
     let prev = osc.next(110);
     let maxJump = 0;
     for (let i = 1; i < n; i++) {
-      morphSlot.setBase((i / n) * 3);
+      morphSlot.setBase(i / n);           // 0 → 1
       const v = osc.next(110);
-      // PolyBLEP spreads each hard step (saw wrap, pulse fall) over exactly
-      // 2 samples; each sample carries ≤ (1 - 2*dt) ≈ 0.995 of the step
-      // amplitude. A pure unblep'd step (full wrap from ±1 to ∓1, Δ = 2)
-      // exceeds 1.2; BLEP-corrected contributions within the crossfade are
-      // always < 1.2. Filtering > 1.2 isolates only the in-flight BLEP window.
-      // The remaining max must stay below 1.2 — any crossfade bug that
-      // introduces artificial discontinuities would push it higher.
-      maxJump = Math.max(maxJump, Math.abs(v - prev) > 1.2 ? 0 : Math.abs(v - prev));
+      maxJump = Math.max(maxJump, Math.abs(v - prev));
       prev = v;
     }
-    expect(maxJump).toBeLessThan(1.2);
+    // 110Hz sine's natural per-sample slope is ~2π·dt ≈ 0.014; measured worst jump ≈ 0.018.
+    // 0.1 gives ~5x headroom yet a hard-switch / discontinuous crossfade (~0.7+) fails.
+    expect(maxJump).toBeLessThan(0.1);
   });
 });
