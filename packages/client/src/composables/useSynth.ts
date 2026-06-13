@@ -776,11 +776,15 @@ export function useSynth() {
                 engine.trigger(freq, duration, time, step.velocity);
               }
             } else if (engineTypeI === 'synth2') {
-              // synth2 I1 is mono — single freq, melodic duration semantics
-              // identical to synth mono.
+              const currentMode = track.engines.synth2.mode;
               const tickDuration = (60 / project.bpm) / 4;
               const duration = step.length * tickDuration;
-              engine.trigger(noteToFreq(step.note, step.octave), duration, time, step.velocity);
+              if (currentMode === 'poly') {
+                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
+                engine.trigger(freqs, duration, time, step.velocity);
+              } else {
+                engine.trigger(noteToFreq(step.note, step.octave), duration, time, step.velocity);
+              }
             } else {
               // Drums are fire-and-forget: pitch + decay come from the engine's
               // Tune/Decay knobs, not from step data. freq/duration are passed

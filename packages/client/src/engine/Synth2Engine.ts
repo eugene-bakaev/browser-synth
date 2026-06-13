@@ -62,15 +62,16 @@ export class Synth2Engine implements SoundEngine {
 
   trigger(freq: number | number[], duration: number, time?: number, velocity: number = 1.0): void {
     if (this.ctx.state === 'suspended') this.ctx.resume();
-    // I1 is mono — chords collapse to their root; poly arrives in I2.
-    const f = Array.isArray(freq) ? freq[0] : freq;
-    this.node.port.postMessage({
-      type: 'trigger',
-      time: time ?? this.ctx.currentTime,
-      freq: f,
-      duration,
-      velocity,
-    });
+    const t = time ?? this.ctx.currentTime;
+    if (Array.isArray(freq)) {
+      // Poly: one message per note; the kernel allocator spreads them across voices.
+      for (const f of freq) {
+        this.node.port.postMessage({ type: 'trigger', time: t, freq: f, duration, velocity, mono: false });
+      }
+    } else {
+      // Mono: voice 0 retrigger.
+      this.node.port.postMessage({ type: 'trigger', time: t, freq, duration, velocity, mono: true });
+    }
   }
 
   dispose(): void {

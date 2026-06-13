@@ -100,11 +100,12 @@ for (const [key, schema] of synth2LeafEntries) {
   (synth2Modules[mod] ??= {})[field] = schema;
 }
 
-const Synth2ParamsSchema = z.object(
-  Object.fromEntries(
+const Synth2ParamsSchema = z.object({
+  ...Object.fromEntries(
     Object.entries(synth2Modules).map(([mod, fields]) => [mod, z.object(fields).strict()]),
   ),
-);
+  mode: z.union([z.literal('mono'), z.literal('poly')]),
+});
 
 // --- Step / Track / Project ----------------------------------------------
 

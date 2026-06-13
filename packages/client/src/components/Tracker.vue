@@ -263,12 +263,11 @@ const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
 // Always-present engine label for the fixed second header row.
 const engineLabelText = computed(() => engineLabel(props.engineType, props.mode));
 
-// Melodic engines get note/octave/length step entry; everything else gets the
-// drum TRIG grid. synth2 is melodic (mono-only in I1). The `mode` prop is wired
-// to engines.synth.mode upstream regardless of engine, so the poly chord layout
-// is gated on `synth` specifically — synth2 has no poly mode yet (I2).
+// Melodic engines (synth, synth2) get note/octave/length step entry; everything
+// else gets the drum TRIG grid. The poly chord layout is gated on a melodic
+// engine whose own mode is poly — StudioView passes each track's own engine mode.
 const isMelodic = computed(() => props.engineType === 'synth' || props.engineType === 'synth2');
-const isPoly = computed(() => props.engineType === 'synth' && props.mode === 'poly');
+const isPoly = computed(() => isMelodic.value && props.mode === 'poly');
 
 // The length field is v-model'd to a local draft (not the prop directly) so that the
 // ~8/sec re-renders during playback — which re-apply value bindings on every patch —

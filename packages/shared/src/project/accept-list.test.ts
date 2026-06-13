@@ -131,6 +131,15 @@ describe('synth2 accept-list (generated from descriptors)', () => {
     expect(pathIsWritable('tracks.0.engines.synth2.osc1')).toBe(false);
     expect(pathIsWritable('tracks.0.engines.synth2')).toBe(false);
   });
+
+  it('allows synth2 mode and validates its value', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.mode')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.mode', 'mono')).toEqual({ ok: true });
+    expect(validatePathAndValue('tracks.0.engines.synth2.mode', 'poly')).toEqual({ ok: true });
+    const bad = validatePathAndValue('tracks.0.engines.synth2.mode', 'chord');
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.code).toBe('value.invalid');
+  });
 });
 
 describe('enabled flag path', () => {

@@ -5,14 +5,15 @@
 //
 // Message protocol (spec §6.6):
 //   { type: 'params',  block: Float32Array }   full base-value block
-//   { type: 'trigger', time, freq, duration, velocity }   seconds on ctx clock
+//   { type: 'trigger', time, freq, duration, velocity, mono }   seconds on ctx clock
 //   { type: 'dispose' }   → process() returns false, node becomes collectable
 
 import { Synth2Kernel } from './kernel/Synth2Kernel';
 
 type Synth2Message =
   | { type: 'params'; block: Float32Array }
-  | { type: 'trigger'; time: number; freq: number; duration: number; velocity: number }
+  // `mono` = monophonic voice allocation (retrigger voice 0), NOT mono audio.
+  | { type: 'trigger'; time: number; freq: number; duration: number; velocity: number; mono: boolean }
   | { type: 'dispose' };
 
 // AudioWorkletGlobalScope members — not in the DOM lib TS ships for the page.
@@ -40,7 +41,7 @@ class Synth2Processor extends AudioWorkletProcessor {
       if (msg.type === 'params') {
         this.kernel.applyParams(msg.block);
       } else if (msg.type === 'trigger') {
-        this.kernel.noteOn(msg.time, msg.freq, msg.duration, msg.velocity);
+        this.kernel.noteOn(msg.time, msg.freq, msg.duration, msg.velocity, msg.mono);
       } else if (msg.type === 'dispose') {
         this.alive = false;
       }

@@ -93,3 +93,48 @@ describe('Synth2Kernel', () => {
     expect(pb / pa).toBeCloseTo(0.25, 1);
   });
 });
+
+function activeCount(kernel: Synth2Kernel): number {
+  return (kernel as any).voices.filter((v: any) => v.active).length;
+}
+
+describe('Synth2Kernel polyphony', () => {
+  it('sounds 8 simultaneous poly voices and never grows past 8', () => {
+    const kernel = new Synth2Kernel(SR);
+    for (let i = 0; i < 12; i++) kernel.noteOn(0, 220 + i * 30, 2, 1, false); // mono=false → poly
+    renderBlocks(kernel, 0, 4);
+    expect((kernel as any).voices.length).toBe(8);
+    expect(activeCount(kernel)).toBe(8); // 12 notes, 8 voices, oldest stolen
+  });
+
+  it('mono triggers only ever use voice 0', () => {
+    const kernel = new Synth2Kernel(SR);
+    kernel.noteOn(0, 220, 2, 1, true);
+    kernel.noteOn(0, 330, 2, 1, true);
+    kernel.noteOn(0, 440, 2, 1, true);
+    renderBlocks(kernel, 0, 4);
+    expect((kernel as any).voices[0].active).toBe(true);
+    expect(activeCount(kernel)).toBe(1);
+  });
+
+  it('prefers a freed voice over stealing (free-first)', () => {
+    const kernel = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['env1.r']] = 0.001;
+    kernel.applyParams(block);
+    kernel.noteOn(0, 220, 0.01, 1, false); // very short — will free quickly
+    kernel.noteOn(0, 330, 2, 1, false);    // long — stays active
+    renderBlocks(kernel, 0, Math.ceil((SR * 0.2) / BLOCK)); // let the short note finish
+    expect(activeCount(kernel)).toBe(1);   // only the long note remains
+    // Pin the long note's voice while it is the sole active one, so we can
+    // prove it SURVIVES the next allocation (a steal-active bug would silence it).
+    const voices = (kernel as any).voices as { active: boolean }[];
+    const longVoice = voices.findIndex(v => v.active);
+    kernel.noteOn(SR * 0.2 / SR, 440, 2, 1, false);
+    renderBlocks(kernel, Math.ceil((SR * 0.2) / BLOCK) * BLOCK, 4);
+    // Free-first reused an idle voice; the long note is untouched. A bug that
+    // stole the oldest active voice would leave activeCount 1 and longVoice idle.
+    expect(activeCount(kernel)).toBe(2);
+    expect(voices[longVoice].active).toBe(true);
+  });
+});
