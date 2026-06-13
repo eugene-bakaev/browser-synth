@@ -6,13 +6,16 @@
 // absolute frame the block starts at (the worklet passes currentFrame; tests
 // pass whatever they like).
 //
-// I1 is mono: one voice, every note retriggers it (steal ramp keeps it
-// clickless). The queue is a fixed ring of preallocated events — events are
-// assumed time-ordered (the sequencer schedules in order); a full ring drops
-// the oldest event, which at 64 slots only happens under pathological input.
+// I2a: 8-voice pool. mono=true (default, backward-compatible) retriggers
+// voice 0 exclusively using the existing steal ramp — one voice, clickless.
+// mono=false routes through pickVoice: free-first round-robin, oldest-steal
+// fallback. applyParams and renderActive loop all voices unchanged. The queue
+// is a fixed ring of 64 preallocated events — events are assumed time-ordered
+// (the sequencer schedules in order); a full ring drops the oldest event.
 
 import { Voice } from './Voice';
 import { PARAM_COUNT, defaultParamBlock } from './params';
+import { pickVoice, VOICE_COUNT } from './allocator';
 
 const MAX_EVENTS = 64;
 
@@ -21,6 +24,7 @@ interface NoteEvent {
   freq: number;
   gateFrames: number;
   velocity: number;
+  mono: boolean;
 }
 
 export class Synth2Kernel {
@@ -30,10 +34,16 @@ export class Synth2Kernel {
   private head = 0; // next event to consume
   private count = 0;
 
+  // Allocation-free poly bookkeeping (reused each allocate() call).
+  private readonly activeScratch: boolean[] = new Array(VOICE_COUNT).fill(false);
+  private readonly ages: number[] = new Array(VOICE_COUNT).fill(0);
+  private rr = 0;
+  private ageCounter = 1;
+
   constructor(private readonly sampleRate: number) {
-    this.voices = [new Voice(sampleRate)];
+    this.voices = Array.from({ length: VOICE_COUNT }, () => new Voice(sampleRate));
     this.events = Array.from({ length: MAX_EVENTS }, () => ({
-      frame: 0, freq: 440, gateFrames: 0, velocity: 1,
+      frame: 0, freq: 440, gateFrames: 0, velocity: 1, mono: true,
     }));
   }
 
@@ -47,7 +57,7 @@ export class Synth2Kernel {
   }
 
   /** time/duration in seconds on the AudioContext clock (SoundEngine contract). */
-  noteOn(time: number, freq: number, duration: number, velocity: number): void {
+  noteOn(time: number, freq: number, duration: number, velocity: number, mono = true): void {
     if (this.count === MAX_EVENTS) { // drop oldest
       this.head = (this.head + 1) % MAX_EVENTS;
       this.count--;
@@ -57,6 +67,7 @@ export class Synth2Kernel {
     ev.freq = freq;
     ev.gateFrames = Math.max(1, Math.round(duration * this.sampleRate));
     ev.velocity = velocity;
+    ev.mono = mono;
     this.count++;
   }
 
@@ -69,11 +80,20 @@ export class Synth2Kernel {
       const offset = Math.max(0, ev.frame - blockStartFrame); // past-due → now
       this.renderActive(out, cursor, offset);
       cursor = offset;
-      this.voices[0].noteOn(ev.freq, ev.velocity, ev.gateFrames);
+      const v = ev.mono ? 0 : this.allocate();
+      this.voices[v].noteOn(ev.freq, ev.velocity, ev.gateFrames);
       this.head = (this.head + 1) % MAX_EVENTS;
       this.count--;
     }
     this.renderActive(out, cursor, frames);
+  }
+
+  private allocate(): number {
+    for (let v = 0; v < VOICE_COUNT; v++) this.activeScratch[v] = this.voices[v].active;
+    const v = pickVoice(this.activeScratch, this.ages, this.rr);
+    this.rr = (v + 1) % VOICE_COUNT;
+    this.ages[v] = this.ageCounter++;
+    return v;
   }
 
   private renderActive(out: Float32Array, from: number, to: number): void {
