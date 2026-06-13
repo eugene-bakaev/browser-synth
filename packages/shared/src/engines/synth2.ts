@@ -25,6 +25,9 @@ export interface Synth2EnvParams {
 export interface Synth2EngineParams {
   osc1: Synth2OscParams;
   env1: Synth2EnvParams;
+  // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
+  // (it's not a Float32Array param); lives here so presets carry their mode.
+  mode: 'mono' | 'poly';
 }
 
 function buildDefaults(): Synth2EngineParams {
@@ -33,7 +36,7 @@ function buildDefaults(): Synth2EngineParams {
     const [mod, field] = d.key.split('.');
     (out[mod] ??= {})[field] = d.default;
   }
-  return out as unknown as Synth2EngineParams;
+  return { ...(out as unknown as Synth2EngineParams), mode: 'mono' };
 }
 
 export const DEFAULT_SYNTH2_PARAMS: Synth2EngineParams = buildDefaults();

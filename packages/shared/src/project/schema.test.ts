@@ -112,4 +112,11 @@ describe('synth2 schema (generated from descriptors)', () => {
       expect(leaf.safeParse(d.max + 1e-6).success, d.key).toBe(false);
     }
   });
+
+  it('accepts mono and poly mode and rejects anything else', () => {
+    const ok = { ...DEFAULT_SYNTH2_PARAMS, mode: 'poly' as const };
+    expect(Schemas.Synth2Params.safeParse(ok).success).toBe(true);
+    const bad = { ...DEFAULT_SYNTH2_PARAMS, mode: 'chord' };
+    expect(Schemas.Synth2Params.safeParse(bad).success).toBe(false);
+  });
 });

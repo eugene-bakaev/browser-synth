@@ -12,7 +12,12 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
     }
     // No extra leaves beyond the table.
     const leafCount = Object.values(DEFAULT_SYNTH2_PARAMS)
+      .filter(m => m !== null && typeof m === 'object')
       .reduce((n, m) => n + Object.keys(m).length, 0);
     expect(leafCount).toBe(SYNTH2_DESCRIPTORS.length);
+  });
+
+  it('defaults mode to mono', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.mode).toBe('mono');
   });
 });
