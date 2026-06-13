@@ -34,10 +34,11 @@ export class MorphOscillator {
     this.tri = 0;
   }
 
-  next(baseFreq: number): number {
+  next(baseFreq: number, fmInput = 0, fmAmount = 0): number {
     const semis = this.coarse.next() + this.fine.next() / 100;
     const f = baseFreq * Math.pow(2, semis / 12);
-    const dt = f / this.sampleRate;
+    const dt0 = f / this.sampleRate;
+    const dt = dt0 * (1 + fmAmount * fmInput); // through-zero FM; dt may go negative
     const pw = this.pulseWidth.next();
     const m = this.morph.next();
 
@@ -57,6 +58,7 @@ export class MorphOscillator {
 
     this.phase += dt;
     if (this.phase >= 1) this.phase -= 1;
+    else if (this.phase < 0) this.phase += 1;
     return out;
   }
 
@@ -72,7 +74,13 @@ export class MorphOscillator {
         // still sits below unity and rolls off with frequency — the known
         // leaky-triangle tradeoff accepted for I1.
         // TODO(I4): cache norm (changes only with dt) and revisit triangle loudness-matching under profiling.
-        const norm = (1 - TRI_LEAK) / (4 * dt * (1 - Math.pow(TRI_LEAK, 0.5 / dt)));
+        // TZFM can drive dt to/through zero (carrier momentarily halted when
+        // fmAmount*fmInput = -1). The 1/dt term in norm would then be Infinity →
+        // NaN output, so normalize on |dt| and short-circuit a (near-)halted
+        // carrier to 0. At positive dt (I1 / no-FM) this is bit-identical.
+        const adt = dt < 0 ? -dt : dt;
+        if (adt < 1e-7) return 0;
+        const norm = (1 - TRI_LEAK) / (4 * adt * (1 - Math.pow(TRI_LEAK, 0.5 / adt)));
         return this.tri * norm;
       }
       case 2: {

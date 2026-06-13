@@ -22,8 +22,22 @@ export interface Synth2EnvParams {
   r: number;
 }
 
+export interface Synth2NoiseParams {
+  level: number;
+  color: number;
+}
+
+export interface Synth2FmParams {
+  osc2: number; // osc1 → osc2 TZFM index
+  osc3: number; // osc2 → osc3 TZFM index
+}
+
 export interface Synth2EngineParams {
   osc1: Synth2OscParams;
+  osc2: Synth2OscParams;
+  osc3: Synth2OscParams;
+  noise: Synth2NoiseParams;
+  fm: Synth2FmParams;
   env1: Synth2EnvParams;
   // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
   // (it's not a Float32Array param); lives here so presets carry their mode.

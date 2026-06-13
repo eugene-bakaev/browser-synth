@@ -66,12 +66,13 @@ describe('Synth2Kernel', () => {
     for (let i = 0; i < after.length; i++) expect(after[i]).toBe(0);
   });
 
-  it('applyParams reaches the audio: osc1.level 0 silences a held note', () => {
+  it('applyParams reaches the audio: osc1.level+osc2.level 0 silences a held note', () => {
     const kernel = new Synth2Kernel(SR);
     kernel.noteOn(0, 440, 2, 1);
     renderBlocks(kernel, 0, 8); // note sounding
     const block = defaultParamBlock();
     block[PARAM_INDEX['osc1.level']] = 0;
+    block[PARAM_INDEX['osc2.level']] = 0;
     kernel.applyParams(block);
     renderBlocks(kernel, 8 * BLOCK, Math.ceil((SR * 0.05) / BLOCK)); // ride out smoothing
     const after = renderBlocks(kernel, SR, 1);
@@ -97,6 +98,75 @@ describe('Synth2Kernel', () => {
 function activeCount(kernel: Synth2Kernel): number {
   return (kernel as any).voices.filter((v: any) => v.active).length;
 }
+
+describe('Synth2Kernel oscillator section', () => {
+  // Pre-render enough blocks (with an active voice) to let the 5ms param
+  // smoothers settle from their descriptor defaults. Without this, osc2.level
+  // (default 0.8) creates a transient when zeroed in a fresh kernel, which
+  // contaminates the "off" (silence) assertions. Smoothers only advance inside
+  // renderAdd, so we need an active voice during settling.
+  const SETTLE_FRAMES = Math.ceil(SR * 0.1); // 100ms ≫ 7 × 5ms time constants
+  const SETTLE_BLOCKS_COUNT = Math.ceil(SETTLE_FRAMES / BLOCK);
+
+  function renderEnergy(setup: (b: Float32Array) => void): number {
+    const k = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    setup(block);
+    k.applyParams(block);
+    // Fire a long note during the settle window, then measure a fresh note.
+    k.noteOn(0, 220, 10, 1, true); // long gate: survives settle window
+    const settle = new Float32Array(BLOCK);
+    for (let i = 0; i < SETTLE_BLOCKS_COUNT; i++) k.process(settle, BLOCK, i * BLOCK);
+    // Now fire the measurement note (retrigger mono voice 0) at settle end.
+    const measureStart = SETTLE_BLOCKS_COUNT * BLOCK;
+    k.noteOn(measureStart / SR, 220, 1, 1, true);
+    const out = renderBlocks(k, measureStart, 16);
+    let e = 0; for (let i = 0; i < out.length; i++) e += Math.abs(out[i]);
+    return e;
+  }
+
+  it('osc2 level contributes audio (energy rises when osc2.level goes up from 0)', () => {
+    const lo = renderEnergy(b => { b[PARAM_INDEX['osc2.level']] = 0; });
+    const hi = renderEnergy(b => { b[PARAM_INDEX['osc2.level']] = 1; });
+    expect(hi).toBeGreaterThan(lo * 1.05);
+  });
+
+  it('osc3 is silent at level 0 and audible above it', () => {
+    const off = renderEnergy(b => { b[PARAM_INDEX['osc1.level']] = 0; b[PARAM_INDEX['osc2.level']] = 0; b[PARAM_INDEX['osc3.level']] = 0; });
+    const on  = renderEnergy(b => { b[PARAM_INDEX['osc1.level']] = 0; b[PARAM_INDEX['osc2.level']] = 0; b[PARAM_INDEX['osc3.level']] = 1; });
+    expect(off).toBeLessThan(1e-3);
+    expect(on).toBeGreaterThan(0.1);
+  });
+
+  it('noise contributes broadband energy when noise.level > 0', () => {
+    // osc2 defaults to 0.8; zero it alongside osc1 to isolate the noise channel.
+    const off = renderEnergy(b => { b[PARAM_INDEX['osc1.level']] = 0; b[PARAM_INDEX['osc2.level']] = 0; b[PARAM_INDEX['noise.level']] = 0; });
+    const on  = renderEnergy(b => { b[PARAM_INDEX['osc1.level']] = 0; b[PARAM_INDEX['osc2.level']] = 0; b[PARAM_INDEX['noise.level']] = 1; });
+    expect(off).toBeLessThan(1e-3);
+    expect(on).toBeGreaterThan(0.1);
+  });
+
+  // Seed independence itself is proven in Noise.test.ts ("different seeds diverge");
+  // here we just confirm both poly voices reach the mix through the noise channel.
+  it('two poly voices both produce noise output', () => {
+    const k = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['osc1.level']] = 0; block[PARAM_INDEX['osc2.level']] = 0;
+    block[PARAM_INDEX['noise.level']] = 1;
+    k.applyParams(block);
+    k.noteOn(0, 220, 1, 1, false); // poly → voice A
+    k.noteOn(0, 440, 1, 1, false); // poly → voice B
+    const out = renderBlocks(k, 0, 8);
+    let e = 0; for (let i = 0; i < out.length; i++) e += Math.abs(out[i]);
+    expect(e).toBeGreaterThan(0.1);
+  });
+
+  it('TZFM changes osc2 output (fm.osc2 > 0 alters the result vs fm.osc2 = 0)', () => {
+    const noFm = renderEnergy(b => { b[PARAM_INDEX['fm.osc2']] = 0; });
+    const fm   = renderEnergy(b => { b[PARAM_INDEX['fm.osc2']] = 3; });
+    expect(Math.abs(fm - noFm)).toBeGreaterThan(0.01);
+  });
+});
 
 describe('Synth2Kernel polyphony', () => {
   it('sounds 8 simultaneous poly voices and never grows past 8', () => {
