@@ -168,6 +168,18 @@ describe('reconcileWithDefaults — legacy playMode compat', () => {
   });
 });
 
+describe('reconcileWithDefaults — synth2 mode heal', () => {
+  it('heals a synth2 slice missing mode to mono', () => {
+    const loaded = {
+      schemaVersion: 2,
+      bpm: 120,
+      tracks: [{ engineType: 'synth2', engines: { synth2: { osc1: { morph: 1 } } } }],
+    };
+    const out = reconcileWithDefaults(loaded);
+    expect(out.tracks[0].engines.synth2.mode).toBe('mono');
+  });
+});
+
 describe('track pool reconcile', () => {
   it('reconcileWithDefaults pads a 4-track save to 32 slots, first 4 enabled', () => {
     const legacy = { schemaVersion: 2, bpm: 120, tracks: [{}, {}, {}, {}] };

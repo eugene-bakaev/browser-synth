@@ -70,6 +70,8 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   // Synth2 params — GENERATED from the descriptor table (spec §6.4): one
   // leaf pattern per descriptor, nested as engines.synth2.<module>.<field>.
   ...SYNTH2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'synth2', ...d.key.split('.')]),
+  // synth2 play mode — not a descriptor, sibling of the modules (like synth.mode).
+  ['tracks', '*', 'engines', 'synth2', 'mode'],
   // Mixer.
   ['tracks', '*', 'mixer', 'volume'],
   ['tracks', '*', 'mixer', 'muted'],
