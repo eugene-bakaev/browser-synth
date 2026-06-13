@@ -43,7 +43,53 @@
       </div>
     </div>
 
-    <!-- Column 2: Visualizer -->
+    <!-- Column 2: Oscillator 2 -->
+    <div class="rack-column">
+      <div class="module-group synth2-panel">
+        <h3>OSC 2</h3>
+        <div class="knob-row">
+          <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc2.morph" v-model="params.osc2.morph" :syncPath="ks.pathFor(['osc2', 'morph'])" @gesture-end="ks.end(['osc2', 'morph'])" />
+          <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.pulseWidth" v-model="params.osc2.pulseWidth" :syncPath="ks.pathFor(['osc2', 'pulseWidth'])" @gesture-end="ks.end(['osc2', 'pulseWidth'])" />
+          <Knob label="Coarse" :min="-36" :max="36" :step="1" :defaultValue="DEFAULTS.osc2.coarse" v-model="params.osc2.coarse" :syncPath="ks.pathFor(['osc2', 'coarse'])" @gesture-end="ks.end(['osc2', 'coarse'])" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc2.fine" v-model="params.osc2.fine" :syncPath="ks.pathFor(['osc2', 'fine'])" @gesture-end="ks.end(['osc2', 'fine'])" />
+          <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.level" v-model="params.osc2.level" :syncPath="ks.pathFor(['osc2', 'level'])" @gesture-end="ks.end(['osc2', 'level'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 3: Oscillator 3 -->
+    <div class="rack-column">
+      <div class="module-group synth2-panel">
+        <h3>OSC 3</h3>
+        <div class="knob-row">
+          <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc3.morph" v-model="params.osc3.morph" :syncPath="ks.pathFor(['osc3', 'morph'])" @gesture-end="ks.end(['osc3', 'morph'])" />
+          <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.pulseWidth" v-model="params.osc3.pulseWidth" :syncPath="ks.pathFor(['osc3', 'pulseWidth'])" @gesture-end="ks.end(['osc3', 'pulseWidth'])" />
+          <Knob label="Coarse" :min="-36" :max="36" :step="1" :defaultValue="DEFAULTS.osc3.coarse" v-model="params.osc3.coarse" :syncPath="ks.pathFor(['osc3', 'coarse'])" @gesture-end="ks.end(['osc3', 'coarse'])" />
+          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc3.fine" v-model="params.osc3.fine" :syncPath="ks.pathFor(['osc3', 'fine'])" @gesture-end="ks.end(['osc3', 'fine'])" />
+          <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.level" v-model="params.osc3.level" :syncPath="ks.pathFor(['osc3', 'level'])" @gesture-end="ks.end(['osc3', 'level'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 4: Noise + FM -->
+    <div class="rack-column">
+      <div class="module-group">
+        <h3>NOISE</h3>
+        <div class="knob-row">
+          <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.noise.level" v-model="params.noise.level" :syncPath="ks.pathFor(['noise', 'level'])" @gesture-end="ks.end(['noise', 'level'])" />
+          <Knob label="Color" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.noise.color" v-model="params.noise.color" :syncPath="ks.pathFor(['noise', 'color'])" @gesture-end="ks.end(['noise', 'color'])" />
+        </div>
+      </div>
+      <div class="module-group">
+        <h3>FM</h3>
+        <div class="knob-row">
+          <Knob label="FM 1→2" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.fm.osc2" v-model="params.fm.osc2" :syncPath="ks.pathFor(['fm', 'osc2'])" @gesture-end="ks.end(['fm', 'osc2'])" />
+          <Knob label="FM 2→3" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.fm.osc3" v-model="params.fm.osc3" :syncPath="ks.pathFor(['fm', 'osc3'])" @gesture-end="ks.end(['fm', 'osc3'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 5: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
     </div>

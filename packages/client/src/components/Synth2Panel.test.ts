@@ -49,3 +49,15 @@ describe('Synth2Panel mode toggle', () => {
     expect(params.mode).toBe('mono');
   });
 });
+
+describe('Synth2Panel osc2/osc3/noise/fm controls', () => {
+  it('renders osc2/osc3/noise/fm controls', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const text = (el.textContent || '').toUpperCase();
+    expect(text).toContain('OSC 2');
+    expect(text).toContain('OSC 3');
+    expect(text).toContain('NOISE');
+    expect(text).toContain('FM');
+  });
+});
