@@ -44,7 +44,7 @@
             :isFocused="false"
             :trackId="entry.index"
             :engineType="getTrackEngineType(entry.index)"
-            :mode="project.tracks[entry.index].engines.synth.mode"
+            :mode="trackMode(project.tracks[entry.index])"
             :patternLength="entry.track.patternLength"
             :canRemove="enabledTrackCount > 1"
             @select-track="selectTrack(entry.index)"
@@ -140,7 +140,7 @@
               :isFocused="true"
               :trackId="activeTrackIndex"
               :engineType="focusedTrack!.engineType"
-              :mode="focusedTrack!.engines.synth.mode"
+              :mode="trackMode(focusedTrack!)"
               :patternLength="focusedTrack!.patternLength"
               @clear="onClear"
               @shift="onShift"
@@ -249,6 +249,7 @@ import {
   openPresetFromFile,
   applyPreset,
   resetEnginePatch,
+  type ProjectTrack,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
 import SynthPanel from '../components/SynthPanel.vue';
@@ -316,6 +317,15 @@ const commitBpm = () => {
   bpmDraft.value = clamped; // reflect the clamp in the field
   bpm.value = clamped;
 };
+
+// Returns the play mode for a track. Melodic engines (synth, synth2) carry their
+// own mode; drum engines don't have a poly layout so we return 'mono' — the
+// Tracker ignores the mode prop for non-melodic engines anyway.
+function trackMode(t: ProjectTrack): 'mono' | 'poly' {
+  if (t.engineType === 'synth') return t.engines.synth.mode;
+  if (t.engineType === 'synth2') return t.engines.synth2.mode;
+  return 'mono';
+}
 
 // Confirm before removing a track — deletion drops the slot's pattern and patch.
 const onRemoveTrack = async (index: number) => {
