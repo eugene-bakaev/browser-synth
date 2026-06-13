@@ -45,16 +45,16 @@
     <div
       class="tracker-row tracker-header"
       :class="[
-        engineType === 'synth'
-          ? (mode === 'poly' ? 'chord-row' : 'synth-row')
+        isMelodic
+          ? (isPoly ? 'chord-row' : 'synth-row')
           : 'drum-row',
-        { 'with-vel': isFocused && engineType === 'synth' }
+        { 'with-vel': isFocused && isMelodic }
       ]"
     >
       <div class="col-mute"></div>
       <div class="col-step">STEP</div>
-      <template v-if="engineType === 'synth'">
-        <template v-if="mode === 'poly'">
+      <template v-if="isMelodic">
+        <template v-if="isPoly">
           <div class="col-note">ROOT</div>
           <div class="col-chord-type">CHORD</div>
           <div class="col-oct">OCT</div>
@@ -88,10 +88,10 @@
         :key="i"
         class="tracker-row step-row"
         :class="[
-          engineType === 'synth'
-            ? (mode === 'poly' ? 'chord-row' : 'synth-row')
+          isMelodic
+            ? (isPoly ? 'chord-row' : 'synth-row')
             : 'drum-row',
-          { active: currentStep >= 0 && (currentStep % patternLength) === i, 'step-muted': step.muted, 'with-vel': isFocused && engineType === 'synth' }
+          { active: currentStep >= 0 && (currentStep % patternLength) === i, 'step-muted': step.muted, 'with-vel': isFocused && isMelodic }
         ]"
       >
         <!-- Step Mute Column -->
@@ -109,8 +109,8 @@
         <div class="col-step">{{ i.toString().padStart(2, '0') }}</div>
 
         <!-- Synth Layout -->
-        <template v-if="engineType === 'synth'">
-          <template v-if="mode === 'poly'">
+        <template v-if="isMelodic">
+          <template v-if="isPoly">
             <div class="col-note">
               <select v-model="step.note" title="Root Note">
                 <option :value="null">---</option>
@@ -262,6 +262,13 @@ const visibleSteps = computed(() => props.steps.slice(0, props.patternLength));
 
 // Always-present engine label for the fixed second header row.
 const engineLabelText = computed(() => engineLabel(props.engineType, props.mode));
+
+// Melodic engines get note/octave/length step entry; everything else gets the
+// drum TRIG grid. synth2 is melodic (mono-only in I1). The `mode` prop is wired
+// to engines.synth.mode upstream regardless of engine, so the poly chord layout
+// is gated on `synth` specifically — synth2 has no poly mode yet (I2).
+const isMelodic = computed(() => props.engineType === 'synth' || props.engineType === 'synth2');
+const isPoly = computed(() => props.engineType === 'synth' && props.mode === 'poly');
 
 // The length field is v-model'd to a local draft (not the prop directly) so that the
 // ~8/sec re-renders during playback — which re-apply value bindings on every patch —
