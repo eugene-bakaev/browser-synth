@@ -82,11 +82,24 @@ describe('Synth2Engine protocol', () => {
     }
   });
 
-  it('trigger forwards the sequencer time and takes the first freq of a chord', () => {
+  it('trigger posts a single mono message for a scalar freq', () => {
     const engine = new Synth2Engine(mockCtx());
-    engine.trigger([220, 330], 0.5, 1.25, 0.8);
-    const msg = lastNode(engine).port.posted.at(-1);
-    expect(msg).toEqual({ type: 'trigger', time: 1.25, freq: 220, duration: 0.5, velocity: 0.8 });
+    engine.trigger(440, 0.5, 1.25, 0.8);
+    const posted = lastNode(engine).port.posted.filter(m => m.type === 'trigger');
+    expect(posted).toEqual([
+      { type: 'trigger', time: 1.25, freq: 440, duration: 0.5, velocity: 0.8, mono: true },
+    ]);
+  });
+
+  it('trigger fans a chord to one poly message per note', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.trigger([220, 330, 440], 0.5, 1.25, 0.8);
+    const posted = lastNode(engine).port.posted.filter(m => m.type === 'trigger');
+    expect(posted).toEqual([
+      { type: 'trigger', time: 1.25, freq: 220, duration: 0.5, velocity: 0.8, mono: false },
+      { type: 'trigger', time: 1.25, freq: 330, duration: 0.5, velocity: 0.8, mono: false },
+      { type: 'trigger', time: 1.25, freq: 440, duration: 0.5, velocity: 0.8, mono: false },
+    ]);
   });
 
   it('dispose posts dispose and disconnects', () => {
