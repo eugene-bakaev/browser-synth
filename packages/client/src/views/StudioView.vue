@@ -111,6 +111,13 @@
           >
             CLAP
           </button>
+          <button
+            :class="{ active: focusedTrack!.engineType === 'synth2' }"
+            @click="focusedTrack!.engineType = 'synth2'"
+            :style="focusedTrack!.engineType === 'synth2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
+          >
+            SYNTH2
+          </button>
         </div>
 
         <div class="preset-controls">
@@ -184,6 +191,14 @@
                 :color="trackColor(activeTrackIndex)"
               />
             </template>
+
+            <template v-else-if="focusedTrack!.engineType === 'synth2'">
+              <Synth2Panel
+                :params="focusedTrack!.engines.synth2"
+                :analyser="activeAnalyser"
+                :color="trackColor(activeTrackIndex)"
+              />
+            </template>
           </section>
         </div>
       </div>
@@ -241,6 +256,7 @@ import KickPanel from '../components/KickPanel.vue';
 import HatPanel from '../components/HatPanel.vue';
 import SnarePanel from '../components/SnarePanel.vue';
 import ClapPanel from '../components/ClapPanel.vue';
+import Synth2Panel from '../components/Synth2Panel.vue';
 import { useRouter } from 'vue-router';
 import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
 import { guestClientId } from '../sync/clientId';

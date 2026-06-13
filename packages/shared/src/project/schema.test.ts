@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { freshProject } from './factory.js';
-import { ProjectSchema, Schemas } from './schema.js';
+import { ProjectSchema, Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
+import { SYNTH2_DESCRIPTORS, DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
 
 describe('ProjectSchema', () => {
   it('accepts freshProject()', () => {
@@ -84,5 +85,31 @@ describe('variable track pool schema', () => {
   it('TrackSchema.enabled validates a boolean leaf', () => {
     expect(Schemas.Track.shape.enabled.safeParse(true).success).toBe(true);
     expect(Schemas.Track.shape.enabled.safeParse('yes').success).toBe(false);
+  });
+});
+
+describe('synth2 schema (generated from descriptors)', () => {
+  it('accepts the defaults', () => {
+    expect(Schemas.Synth2Params.safeParse(DEFAULT_SYNTH2_PARAMS).success).toBe(true);
+  });
+
+  it('rejects out-of-range and missing leaves', () => {
+    const bad = structuredClone(DEFAULT_SYNTH2_PARAMS);
+    bad.osc1.morph = 99;
+    expect(Schemas.Synth2Params.safeParse(bad).success).toBe(false);
+    const missing = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
+    delete missing.env1.r;
+    expect(Schemas.Synth2Params.safeParse(missing).success).toBe(false);
+  });
+
+  it('has one leaf validator per descriptor, enforcing the descriptor range', () => {
+    for (const d of SYNTH2_DESCRIPTORS) {
+      const leaf = SYNTH2_LEAF_SCHEMAS[d.key];
+      expect(leaf, d.key).toBeDefined();
+      expect(leaf.safeParse(d.min).success, d.key).toBe(true);
+      expect(leaf.safeParse(d.max).success, d.key).toBe(true);
+      expect(leaf.safeParse(d.min - 1e-6).success, d.key).toBe(false);
+      expect(leaf.safeParse(d.max + 1e-6).success, d.key).toBe(false);
+    }
   });
 });

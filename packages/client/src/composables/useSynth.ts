@@ -6,6 +6,7 @@ import { KickEngine }  from '../engine/KickEngine';
 import { HatEngine }   from '../engine/HatEngine';
 import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine }  from '../engine/ClapEngine';
+import { Synth2Engine } from '../engine/Synth2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
@@ -15,6 +16,10 @@ import { resolveChordFreqs } from '../utils/chords';
 // the file alongside the main bundle with a hashed filename. The processor
 // inside registers itself as 'pulse'.
 const pulseWorkletUrl = new URL('../engine/worklets/pulse-processor.js', import.meta.url).href;
+
+// synth2 worklet — esbuild-bundled into public/worklets by `build:worklet`
+// (a static asset, NOT in Vite's module graph — see client package.json).
+const synth2WorkletUrl = '/worklets/synth2-processor.js';
 
 import {
   type Project,
@@ -49,14 +54,15 @@ const sequencer = reactive(new Sequencer());
 // === Engine factories — unchanged ===
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
 
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap'];
+const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2'];
 
 const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
-  synth: (ctx, dest) => new SynthEngine(ctx, dest),
-  kick:  (ctx, dest) => new KickEngine(ctx, dest),
-  hat:   (ctx, dest) => new HatEngine(ctx, dest),
-  snare: (ctx, dest) => new SnareEngine(ctx, dest),
-  clap:  (ctx, dest) => new ClapEngine(ctx, dest),
+  synth:  (ctx, dest) => new SynthEngine(ctx, dest),
+  kick:   (ctx, dest) => new KickEngine(ctx, dest),
+  hat:    (ctx, dest) => new HatEngine(ctx, dest),
+  snare:  (ctx, dest) => new SnareEngine(ctx, dest),
+  clap:   (ctx, dest) => new ClapEngine(ctx, dest),
+  synth2: (ctx, dest) => new Synth2Engine(ctx, dest),
 };
 
 // Mixer volume is stored as slider position 0..1 (perceptual). The actual
@@ -485,6 +491,10 @@ async function buildAudioState(): Promise<AudioState> {
   // module load is async; the rest of the graph wiring must wait.
   await ctx.audioWorklet.addModule(pulseWorkletUrl);
 
+  // synth2 worklet must likewise be registered before any Synth2Engine
+  // constructs an AudioWorkletNode('synth2').
+  await ctx.audioWorklet.addModule(synth2WorkletUrl);
+
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-12, ctx.currentTime);
   compressor.knee.setValueAtTime(30, ctx.currentTime);
@@ -765,6 +775,12 @@ export function useSynth() {
                 const freq = noteToFreq(step.note, step.octave);
                 engine.trigger(freq, duration, time, step.velocity);
               }
+            } else if (engineTypeI === 'synth2') {
+              // synth2 I1 is mono — single freq, melodic duration semantics
+              // identical to synth mono.
+              const tickDuration = (60 / project.bpm) / 4;
+              const duration = step.length * tickDuration;
+              engine.trigger(noteToFreq(step.note, step.octave), duration, time, step.velocity);
             } else {
               // Drums are fire-and-forget: pitch + decay come from the engine's
               // Tune/Decay knobs, not from step data. freq/duration are passed

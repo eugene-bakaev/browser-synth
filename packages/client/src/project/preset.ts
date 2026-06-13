@@ -5,6 +5,7 @@ import { KickEngine }  from '../engine/KickEngine';
 import { HatEngine }   from '../engine/HatEngine';
 import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine }  from '../engine/ClapEngine';
+import { Synth2Engine } from '../engine/Synth2Engine';
 import type {
   EngineType,
   EngineParamsMap,
@@ -36,14 +37,15 @@ export function makePreset<T extends EngineType>(
 }
 
 const DEFAULTS: { [K in EngineType]: EngineParamsMap[K] } = {
-  synth: SynthEngine.DEFAULT_PARAMS,
-  kick:  KickEngine.DEFAULT_PARAMS,
-  hat:   HatEngine.DEFAULT_PARAMS,
-  snare: SnareEngine.DEFAULT_PARAMS,
-  clap:  ClapEngine.DEFAULT_PARAMS,
+  synth:  SynthEngine.DEFAULT_PARAMS,
+  kick:   KickEngine.DEFAULT_PARAMS,
+  hat:    HatEngine.DEFAULT_PARAMS,
+  snare:  SnareEngine.DEFAULT_PARAMS,
+  clap:   ClapEngine.DEFAULT_PARAMS,
+  synth2: Synth2Engine.DEFAULT_PARAMS,
 };
 
-const ALL_ENGINE_TYPES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap'];
+const ALL_ENGINE_TYPES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2'];
 
 function isEngineType(s: unknown): s is EngineType {
   return typeof s === 'string' && (ALL_ENGINE_TYPES as string[]).includes(s);

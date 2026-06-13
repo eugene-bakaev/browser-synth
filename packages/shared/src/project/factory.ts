@@ -4,6 +4,7 @@ import {
   DEFAULT_HAT_PARAMS,
   DEFAULT_SNARE_PARAMS,
   DEFAULT_CLAP_PARAMS,
+  DEFAULT_SYNTH2_PARAMS,
 } from '../engines/index.js';
 import { DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project, ProjectTrack, Step } from './types.js';
@@ -33,11 +34,12 @@ export function freshTrack(enabled = true): ProjectTrack {
   return {
     engineType: 'synth',
     engines: {
-      synth: structuredClone(DEFAULT_SYNTH_PARAMS),
-      kick:  structuredClone(DEFAULT_KICK_PARAMS),
-      hat:   structuredClone(DEFAULT_HAT_PARAMS),
-      snare: structuredClone(DEFAULT_SNARE_PARAMS),
-      clap:  structuredClone(DEFAULT_CLAP_PARAMS),
+      synth:  structuredClone(DEFAULT_SYNTH_PARAMS),
+      kick:   structuredClone(DEFAULT_KICK_PARAMS),
+      hat:    structuredClone(DEFAULT_HAT_PARAMS),
+      snare:  structuredClone(DEFAULT_SNARE_PARAMS),
+      clap:   structuredClone(DEFAULT_CLAP_PARAMS),
+      synth2: structuredClone(DEFAULT_SYNTH2_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
     patternLength: DEFAULT_PATTERN_LENGTH,

@@ -21,7 +21,7 @@ export function coerceBpm(value: unknown): number {
   return Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(n)));
 }
 
-const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap'] as const;
+const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2'] as const;
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -42,7 +42,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 //     always corruption — heal by re-enabling the first DEFAULT_ENABLED_TRACKS)
 //   - every track is structurally sound: `steps` is exactly STEP_BUFFER_SIZE
 //     object entries (legacy 16-step buffers are padded; sparse holes filled),
-//     all five engine slices exist, patternLength is an integer in
+//     every engine slice exists, patternLength is an integer in
 //     [1, STEP_BUFFER_SIZE], and mixer is an object
 //
 // The repair is structural (slice-level), not param-level: a present engine

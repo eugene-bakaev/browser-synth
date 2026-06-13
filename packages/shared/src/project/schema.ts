@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
+import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -81,6 +82,30 @@ const ClapParamsSchema = z.object({
   sloppy: z.number().min(0.005).max(0.03),
 });
 
+// --- synth2: GENERATED from the descriptor table (spec §6.4) ---------------
+// One z.number().min().max() per descriptor, grouped into nested module
+// objects ('osc1.morph' ⇒ { osc1: { morph } }). schema.test.ts asserts the
+// derivation, so the table cannot drift from the wire validation.
+
+const synth2LeafEntries = SYNTH2_DESCRIPTORS.map(
+  d => [d.key, z.number().min(d.min).max(d.max)] as const,
+);
+
+export const SYNTH2_LEAF_SCHEMAS: Readonly<Record<string, z.ZodNumber>> =
+  Object.fromEntries(synth2LeafEntries);
+
+const synth2Modules: Record<string, Record<string, z.ZodNumber>> = {};
+for (const [key, schema] of synth2LeafEntries) {
+  const [mod, field] = key.split('.');
+  (synth2Modules[mod] ??= {})[field] = schema;
+}
+
+const Synth2ParamsSchema = z.object(
+  Object.fromEntries(
+    Object.entries(synth2Modules).map(([mod, fields]) => [mod, z.object(fields).strict()]),
+  ),
+);
+
 // --- Step / Track / Project ----------------------------------------------
 
 const StepSchema = z.object({
@@ -111,6 +136,7 @@ const EngineTypeSchema = z.union([
   z.literal('hat'),
   z.literal('snare'),
   z.literal('clap'),
+  z.literal('synth2'),
 ]);
 
 const EnginesMapSchema = z.object({
@@ -119,6 +145,7 @@ const EnginesMapSchema = z.object({
   hat: HatParamsSchema,
   snare: SnareParamsSchema,
   clap: ClapParamsSchema,
+  synth2: Synth2ParamsSchema,
 });
 
 const TrackSchema = z.object({
@@ -152,6 +179,7 @@ export const Schemas = {
   EngineType: EngineTypeSchema,
   EnginesMap: EnginesMapSchema,
   SynthParams: SynthParamsSchema,
+  Synth2Params: Synth2ParamsSchema,
   KickParams: KickParamsSchema,
   HatParams: HatParamsSchema,
   SnareParams: SnareParamsSchema,
