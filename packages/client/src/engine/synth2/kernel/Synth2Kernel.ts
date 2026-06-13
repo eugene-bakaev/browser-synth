@@ -41,7 +41,7 @@ export class Synth2Kernel {
   private ageCounter = 1;
 
   constructor(private readonly sampleRate: number) {
-    this.voices = Array.from({ length: VOICE_COUNT }, () => new Voice(sampleRate));
+    this.voices = Array.from({ length: VOICE_COUNT }, (_, i) => new Voice(sampleRate, (i + 1) * 0x9e3779b9));
     this.events = Array.from({ length: MAX_EVENTS }, () => ({
       frame: 0, freq: 440, gateFrames: 0, velocity: 1, mono: true,
     }));
