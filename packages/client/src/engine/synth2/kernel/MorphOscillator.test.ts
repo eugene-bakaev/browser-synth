@@ -4,6 +4,7 @@ import { ParamSlot } from './ParamSlot';
 import type { Synth2ParamDescriptor } from '@fiddle/shared';
 
 const SR = 48000;
+const TWO_PI = Math.PI * 2;
 
 function slot(key: string, min: number, max: number, def: number): ParamSlot {
   const d: Synth2ParamDescriptor = {
@@ -145,5 +146,61 @@ describe('MorphOscillator', () => {
     expect(frac50).toBeLessThanOrEqual(0.55);
     expect(frac20).toBeGreaterThanOrEqual(0.15);
     expect(frac20).toBeLessThanOrEqual(0.25);
+  });
+});
+
+describe('MorphOscillator TZFM', () => {
+  it('fmAmount 0 produces bit-identical output regardless of fmInput', () => {
+    // osc.next(freq, fmInput, 0) must equal osc.next(freq) for every sample
+    const n = 256;
+    const freq = 220;
+    // morph 2 (saw) makes the identity obvious without cancellation
+    const oscFm = makeOsc(2);
+    const oscRef = makeOsc(2);
+    for (let i = 0; i < n; i++) {
+      const modSample = Math.sin((TWO_PI * i * 330) / SR); // arbitrary non-zero FM input
+      const fmVal = oscFm.next(freq, modSample, 0);
+      const refVal = oscRef.next(freq);
+      expect(fmVal).toBeCloseTo(refVal, 10);
+    }
+  });
+
+  it('FM injects audible change when fmAmount > 0', () => {
+    // A modulated carrier should diverge clearly from an unmodulated twin over 2048 samples.
+    const n = 2048;
+    const freq = 220;
+    const oscFm = makeOsc(2);
+    const oscRef = makeOsc(2);
+    let totalAbsDiff = 0;
+    for (let i = 0; i < n; i++) {
+      const modSample = Math.sin((TWO_PI * i * 330) / SR);
+      totalAbsDiff += Math.abs(oscFm.next(freq, modSample, 2) - oscRef.next(freq));
+    }
+    expect(totalAbsDiff).toBeGreaterThan(1);
+  });
+
+  it('stays finite (no NaN/Inf) under deep through-zero FM', () => {
+    // fmAmount=4, modulator at full swing → dt goes deeply negative each half-cycle.
+    const n = 4096;
+    const freq = 220;
+    const osc = makeOsc(2);
+    for (let i = 0; i < n; i++) {
+      const modSample = Math.sin((TWO_PI * i * 55) / SR); // slow modulator for wide swings
+      const sample = osc.next(freq, modSample, 4);
+      expect(Number.isFinite(sample)).toBe(true);
+    }
+  });
+
+  it('triangle morph stays finite when FM halts the carrier (dt → 0)', () => {
+    // morph=1 exercises the triangle normalization (1/dt term). TZFM makes
+    // dt = dt0*(1 + amt*mod) hit exactly 0 when amt*mod = -1, which would send
+    // norm → Infinity → NaN without the |dt| guard. Sweep the modulator across
+    // -1 so it passes through the halt point.
+    const osc = makeOsc(1);
+    for (let i = 0; i < 4096; i++) {
+      const modSample = Math.sin((TWO_PI * i * 55) / SR);
+      const sample = osc.next(440, modSample, 4); // amt*mod reaches -4..+4, crossing -1
+      expect(Number.isFinite(sample)).toBe(true);
+    }
   });
 });
