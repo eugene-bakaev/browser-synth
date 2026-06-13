@@ -83,18 +83,21 @@ const ClapParamsSchema = z.object({
 });
 
 // --- synth2: GENERATED from the descriptor table (spec §6.4) ---------------
-// One z.number().min().max() per descriptor, grouped into nested module
-// objects ('osc1.morph' ⇒ { osc1: { morph } }). schema.test.ts asserts the
-// derivation, so the table cannot drift from the wire validation.
+// One leaf schema per descriptor — `z.number().min().max()` for continuous rows,
+// `z.boolean()` for `kind:'bool'` rows — grouped into nested module objects
+// ('osc1.morph' ⇒ { osc1: { morph } }). schema.test.ts asserts the derivation,
+// so the table cannot drift from the wire validation.
+// Any other kind (e.g. 'enum', landing in I2c-2) currently falls through to
+// z.number() — handle it here when added.
 
 const synth2LeafEntries = SYNTH2_DESCRIPTORS.map(
-  d => [d.key, z.number().min(d.min).max(d.max)] as const,
+  d => [d.key, d.kind === 'bool' ? z.boolean() : z.number().min(d.min).max(d.max)] as const,
 );
 
-export const SYNTH2_LEAF_SCHEMAS: Readonly<Record<string, z.ZodNumber>> =
+export const SYNTH2_LEAF_SCHEMAS: Readonly<Record<string, z.ZodTypeAny>> =
   Object.fromEntries(synth2LeafEntries);
 
-const synth2Modules: Record<string, Record<string, z.ZodNumber>> = {};
+const synth2Modules: Record<string, Record<string, z.ZodTypeAny>> = {};
 for (const [key, schema] of synth2LeafEntries) {
   const [mod, field] = key.split('.');
   (synth2Modules[mod] ??= {})[field] = schema;
