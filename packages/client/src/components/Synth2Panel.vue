@@ -54,6 +54,14 @@
           <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc2.fine" v-model="params.osc2.fine" :syncPath="ks.pathFor(['osc2', 'fine'])" @gesture-end="ks.end(['osc2', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.level" v-model="params.osc2.level" :syncPath="ks.pathFor(['osc2', 'level'])" @gesture-end="ks.end(['osc2', 'level'])" />
         </div>
+        <button
+          type="button"
+          class="sync-btn"
+          :class="{ active: params.osc2.sync }"
+          @click="params.osc2.sync = !params.osc2.sync"
+        >
+          SYNC
+        </button>
       </div>
     </div>
 
@@ -68,6 +76,14 @@
           <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc3.fine" v-model="params.osc3.fine" :syncPath="ks.pathFor(['osc3', 'fine'])" @gesture-end="ks.end(['osc3', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.level" v-model="params.osc3.level" :syncPath="ks.pathFor(['osc3', 'level'])" @gesture-end="ks.end(['osc3', 'level'])" />
         </div>
+        <button
+          type="button"
+          class="sync-btn"
+          :class="{ active: params.osc3.sync }"
+          @click="params.osc3.sync = !params.osc3.sync"
+        >
+          SYNC
+        </button>
       </div>
     </div>
 
@@ -144,4 +160,21 @@ defineProps<{
   border-color: #555;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
+.sync-btn {
+  width: 100%;
+  margin-top: 6px;
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.sync-btn:hover { color: #aaa; border-color: #444; }
+.sync-btn.active { background: #222; color: #fff; border-color: #555; }
 </style>
