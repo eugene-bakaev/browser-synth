@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
-import { SYNTH2_DESCRIPTORS } from '../engines/index.js';
+import { SYNTH2_DESCRIPTORS, decodeBool } from '../engines/index.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -119,10 +119,19 @@ describe('synth2 accept-list (generated from descriptors)', () => {
     for (const d of SYNTH2_DESCRIPTORS) {
       const path = `tracks.0.engines.synth2.${d.key}`;
       expect(pathIsWritable(path), path).toBe(true);
-      expect(validatePathAndValue(path, d.default)).toEqual({ ok: true });
-      const over = validatePathAndValue(path, d.max + 1);
-      expect(over.ok, path).toBe(false);
-      if (!over.ok) expect(over.code).toBe('value.invalid');
+      if (d.kind === 'bool') {
+        // bool leaves accept true/false and reject numbers (spec §6.6 — encoded
+        // on the wire as booleans, not 0/1).
+        expect(validatePathAndValue(path, decodeBool(d.default)), path).toEqual({ ok: true });
+        const bad = validatePathAndValue(path, d.max + 1); // a number — not boolean
+        expect(bad.ok, path).toBe(false);
+        if (!bad.ok) expect(bad.code).toBe('value.invalid');
+      } else {
+        expect(validatePathAndValue(path, d.default), path).toEqual({ ok: true });
+        const over = validatePathAndValue(path, d.max + 1);
+        expect(over.ok, path).toBe(false);
+        if (!over.ok) expect(over.code).toBe('value.invalid');
+      }
     }
   });
 
@@ -139,6 +148,26 @@ describe('synth2 accept-list (generated from descriptors)', () => {
     const bad = validatePathAndValue('tracks.0.engines.synth2.mode', 'chord');
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.code).toBe('value.invalid');
+  });
+});
+
+describe('synth2 osc.sync wire validation', () => {
+  it('accepts a boolean at engines.synth2.osc2.sync', () => {
+    const path = 'tracks.0.engines.synth2.osc2.sync';
+    expect(pathIsWritable(path)).toBe(true);
+    expect(validatePathAndValue(path, true).ok).toBe(true);
+    expect(validatePathAndValue(path, false).ok).toBe(true);
+  });
+
+  it('rejects a non-boolean at engines.synth2.osc2.sync', () => {
+    const path = 'tracks.0.engines.synth2.osc2.sync';
+    const r = validatePathAndValue(path, 1);
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts osc1.sync and osc3.sync paths too', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.osc1.sync')).toBe(true);
+    expect(pathIsWritable('tracks.0.engines.synth2.osc3.sync')).toBe(true);
   });
 });
 
