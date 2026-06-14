@@ -356,6 +356,31 @@ describe('sync integration', () => {
     expect(op.value).toBe('hp');
   });
 
+  it('emits a synth2 matrix source change immediately (discrete leaf) (I3a)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth2.matrix[1].source = 'env2';
+    // No timer advance: 'source' is in DISCRETE_LEAF_FIELDS → flushes immediately.
+    const op = fake.sent.find(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'matrix', 1, 'source']),
+    );
+    expect(op).toBeDefined();
+    expect(op.value).toBe('env2');
+  });
+
+  it('emits a synth2 matrix amount (throttled) and never a whole-slot write (I3a)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth2.matrix[0].amount = 0.3;
+    const path0 = JSON.stringify(['tracks', 0, 'engines', 'synth2', 'matrix', 0, 'amount']);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === path0)).toBeUndefined();
+    vi.advanceTimersByTime(50);
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === path0);
+    expect(op?.value).toBeCloseTo(0.3);
+    // The array guard prevents a forbidden whole-slot object write.
+    for (const o of fake.sent) {
+      expect(o.path).not.toEqual(['tracks', 0, 'engines', 'synth2', 'matrix', 0]);
+    }
+  });
+
   it('emits a step edit as a leaf op', async () => {
     const { fake, synth } = await bootWithFakeSocket();
     synth.project.tracks[0].steps[3].note = 'C'; // discrete → immediate
@@ -393,6 +418,21 @@ describe('sync integration', () => {
     expect(synth.project.tracks[0].patternLength).toBe(12);
     vi.advanceTimersByTime(100);
     expect(fake.sent.length).toBe(0);
+  });
+
+  it('applies a remote matrix op without echoing it back out (I3a suppression)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 0, 'engines', 'synth2', 'matrix', 1, 'source'], value: 'env2',
+    });
+    expect(synth.project.tracks[0].engines.synth2.matrix[1].source).toBe('env2');
+    vi.advanceTimersByTime(50);
+    expect(
+      fake.sent.find((o: any) =>
+        JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'matrix', 1, 'source']),
+      ),
+    ).toBeUndefined();
   });
 
   it('stopPlayback halts a running sequencer and resets the step cursor', async () => {
