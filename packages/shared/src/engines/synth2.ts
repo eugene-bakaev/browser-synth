@@ -6,6 +6,7 @@
 // 'osc1.morph' ⇒ params.osc1.morph (spec §7).
 
 import { SYNTH2_DESCRIPTORS, decodeBool, decodeEnum } from './synth2-descriptors.js';
+import type { Synth2ModSource } from './synth2-descriptors.js';
 
 export interface Synth2OscParams {
   morph: number;       // 0 sine → 1 tri → 2 saw → 3 pulse (continuous)
@@ -41,6 +42,12 @@ export interface Synth2FilterParams {
   type: 'lp' | 'bp' | 'hp';
 }
 
+export interface Synth2MatrixSlot {
+  source: Synth2ModSource;
+  dest: string;   // 'none' | modulatable descriptor key (see MOD_DESTS)
+  amount: number; // bipolar -1..1
+}
+
 export interface Synth2EngineParams {
   osc1: Synth2OscParams;
   osc2: Synth2OscParams;
@@ -53,7 +60,13 @@ export interface Synth2EngineParams {
   // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
   // (it's not a Float32Array param); lives here so presets carry their mode.
   mode: 'mono' | 'poly';
+  // I3 mod matrix — fixed 8 slots (static wire shape, like the step buffer).
+  matrix: Synth2MatrixSlot[];
 }
+
+// Typed inert mod-matrix slot — all three fields are checked by the compiler,
+// no cast needed. Spread into Array.from so each slot is an independent object.
+const INERT_SLOT: Synth2MatrixSlot = { source: 'none', dest: 'none', amount: 0 };
 
 function buildDefaults(): Synth2EngineParams {
   const out: Record<string, Record<string, number | boolean | string>> = {};
@@ -64,7 +77,11 @@ function buildDefaults(): Synth2EngineParams {
       : d.kind === 'enum' ? decodeEnum(d.default, d.enumValues!)
       : d.default;
   }
-  return { ...(out as unknown as Synth2EngineParams), mode: 'mono' };
+  return {
+    ...(out as unknown as Synth2EngineParams),
+    mode: 'mono',
+    matrix: Array.from({ length: 8 }, () => ({ ...INERT_SLOT })),
+  };
 }
 
 export const DEFAULT_SYNTH2_PARAMS: Synth2EngineParams = buildDefaults();
