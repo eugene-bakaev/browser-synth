@@ -149,4 +149,38 @@ describe('reconcileWithDefaults', () => {
     expect(s2.filter.envAmount).toBeCloseTo(2.4, 6);
     expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
   });
+
+  describe('synth2 matrix reconcile (I3a)', () => {
+    it('heals a synth2 slice missing matrix to 8 default slots', () => {
+      const p = freshProject();
+      const synth2 = p.tracks[0].engines.synth2 as unknown as Record<string, unknown>;
+      delete synth2.matrix;
+      const healed = reconcileWithDefaults(p);
+      const m = healed.tracks[0].engines.synth2.matrix;
+      expect(m).toHaveLength(8);
+      expect(m[0]).toEqual({ source: 'none', dest: 'none', amount: 0 });
+    });
+
+    it('preserves an existing matrix route through reconcile', () => {
+      const p = freshProject();
+      p.tracks[0].engines.synth2.matrix[2] = { source: 'env1', dest: 'filter.cutoff', amount: 0.7 };
+      const healed = reconcileWithDefaults(p);
+      expect(healed.tracks[0].engines.synth2.matrix[2]).toEqual({ source: 'env1', dest: 'filter.cutoff', amount: 0.7 });
+    });
+
+    it('fresh track carries the default 8-slot matrix', () => {
+      expect(freshTrack().engines.synth2.matrix).toHaveLength(8);
+    });
+
+    it('healed matrix array is not reference-shared with the input project', () => {
+      const p = freshProject();
+      const inputMatrix = p.tracks[0].engines.synth2.matrix;
+      const healed = reconcileWithDefaults(p);
+      // The healed array must be a different reference from the input
+      expect(healed.tracks[0].engines.synth2.matrix).not.toBe(inputMatrix);
+      // Mutating a slot on the healed result must not bleed back into the input
+      (healed.tracks[0].engines.synth2.matrix[0] as any).source = 'lfo1';
+      expect(inputMatrix[0].source).toBe('none');
+    });
+  });
 });

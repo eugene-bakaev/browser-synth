@@ -33,7 +33,11 @@ export function deepMerge<T>(defaults: T, overrides: any): T {
     } else if (isPlainObject(dv) && isPlainObject(ov)) {
       result[key] = deepMerge(dv, ov);
     } else {
-      result[key] = ov;
+      // Arrays and other non-plain-object values: deep-clone the override so
+      // the output never shares references with either input. This prevents
+      // healed arrays (e.g. synth2 matrix) from aliasing the loaded project's
+      // arrays, which would allow downstream mutations to bleed back.
+      result[key] = structuredClone(ov);
     }
   }
 
