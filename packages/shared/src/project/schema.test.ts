@@ -160,6 +160,51 @@ describe('synth2 discrete (bool) leaves', () => {
   });
 });
 
+describe('synth2 matrix schema (I3a)', () => {
+  const base = () => structuredClone(DEFAULT_SYNTH2_PARAMS);
+
+  it('accepts the default 8-slot matrix', () => {
+    expect(Schemas.Synth2Params.safeParse(base()).success).toBe(true);
+  });
+
+  it('accepts a valid route', () => {
+    const p = base();
+    p.matrix[0] = { source: 'env1', dest: 'filter.cutoff', amount: 0.5 };
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(true);
+  });
+
+  it('rejects an unknown source', () => {
+    const p = base();
+    (p.matrix[0] as { source: string }).source = 'lfo9';
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(false);
+  });
+
+  it('rejects a non-modulatable dest', () => {
+    const p = base();
+    // filter.type is excluded because it is an enum kind (not continuous).
+    (p.matrix[0] as { dest: string }).dest = 'filter.type';
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(false);
+    // filter.envAmount is excluded for a different reason: continuous but modulatable:false.
+    (p.matrix[0] as { dest: string }).dest = 'filter.envAmount';
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(false);
+  });
+
+  it('accepts amount at the inclusive ±1 boundary', () => {
+    const p = base();
+    p.matrix[0] = { source: 'env1', dest: 'filter.cutoff', amount: 1 };
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(true);
+    p.matrix[0].amount = -1;
+    expect(Schemas.Synth2Params.safeParse(p).success).toBe(true);
+  });
+
+  it('rejects amount outside [-1, 1] and a wrong slot count', () => {
+    const over = base(); over.matrix[0].amount = 1.5;
+    expect(Schemas.Synth2Params.safeParse(over).success).toBe(false);
+    const short = base(); short.matrix = short.matrix.slice(0, 7);
+    expect(Schemas.Synth2Params.safeParse(short).success).toBe(false);
+  });
+});
+
 describe('synth2 enum (filter.type) leaf', () => {
   it('maps filter.type to a string-enum leaf schema', () => {
     const leaf = SYNTH2_LEAF_SCHEMAS['filter.type'];
