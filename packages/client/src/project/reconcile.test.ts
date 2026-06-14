@@ -135,4 +135,18 @@ describe('reconcileWithDefaults', () => {
     expect(healedSynth2.osc2.sync).toBe(false);
     expect(healedSynth2.osc3.sync).toBe(false);
   });
+
+  it('heals a synth2 slice missing filter/env2 to defaults', () => {
+    // Simulate a pre-I2c-2 snapshot: a synth2 track whose params lack filter and env2.
+    const p = freshProject();
+    const synth2 = p.tracks[0].engines.synth2 as any;
+    delete synth2.filter;
+    delete synth2.env2;
+    const healed = reconcileWithDefaults(p);
+    const s2 = healed.tracks[0].engines.synth2;
+    expect(s2.filter.type).toBe('lp');
+    expect(s2.filter.cutoff).toBe(2000);
+    expect(s2.filter.envAmount).toBeCloseTo(2.4, 6);
+    expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+  });
 });
