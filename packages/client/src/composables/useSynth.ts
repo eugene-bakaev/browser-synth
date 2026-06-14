@@ -204,6 +204,7 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
 const DISCRETE_LEAF_FIELDS = new Set<string>([
   'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
   'sync', // synth2 osc hard-sync toggle: an instantaneous discrete flip, like muted/soloed
+  'type', // synth2 filter.type enum: a discrete selector flip — flush immediately
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {
   return DISCRETE_LEAF_FIELDS.has(leafKey);

@@ -83,15 +83,19 @@ const ClapParamsSchema = z.object({
 });
 
 // --- synth2: GENERATED from the descriptor table (spec §6.4) ---------------
-// One leaf schema per descriptor — `z.number().min().max()` for continuous rows,
-// `z.boolean()` for `kind:'bool'` rows — grouped into nested module objects
-// ('osc1.morph' ⇒ { osc1: { morph } }). schema.test.ts asserts the derivation,
-// so the table cannot drift from the wire validation.
-// Any other kind (e.g. 'enum', landing in I2c-2) currently falls through to
-// z.number() — handle it here when added.
+// One leaf schema per descriptor: `z.number().min().max()` for continuous rows,
+// `z.boolean()` for `kind:'bool'`, `z.enum(values)` for `kind:'enum'` — grouped
+// into nested module objects ('osc1.morph' ⇒ { osc1: { morph } }).
+// schema.test.ts asserts the derivation, so the table cannot drift from the wire
+// validation.
 
 const synth2LeafEntries = SYNTH2_DESCRIPTORS.map(
-  d => [d.key, d.kind === 'bool' ? z.boolean() : z.number().min(d.min).max(d.max)] as const,
+  d => [
+    d.key,
+    d.kind === 'bool' ? z.boolean()
+      : d.kind === 'enum' ? z.enum(d.enumValues as unknown as [string, ...string[]])
+      : z.number().min(d.min).max(d.max),
+  ] as const,
 );
 
 export const SYNTH2_LEAF_SCHEMAS: Readonly<Record<string, z.ZodTypeAny>> =

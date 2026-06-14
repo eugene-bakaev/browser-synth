@@ -89,3 +89,24 @@ describe('Synth2Panel hard-sync toggles', () => {
     expect(params.osc3.sync).toBe(true);
   });
 });
+
+describe('Synth2Panel filter section', () => {
+  it('renders the LP/BP/HP type selector and a cutoff knob', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const typeBtns = el.querySelectorAll<HTMLButtonElement>('.filter-type-btn');
+    expect(typeBtns.length).toBe(3);
+    expect([...typeBtns].map(b => b.textContent?.trim())).toEqual(['LP', 'BP', 'HP']);
+  });
+
+  it('clicking HP sets params.filter.type', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const typeBtns = el.querySelectorAll<HTMLButtonElement>('.filter-type-btn');
+    expect(params.filter.type).toBe('lp');
+    typeBtns[2].click();
+    expect(params.filter.type).toBe('hp');
+    typeBtns[1].click();
+    expect(params.filter.type).toBe('bp');
+  });
+});

@@ -112,6 +112,14 @@ describe('synth2 schema (generated from descriptors)', () => {
         expect(leaf.safeParse(false).success, d.key).toBe(true);
         expect(leaf.safeParse(0).success, d.key).toBe(false);
         expect(leaf.safeParse(1).success, d.key).toBe(false);
+      } else if (d.kind === 'enum') {
+        // Enum descriptors map to z.enum(values) — each declared value is valid,
+        // numbers and undeclared strings are rejected.
+        for (const v of d.enumValues!) {
+          expect(leaf.safeParse(v).success, `${d.key}=${v}`).toBe(true);
+        }
+        expect(leaf.safeParse(0).success, d.key).toBe(false);
+        expect(leaf.safeParse('__invalid__').success, d.key).toBe(false);
       } else {
         expect(leaf.safeParse(d.min).success, d.key).toBe(true);
         expect(leaf.safeParse(d.max).success, d.key).toBe(true);
@@ -149,5 +157,35 @@ describe('synth2 discrete (bool) leaves', () => {
     const withSyncNumber = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
     withSyncNumber.osc2.sync = 1;
     expect(Schemas.Synth2Params.safeParse(withSyncNumber).success).toBe(false);
+  });
+});
+
+describe('synth2 enum (filter.type) leaf', () => {
+  it('maps filter.type to a string-enum leaf schema', () => {
+    const leaf = SYNTH2_LEAF_SCHEMAS['filter.type'];
+    expect(leaf.safeParse('lp').success).toBe(true);
+    expect(leaf.safeParse('bp').success).toBe(true);
+    expect(leaf.safeParse('hp').success).toBe(true);
+    expect(leaf.safeParse('xyz').success).toBe(false);
+    expect(leaf.safeParse(0).success).toBe(false);
+  });
+
+  it('keeps filter.cutoff a clamped numeric leaf', () => {
+    const leaf = SYNTH2_LEAF_SCHEMAS['filter.cutoff'];
+    expect(leaf.safeParse(2000).success).toBe(true);
+    expect(leaf.safeParse(99999).success).toBe(false);
+  });
+
+  it('Synth2ParamsSchema requires a well-formed filter module', () => {
+    // `.shape.filter` is a dynamically-built key not statically typed, so cast.
+    const filterSchema = (Schemas.Synth2Params.shape as any).filter;
+    const ok = filterSchema.safeParse({
+      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'lp',
+    });
+    expect(ok.success).toBe(true);
+    const bad = filterSchema.safeParse({
+      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'moog',
+    });
+    expect(bad.success).toBe(false);
   });
 });

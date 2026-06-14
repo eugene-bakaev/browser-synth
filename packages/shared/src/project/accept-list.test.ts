@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
-import { SYNTH2_DESCRIPTORS, decodeBool } from '../engines/index.js';
+import { SYNTH2_DESCRIPTORS, decodeBool, decodeEnum } from '../engines/index.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -126,6 +126,15 @@ describe('synth2 accept-list (generated from descriptors)', () => {
         const bad = validatePathAndValue(path, d.max + 1); // a number — not boolean
         expect(bad.ok, path).toBe(false);
         if (!bad.ok) expect(bad.code).toBe('value.invalid');
+      } else if (d.kind === 'enum') {
+        // enum leaves accept a string from enumValues and reject numbers or
+        // unknown strings (spec §6.6 — block stores the index, wire carries
+        // the decoded string).
+        const validStr = decodeEnum(d.default, d.enumValues!);
+        expect(validatePathAndValue(path, validStr), path).toEqual({ ok: true });
+        const badNum = validatePathAndValue(path, d.default); // numeric index — rejected
+        expect(badNum.ok, path).toBe(false);
+        if (!badNum.ok) expect(badNum.code).toBe('value.invalid');
       } else {
         expect(validatePathAndValue(path, d.default), path).toEqual({ ok: true });
         const over = validatePathAndValue(path, d.max + 1);
@@ -168,6 +177,28 @@ describe('synth2 osc.sync wire validation', () => {
   it('accepts osc1.sync and osc3.sync paths too', () => {
     expect(pathIsWritable('tracks.0.engines.synth2.osc1.sync')).toBe(true);
     expect(pathIsWritable('tracks.0.engines.synth2.osc3.sync')).toBe(true);
+  });
+});
+
+describe('synth2 filter wire validation', () => {
+  it('accepts an enum string at engines.synth2.filter.type', () => {
+    const path = 'tracks.0.engines.synth2.filter.type';
+    expect(pathIsWritable(path)).toBe(true);
+    expect(validatePathAndValue(path, 'lp').ok).toBe(true);
+    expect(validatePathAndValue(path, 'hp').ok).toBe(true);
+  });
+
+  it('rejects a number / unknown string at filter.type', () => {
+    const path = 'tracks.0.engines.synth2.filter.type';
+    expect(validatePathAndValue(path, 1).ok).toBe(false);
+    expect(validatePathAndValue(path, 'moog').ok).toBe(false);
+  });
+
+  it('round-trips numeric filter + env2 leaves', () => {
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.cutoff', 2000).ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.cutoff', 99999).ok).toBe(false);
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.envAmount', -4).ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.env2.a', 0.5).ok).toBe(true);
   });
 });
 

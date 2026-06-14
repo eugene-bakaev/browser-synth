@@ -1,7 +1,8 @@
 //
 // THE PATCH (spec §6.3): the only file that instantiates modules and wires
-// them together. I2b voice: osc1 + osc2 + osc3 + noise → 4-channel mixer →
-// VCA(env1) → out. TZFM chain: osc1 modulates osc2, osc2 modulates osc3.
+// them together. I2c-2 voice: osc1 + osc2 + osc3 + noise → 4-channel mixer →
+// ClassicFilter → VCA(env1) → out. TZFM chain: osc1 modulates osc2, osc2
+// modulates osc3. env2 is hardwired to cutoff (envAmount·env2 → octave shift).
 // Each voice owns its own ParamSlot set (bases are broadcast by the kernel;
 // per-voice modulation arrives with the matrix in I3).
 
@@ -9,8 +10,12 @@ import { ParamSlot } from './ParamSlot';
 import { MorphOscillator } from './MorphOscillator';
 import { LoopEnvelope } from './LoopEnvelope';
 import { Noise } from './Noise';
+import { ClassicFilter } from './ClassicFilter';
 import { PARAM_INDEX } from './params';
 import { SYNTH2_DESCRIPTORS } from '@fiddle/shared';
+
+// Keytrack reference pitch: keyTrack 1 makes cutoff track the note 1:1 about C4.
+const KEYTRACK_REF_HZ = 261.6256;
 
 export class Voice {
   readonly slots: ParamSlot[];
@@ -31,6 +36,13 @@ export class Voice {
   private velocity = 1;
   private osc2Sync = false;
   private osc3Sync = false;
+  private readonly env2: LoopEnvelope;
+  private readonly filter: ClassicFilter;
+  private readonly cutoffSlot: ParamSlot;
+  private readonly resSlot: ParamSlot;
+  private readonly keyTrackSlot: ParamSlot;
+  private readonly envAmountSlot: ParamSlot;
+  private keyTrackOctaves = 0; // log2(freq / C4), cached per note
 
   constructor(sampleRate: number, seed = 1) {
     this.slots = SYNTH2_DESCRIPTORS.map(d => new ParamSlot(d, sampleRate));
@@ -50,6 +62,14 @@ export class Voice {
     this.env1 = new LoopEnvelope(
       slot('env1.a'), slot('env1.d'), slot('env1.s'), slot('env1.r'), sampleRate,
     );
+    this.env2 = new LoopEnvelope(
+      slot('env2.a'), slot('env2.d'), slot('env2.s'), slot('env2.r'), sampleRate,
+    );
+    this.filter = new ClassicFilter(sampleRate);
+    this.cutoffSlot = slot('filter.cutoff');
+    this.resSlot = slot('filter.resonance');
+    this.keyTrackSlot = slot('filter.keyTrack');
+    this.envAmountSlot = slot('filter.envAmount');
   }
 
   /** Block-boundary discrete update: osc2 syncs to osc1's wraps, osc3 to osc2's.
@@ -59,6 +79,11 @@ export class Voice {
     this.osc3Sync = osc3Sync;
   }
 
+  /** Block-boundary discrete update: select LP(0)/BP(1)/HP(2). */
+  setFilterType(type: number): void {
+    this.filter.setType(type);
+  }
+
   get active(): boolean {
     return this.env1.active;
   }
@@ -66,14 +91,20 @@ export class Voice {
   noteOn(freq: number, velocity: number, gateFrames: number): void {
     this.freq = freq;
     this.velocity = velocity < 0 ? 0 : velocity > 1 ? 1 : velocity;
-    if (!this.env1.active) { this.osc1.reset(); this.osc2.reset(); this.osc3.reset(); } // fresh start; steals keep phase (D3 ramp handles the level)
+    this.keyTrackOctaves = Math.log2(freq / KEYTRACK_REF_HZ);
+    if (!this.env1.active) {
+      this.osc1.reset(); this.osc2.reset(); this.osc3.reset();
+      this.filter.reset();
+    }
     this.env1.noteOn(gateFrames);
+    this.env2.noteOn(gateFrames);
   }
 
   /** Adds into out[from..to). Caller must skip inactive voices (gating). */
   renderAdd(out: Float32Array, from: number, to: number): void {
     for (let n = from; n < to; n++) {
       const e = this.env1.next();
+      const env2v = this.env2.next();
       // TZFM + hard-sync chain: osc1 master → osc2 → osc3. Each ParamSlot.next()
       // called exactly once per sample. A slave resets when its master wrapped
       // this sample AND its sync toggle is on.
@@ -92,7 +123,15 @@ export class Voice {
         o2 * this.osc2Level.next() +
         o3 * this.osc3Level.next() +
         nz * this.noiseLevel.next();
-      out[n] += mix * e * this.velocity;
+      // Hardwired cutoff routing (spec §5.3), all in octaves about the base
+      // cutoff: keytrack follows the note pitch; env2 (0..1) scaled by the
+      // bipolar envAmount (±4 oct). Each ParamSlot.next() called exactly once.
+      const octShift =
+        this.keyTrackSlot.next() * this.keyTrackOctaves + this.envAmountSlot.next() * env2v;
+      let fc = this.cutoffSlot.next() * Math.pow(2, octShift); // I4: Math.pow → approx (cf. SvfCore tan)
+      if (fc < 20) fc = 20; else if (fc > 20000) fc = 20000;
+      const filtered = this.filter.process(mix, fc, this.resSlot.next());
+      out[n] += filtered * e * this.velocity;
     }
   }
 }

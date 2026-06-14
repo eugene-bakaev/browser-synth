@@ -54,12 +54,16 @@ export class Synth2Kernel {
     for (const voice of this.voices) {
       for (let i = 0; i < n; i++) voice.slots[i].setBase(this.block[i]);
     }
-    // Discrete (bool) params: applied at the block boundary, no smoother.
+    // Discrete (bool/enum) params: applied at the block boundary, no smoother.
     // osc1.sync exists in the descriptor table for a uniform osc shape but is
     // intentionally not read here — osc1 is the master and is never reset.
     const osc2Sync = this.block[PARAM_INDEX['osc2.sync']] >= 0.5;
     const osc3Sync = this.block[PARAM_INDEX['osc3.sync']] >= 0.5;
-    for (const voice of this.voices) voice.setSync(osc2Sync, osc3Sync);
+    const filterType = Math.round(this.block[PARAM_INDEX['filter.type']]);
+    for (const voice of this.voices) {
+      voice.setSync(osc2Sync, osc3Sync);
+      voice.setFilterType(filterType);
+    }
   }
 
   /** time/duration in seconds on the AudioContext clock (SoundEngine contract). */

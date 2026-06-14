@@ -156,3 +156,40 @@ describe('Synth2Engine boolean (discrete) params', () => {
     expect(port.posted.some(m => m.type === 'params')).toBe(false);
   });
 });
+
+describe('Synth2Engine enum (filter.type) params', () => {
+  it('encodes filter.type by index (hp → 2, lp → 0)', () => {
+    const ctx = mockCtx();
+    const engine = new Synth2Engine(ctx);
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+
+    engine.applyParams({ filter: { type: 'hp' } });
+    let msg = port.posted.find((m: any) => m.type === 'params');
+    expect(msg.block[PARAM_INDEX['filter.type']]).toBe(2);
+
+    port.posted.length = 0;
+    engine.applyParams({ filter: { type: 'lp' } });
+    msg = port.posted.find((m: any) => m.type === 'params');
+    expect(msg.block[PARAM_INDEX['filter.type']]).toBe(0);
+  });
+
+  it('does not repost when the enum value is unchanged', () => {
+    const ctx = mockCtx();
+    const engine = new Synth2Engine(ctx);
+    const port = lastNode(engine).port;
+    engine.applyParams({ filter: { type: 'bp' } });
+    port.posted.length = 0;
+    engine.applyParams({ filter: { type: 'bp' } });
+    expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
+  });
+
+  it('still ignores the top-level mode string (rides the trigger, not the block)', () => {
+    const ctx = mockCtx();
+    const engine = new Synth2Engine(ctx);
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+    engine.applyParams({ mode: 'poly' } as any);
+    expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
+  });
+});
