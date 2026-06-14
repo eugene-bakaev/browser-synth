@@ -345,6 +345,17 @@ describe('sync integration', () => {
     expect(op.value).toBe(true);
   });
 
+  it('emits a synth2 filter.type change immediately (discrete enum leaf)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth2.filter.type = 'hp';
+    // No timer advance: 'type' is in DISCRETE_LEAF_FIELDS → flushes immediately.
+    const op = fake.sent.find(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'type']),
+    );
+    expect(op).toBeDefined();
+    expect(op.value).toBe('hp');
+  });
+
   it('emits a step edit as a leaf op', async () => {
     const { fake, synth } = await bootWithFakeSocket();
     synth.project.tracks[0].steps[3].note = 'C'; // discrete → immediate

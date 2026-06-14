@@ -105,7 +105,38 @@
       </div>
     </div>
 
-    <!-- Column 5: Visualizer -->
+    <!-- Column 5: Filter -->
+    <div class="rack-column">
+      <div class="module-group synth2-panel">
+        <h3>FILTER</h3>
+        <div class="filter-type-selector">
+          <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'lp' }" @click="params.filter.type = 'lp'">LP</button>
+          <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'bp' }" @click="params.filter.type = 'bp'">BP</button>
+          <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'hp' }" @click="params.filter.type = 'hp'">HP</button>
+        </div>
+        <div class="knob-row">
+          <Knob label="Cutoff" :min="20" :max="20000" :step="1" format="hz" :defaultValue="DEFAULTS.filter.cutoff" v-model="params.filter.cutoff" :syncPath="ks.pathFor(['filter', 'cutoff'])" @gesture-end="ks.end(['filter', 'cutoff'])" />
+          <Knob label="Res" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.filter.resonance" v-model="params.filter.resonance" :syncPath="ks.pathFor(['filter', 'resonance'])" @gesture-end="ks.end(['filter', 'resonance'])" />
+          <Knob label="KeyTrk" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.filter.keyTrack" v-model="params.filter.keyTrack" :syncPath="ks.pathFor(['filter', 'keyTrack'])" @gesture-end="ks.end(['filter', 'keyTrack'])" />
+          <Knob label="EnvAmt" :min="-4" :max="4" :step="0.1" :defaultValue="DEFAULTS.filter.envAmount" v-model="params.filter.envAmount" :syncPath="ks.pathFor(['filter', 'envAmount'])" @gesture-end="ks.end(['filter', 'envAmount'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 6: Filter envelope (env2) -->
+    <div class="rack-column">
+      <div class="module-group">
+        <h3>FILTER ENV</h3>
+        <div class="knob-row">
+          <Knob label="A" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env2.a" v-model="params.env2.a" :syncPath="ks.pathFor(['env2', 'a'])" @gesture-end="ks.end(['env2', 'a'])" />
+          <Knob label="D" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env2.d" v-model="params.env2.d" :syncPath="ks.pathFor(['env2', 'd'])" @gesture-end="ks.end(['env2', 'd'])" />
+          <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env2.s" v-model="params.env2.s" :syncPath="ks.pathFor(['env2', 's'])" @gesture-end="ks.end(['env2', 's'])" />
+          <Knob label="R" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env2.r" v-model="params.env2.r" :syncPath="ks.pathFor(['env2', 'r'])" @gesture-end="ks.end(['env2', 'r'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 7: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
     </div>
@@ -177,4 +208,26 @@ defineProps<{
 }
 .sync-btn:hover { color: #aaa; border-color: #444; }
 .sync-btn.active { background: #222; color: #fff; border-color: #555; }
+.filter-type-selector {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.filter-type-btn {
+  flex: 1;
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 5px 0;
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.filter-type-btn:hover { color: #aaa; border-color: #444; }
+.filter-type-btn.active { background: #222; color: #fff; border-color: #555; }
 </style>
