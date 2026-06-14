@@ -241,6 +241,78 @@ describe('Synth2Kernel hard sync', () => {
   });
 });
 
+describe('Synth2Kernel classic filter', () => {
+  // Isolate osc1 (saw) → filter; silence osc2/osc3/noise; play a 220 Hz note.
+  function render(opts: {
+    cutoff?: number; type?: number; envAmount?: number; keyTrack?: number; freq?: number;
+  }): Float32Array {
+    const k = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['osc2.level']] = 0;
+    block[PARAM_INDEX['osc3.level']] = 0;
+    block[PARAM_INDEX['noise.level']] = 0;
+    block[PARAM_INDEX['osc1.level']] = 1;
+    block[PARAM_INDEX['osc1.morph']] = 2;                  // saw — rich harmonics
+    block[PARAM_INDEX['filter.cutoff']] = opts.cutoff ?? 2000;
+    block[PARAM_INDEX['filter.type']] = opts.type ?? 0;    // lp
+    block[PARAM_INDEX['filter.envAmount']] = opts.envAmount ?? 0;
+    block[PARAM_INDEX['filter.keyTrack']] = opts.keyTrack ?? 0;
+    k.applyParams(block);
+    k.noteOn(0, opts.freq ?? 220, 2, 1, true);             // mono
+    return renderBlocks(k, 0, Math.ceil(SR / BLOCK));      // ~1s
+  }
+  function rms(buf: Float32Array): number {
+    let s = 0;
+    for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    return Math.sqrt(s / buf.length);
+  }
+  function diff(a: Float32Array, b: Float32Array): number {
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+    return s / a.length;
+  }
+
+  it('a low cutoff attenuates more energy than a high cutoff', () => {
+    // 80 Hz cutoff is well below the 220 Hz fundamental (~1.5 oct below);
+    // 8000 Hz is well above all prominent harmonics of a 220 Hz saw.
+    // Using 18000 Hz near Nyquist (SR=48000) is unreliable because the ZDF
+    // SVF's tan pre-warp g > 1 at that freq causes unexpected attenuation.
+    const closed = rms(render({ cutoff: 80 }));
+    const open = rms(render({ cutoff: 8000 }));
+    expect(closed).toBeLessThan(open * 0.6);
+    expect(closed).toBeGreaterThan(0);
+  });
+
+  it('lp and hp produce different output at the same cutoff', () => {
+    const lp = render({ cutoff: 1000, type: 0 });
+    const hp = render({ cutoff: 1000, type: 2 });
+    expect(diff(lp, hp)).toBeGreaterThan(1e-3);
+  });
+
+  it('keytrack raises the effective cutoff with pitch', () => {
+    const tracked = rms(render({ cutoff: 400, type: 0, keyTrack: 1, freq: 880 }));
+    const untracked = rms(render({ cutoff: 400, type: 0, keyTrack: 0, freq: 880 }));
+    expect(tracked).toBeGreaterThan(untracked * 1.2);
+  });
+
+  it('envAmount changes the sound (env2 → cutoff)', () => {
+    const flat = render({ cutoff: 300, type: 0, envAmount: 0 });
+    const swept = render({ cutoff: 300, type: 0, envAmount: 4 });
+    expect(diff(flat, swept)).toBeGreaterThan(1e-3);
+  });
+
+  it('renders finite, bounded audio with the filter engaged', () => {
+    const out = render({ cutoff: 1200, type: 0, envAmount: 2.4 });
+    let peak = 0;
+    for (let i = 0; i < out.length; i++) {
+      expect(Number.isFinite(out[i])).toBe(true);
+      peak = Math.max(peak, Math.abs(out[i]));
+    }
+    expect(peak).toBeLessThan(4);
+    expect(peak).toBeGreaterThan(0);
+  });
+});
+
 describe('Synth2Kernel polyphony', () => {
   it('sounds 8 simultaneous poly voices and never grows past 8', () => {
     const kernel = new Synth2Kernel(SR);
