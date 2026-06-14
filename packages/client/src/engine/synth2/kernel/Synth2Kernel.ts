@@ -14,7 +14,7 @@
 // (the sequencer schedules in order); a full ring drops the oldest event.
 
 import { Voice } from './Voice';
-import { PARAM_COUNT, PARAM_INDEX, defaultParamBlock } from './params';
+import { PARAM_COUNT, PARAM_INDEX, MATRIX_BASE, MATRIX_SLOTS, MATRIX_STRIDE, defaultParamBlock } from './params';
 import { pickVoice, VOICE_COUNT } from './allocator';
 
 const MAX_EVENTS = 64;
@@ -63,6 +63,19 @@ export class Synth2Kernel {
     for (const voice of this.voices) {
       voice.setSync(osc2Sync, osc3Sync);
       voice.setFilterType(filterType);
+    }
+    // Mod matrix region (spec §5.6): [sourceIdx, destEncoded, amount] per slot.
+    // Read directly from the incoming block (not this.block, which is bounded to
+    // PARAM_COUNT). destEncoded 0 = none; else PARAM_INDEX(key)+1 → slot = enc-1.
+    for (let s = 0; s < MATRIX_SLOTS; s++) {
+      const base = MATRIX_BASE + s * MATRIX_STRIDE;
+      const srcIdx  = Math.round(block[base]);
+      const destEnc = Math.round(block[base + 1]);
+      const destSlot = destEnc <= 0 ? -1 : destEnc - 1;
+      const amount = block[base + 2];
+      for (const voice of this.voices) {
+        voice.setMatrixSlot(s, srcIdx, destSlot, amount);
+      }
     }
   }
 

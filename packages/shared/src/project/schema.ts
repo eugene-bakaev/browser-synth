@@ -10,7 +10,8 @@
 
 import { z } from 'zod';
 import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
-import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
+import { SYNTH2_DESCRIPTORS, MOD_SOURCES, MOD_DESTS } from '../engines/synth2-descriptors.js';
+import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -107,11 +108,19 @@ for (const [key, schema] of synth2LeafEntries) {
   (synth2Modules[mod] ??= {})[field] = schema;
 }
 
+const Synth2MatrixSlotSchema = z.object({
+  source: z.enum(MOD_SOURCES as unknown as [string, ...string[]]),
+  // dest is 'none' + modulatable continuous descriptors only — see MOD_DESTS in synth2-descriptors.ts (excludes filter.type/envAmount and the sync toggles).
+  dest: z.enum(MOD_DESTS as unknown as [string, ...string[]]),
+  amount: z.number().min(-1).max(1),
+}).strict();
+
 const Synth2ParamsSchema = z.object({
   ...Object.fromEntries(
     Object.entries(synth2Modules).map(([mod, fields]) => [mod, z.object(fields).strict()]),
   ),
   mode: z.union([z.literal('mono'), z.literal('poly')]),
+  matrix: z.array(Synth2MatrixSlotSchema).length(MATRIX_SLOT_COUNT),
 });
 
 // --- Step / Track / Project ----------------------------------------------
@@ -188,6 +197,7 @@ export const Schemas = {
   EnginesMap: EnginesMapSchema,
   SynthParams: SynthParamsSchema,
   Synth2Params: Synth2ParamsSchema,
+  Synth2MatrixSlot: Synth2MatrixSlotSchema,
   KickParams: KickParamsSchema,
   HatParams: HatParamsSchema,
   SnareParams: SnareParamsSchema,

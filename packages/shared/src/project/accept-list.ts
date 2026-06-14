@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { TRACK_POOL_SIZE } from './constants.js';
 import { Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
 import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
+import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -72,6 +73,10 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ...SYNTH2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'synth2', ...d.key.split('.')]),
   // synth2 play mode — not a descriptor, sibling of the modules (like synth.mode).
   ['tracks', '*', 'engines', 'synth2', 'mode'],
+  // synth2 mod matrix — 8 fixed slots, leaves only (no whole-slot writes).
+  ['tracks', '*', 'engines', 'synth2', 'matrix', '*', 'source'],
+  ['tracks', '*', 'engines', 'synth2', 'matrix', '*', 'dest'],
+  ['tracks', '*', 'engines', 'synth2', 'matrix', '*', 'amount'],
   // Mixer.
   ['tracks', '*', 'mixer', 'volume'],
   ['tracks', '*', 'mixer', 'muted'],
@@ -132,6 +137,10 @@ export function indicesInRange(path: string): boolean {
   if (tokens[2] === 'steps') {
     const stepIdx = Number(tokens[3]);
     if (!Number.isInteger(stepIdx) || stepIdx < 0 || stepIdx >= STEP_COUNT) return false;
+  }
+  if (tokens[2] === 'engines' && tokens[3] === 'synth2' && tokens[4] === 'matrix') {
+    const slotIdx = Number(tokens[5]);
+    if (!Number.isInteger(slotIdx) || slotIdx < 0 || slotIdx >= MATRIX_SLOT_COUNT) return false;
   }
   return true;
 }
@@ -210,6 +219,12 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
       // generated alongside the nested schema; key format matches the
       // descriptor table.
       return SYNTH2_LEAF_SCHEMAS[`${tokens[4]}.${tokens[5]}`] ?? null;
+    }
+
+    if (tokens.length === 7 && engineName === 'synth2' && tokens[4] === 'matrix') {
+      // tracks.<i>.engines.synth2.matrix.<s>.<source|dest|amount>
+      const field = tokens[6] as keyof typeof Schemas.Synth2MatrixSlot.shape;
+      return Schemas.Synth2MatrixSlot.shape[field] ?? null;
     }
 
     return null;

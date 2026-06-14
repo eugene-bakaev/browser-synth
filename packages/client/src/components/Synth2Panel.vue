@@ -136,7 +136,25 @@
       </div>
     </div>
 
-    <!-- Column 7: Visualizer -->
+    <!-- Column 7: Mod matrix -->
+    <div class="rack-column">
+      <div class="module-group">
+        <h3>MATRIX</h3>
+        <div class="matrix-grid">
+          <div v-for="(slot, s) in params.matrix" :key="s" class="matrix-row">
+            <select class="matrix-source" v-model="slot.source">
+              <option v-for="src in MOD_SOURCES" :key="src" :value="src">{{ src }}</option>
+            </select>
+            <select class="matrix-dest" v-model="slot.dest">
+              <option v-for="dst in MOD_DESTS" :key="dst" :value="dst">{{ dst }}</option>
+            </select>
+            <Knob label="Amt" :min="-1" :max="1" :step="0.01" :defaultValue="0" v-model="slot.amount" :syncPath="ks.pathFor(['matrix', s, 'amount'])" @gesture-end="ks.end(['matrix', s, 'amount'])" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 8: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
     </div>
@@ -147,6 +165,7 @@
 import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
+import { MOD_SOURCES, MOD_DESTS } from '@fiddle/shared';
 import { useKnobSync } from '../sync/knobSync';
 import type { EngineParamsMap } from '../project';
 
@@ -230,4 +249,11 @@ defineProps<{
 }
 .filter-type-btn:hover { color: #aaa; border-color: #444; }
 .filter-type-btn.active { background: #222; color: #fff; border-color: #555; }
+.matrix-grid { display: flex; flex-direction: column; gap: 4px; }
+.matrix-row { display: flex; align-items: center; gap: 4px; }
+.matrix-row select {
+  flex: 1; min-width: 0; background: #181818; color: #aaa;
+  border: 1px solid #2a2a2a; border-radius: 4px; padding: 3px 4px;
+  font-family: monospace; font-size: 0.65rem;
+}
 </style>

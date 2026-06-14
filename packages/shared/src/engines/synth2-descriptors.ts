@@ -121,3 +121,22 @@ export const SYNTH2_ENUM_VALUES: Readonly<Record<string, readonly string[]>> =
   Object.fromEntries(
     SYNTH2_DESCRIPTORS.filter(d => d.kind === 'enum' && d.enumValues).map(d => [d.key, d.enumValues!]),
   );
+
+// --- I3 modulation matrix (spec §5.6) -------------------------------------
+// Source enum: ORDER IS THE WIRE ENCODING for matrix[*].source and the index
+// into the kernel's per-sample sources[] array. Append-only. lfo1/lfo2/env3
+// exist in the list from I3a but read 0 until I3b/I3c add their DSP.
+export const MOD_SOURCES = [
+  'none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise',
+] as const;
+export type Synth2ModSource = typeof MOD_SOURCES[number];
+
+// Destination enum: 'none' plus every CONTINUOUS, modulatable descriptor key,
+// in descriptor order. Derived (not hand-listed) so it can't drift from the
+// table. The kernel encodes a dest as PARAM_INDEX+1 (0 = none); this string
+// list is the persisted/validation form. A dest is therefore append-stable for
+// the same reason the descriptor block is.
+export const MOD_DESTS: readonly string[] = [
+  'none', ...SYNTH2_DESCRIPTORS.filter(d => d.modulatable).map(d => d.key),
+];
+export type Synth2ModDest = string; // 'none' | <modulatable descriptor key>

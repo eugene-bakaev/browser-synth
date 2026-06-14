@@ -205,6 +205,9 @@ const DISCRETE_LEAF_FIELDS = new Set<string>([
   'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
   'sync', // synth2 osc hard-sync toggle: an instantaneous discrete flip, like muted/soloed
   'type', // synth2 filter.type enum: a discrete selector flip — flush immediately
+  'source', // synth2 matrix route source enum — discrete selector flip
+  'dest',   // synth2 matrix route dest enum — discrete selector flip
+  // ('amount' is intentionally NOT here — a continuous knob that rides the throttle.)
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {
   return DISCRETE_LEAF_FIELDS.has(leafKey);
@@ -222,6 +225,9 @@ function emitLeafDiff(
 ): void {
   if (!outbox) return;
   for (const [key, value] of Object.entries(changed)) {
+    // Arrays (synth2.matrix) are synced by a dedicated per-slot watcher — never
+    // drilled here, which would emit a forbidden whole-slot object write.
+    if (Array.isArray(value)) continue;
     if (value !== null && typeof value === 'object') {
       const oldNested = (oldObj?.[key] ?? {}) as Record<string, unknown>;
       const newNested = value as Record<string, unknown>;
@@ -390,6 +396,28 @@ function installSyncWatchers(): void {
               oldSteps[j] as unknown as Record<string, unknown>,
             );
             if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
+          }
+        },
+        { flush: 'sync' },
+      );
+
+      // synth2 mod matrix: an array of {source,dest,amount} slots. The
+      // engine-slice watcher's emitLeafDiff skips arrays (a one-level drill would
+      // emit a forbidden whole-slot object write), so the matrix is synced here —
+      // drilled to leaf paths per slot. source/dest are discrete enum flips
+      // (DISCRETE_LEAF_FIELDS → flush immediately); amount is a continuous knob
+      // (rides the throttle). Mirrors the steps watcher's guards + flush:'sync'.
+      watch(
+        () => snapshot(project.tracks[i].engines.synth2.matrix),
+        (newM, oldM) => {
+          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldM) return;
+          for (let s = 0; s < newM.length; s++) {
+            for (const field of ['source', 'dest', 'amount'] as const) {
+              const a = (newM[s] as unknown as Record<string, unknown>)[field];
+              const b = (oldM[s] as unknown as Record<string, unknown>)[field];
+              if (a === b) continue;
+              outbox.enqueue(['tracks', i, 'engines', 'synth2', 'matrix', s, field], a, b, gestureEndForLeaf(field));
+            }
           }
         },
         { flush: 'sync' },

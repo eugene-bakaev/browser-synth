@@ -15,10 +15,10 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
         : d.default;
       expect(slice[field], d.key).toBe(expected);
     }
-    // No extra leaves beyond the table.
-    const leafCount = Object.values(DEFAULT_SYNTH2_PARAMS)
-      .filter(m => m !== null && typeof m === 'object')
-      .reduce((n, m) => n + Object.keys(m).length, 0);
+    // No extra leaves beyond the table (matrix excluded — not descriptor-derived).
+    const leafCount = Object.entries(DEFAULT_SYNTH2_PARAMS)
+      .filter(([k, m]) => k !== 'matrix' && m !== null && typeof m === 'object')
+      .reduce((n, [, m]) => n + Object.keys(m).length, 0);
     expect(leafCount).toBe(SYNTH2_DESCRIPTORS.length);
   });
 
@@ -45,5 +45,12 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
 
   it('defaults env2 to the same a/d/s/r as env1', () => {
     expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+  });
+
+  it('default matrix is 8 inert slots (I3a)', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.matrix).toHaveLength(8);
+    for (const slot of DEFAULT_SYNTH2_PARAMS.matrix) {
+      expect(slot).toEqual({ source: 'none', dest: 'none', amount: 0 });
+    }
   });
 });

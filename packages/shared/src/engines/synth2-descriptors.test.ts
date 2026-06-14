@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SYNTH2_DESCRIPTORS, isDiscrete, encodeBool, decodeBool, encodeEnum, decodeEnum,
+  MOD_SOURCES, MOD_DESTS,
 } from './synth2-descriptors.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
@@ -98,5 +99,24 @@ describe('SYNTH2_DESCRIPTORS', () => {
     expect(decodeEnum(1.6, v)).toBe('hp');
     expect(decodeEnum(9, v)).toBe('hp');
     expect(decodeEnum(-3, v)).toBe('lp');
+  });
+});
+
+describe('mod matrix enums (I3a)', () => {
+  it('MOD_SOURCES is the fixed, append-only source list', () => {
+    // Order is the wire encoding for matrix[*].source AND the sources[] index.
+    expect(MOD_SOURCES).toEqual(['none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise']);
+  });
+
+  it('MOD_DESTS is none + every modulatable descriptor key, in descriptor order', () => {
+    const expected = ['none', ...SYNTH2_DESCRIPTORS.filter(d => d.modulatable).map(d => d.key)];
+    expect(MOD_DESTS).toEqual(expected);
+  });
+
+  it('discrete + hardwired params are NOT matrix destinations', () => {
+    // sync toggles, filter.type (enum), filter.envAmount (modulatable:false) excluded.
+    for (const key of ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'filter.envAmount']) {
+      expect(MOD_DESTS).not.toContain(key);
+    }
   });
 });

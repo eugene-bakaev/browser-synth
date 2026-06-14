@@ -202,6 +202,31 @@ describe('synth2 filter wire validation', () => {
   });
 });
 
+describe('synth2 matrix accept-list (I3a)', () => {
+  it('accepts valid matrix leaf writes', () => {
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.source', 'env1').ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.7.dest', 'filter.cutoff').ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.3.amount', -0.5).ok).toBe(true);
+  });
+
+  it('rejects an out-of-range slot index', () => {
+    const r = validatePathAndValue('tracks.0.engines.synth2.matrix.8.amount', 0.5);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('path.invalid');
+  });
+
+  it('rejects a bad matrix value', () => {
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.source', 'nope').ok).toBe(false);
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.amount', 2).ok).toBe(false);
+    // filter.type is a discrete (enum) param, excluded from MOD_DESTS.
+    expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.dest', 'filter.type').ok).toBe(false);
+  });
+
+  it('forbids a whole-slot object write (leaves only)', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.matrix.0')).toBe(false);
+  });
+});
+
 describe('enabled flag path', () => {
   it('tracks.<i>.enabled is writable and accepts a boolean', () => {
     expect(validatePathAndValue('tracks.5.enabled', true)).toEqual({ ok: true });
