@@ -110,3 +110,41 @@ describe('Synth2Panel filter section', () => {
     expect(params.filter.type).toBe('bp');
   });
 });
+
+describe('Synth2Panel mod matrix (I3a)', () => {
+  it('renders 8 matrix rows', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect(el.querySelectorAll('.matrix-row').length).toBe(8);
+  });
+
+  it('updates a route source via the select', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const sel = el.querySelector<HTMLSelectElement>('.matrix-row .matrix-source')!;
+    sel.value = 'env1';
+    sel.dispatchEvent(new Event('change')); // v-model on <select> listens to 'change'
+    expect(params.matrix[0].source).toBe('env1');
+  });
+
+  it('updates a route dest via the select', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const sel = el.querySelector<HTMLSelectElement>('.matrix-row .matrix-dest')!;
+    sel.value = 'filter.cutoff';
+    sel.dispatchEvent(new Event('change')); // v-model on <select> listens to 'change'
+    expect(params.matrix[0].dest).toBe('filter.cutoff');
+  });
+
+  it('each matrix row has an amount knob (8 total)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    // Knob renders <div class="knob"> with <label class="knob-label"> inside.
+    // Selecting .matrix-row .knob-label elements whose text is "Amt" is the
+    // most robust signal: it simultaneously verifies the Knob is present AND
+    // that our label="Amt" prop change rendered correctly.
+    const amtLabels = el.querySelectorAll<HTMLLabelElement>('.matrix-row .knob-label');
+    expect(amtLabels.length).toBe(8);
+    amtLabels.forEach(lbl => expect(lbl.textContent?.trim()).toBe('Amt'));
+  });
+});
