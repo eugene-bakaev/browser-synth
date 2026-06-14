@@ -64,6 +64,11 @@ export interface Synth2EngineParams {
   matrix: Synth2MatrixSlot[];
 }
 
+/** Mod matrix is a fixed-size array (static wire shape). Single source of truth
+ *  for the slot count — referenced by the schema, accept-list bound, defaults,
+ *  and the kernel block layout. */
+export const MATRIX_SLOT_COUNT = 8;
+
 // Typed inert mod-matrix slot — all three fields are checked by the compiler,
 // no cast needed. Spread into Array.from so each slot is an independent object.
 const INERT_SLOT: Synth2MatrixSlot = { source: 'none', dest: 'none', amount: 0 };
@@ -80,7 +85,7 @@ function buildDefaults(): Synth2EngineParams {
   return {
     ...(out as unknown as Synth2EngineParams),
     mode: 'mono',
-    matrix: Array.from({ length: 8 }, () => ({ ...INERT_SLOT })),
+    matrix: Array.from({ length: MATRIX_SLOT_COUNT }, () => ({ ...INERT_SLOT })),
   };
 }
 

@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
 import { SYNTH2_DESCRIPTORS, MOD_SOURCES, MOD_DESTS } from '../engines/synth2-descriptors.js';
+import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -119,7 +120,7 @@ const Synth2ParamsSchema = z.object({
     Object.entries(synth2Modules).map(([mod, fields]) => [mod, z.object(fields).strict()]),
   ),
   mode: z.union([z.literal('mono'), z.literal('poly')]),
-  matrix: z.array(Synth2MatrixSlotSchema).length(8),
+  matrix: z.array(Synth2MatrixSlotSchema).length(MATRIX_SLOT_COUNT),
 });
 
 // --- Step / Track / Project ----------------------------------------------

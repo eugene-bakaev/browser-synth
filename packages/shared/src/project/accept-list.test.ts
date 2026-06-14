@@ -218,6 +218,7 @@ describe('synth2 matrix accept-list (I3a)', () => {
   it('rejects a bad matrix value', () => {
     expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.source', 'nope').ok).toBe(false);
     expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.amount', 2).ok).toBe(false);
+    // filter.type is a discrete (enum) param, excluded from MOD_DESTS.
     expect(validatePathAndValue('tracks.0.engines.synth2.matrix.0.dest', 'filter.type').ok).toBe(false);
   });
 

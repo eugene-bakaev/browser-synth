@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { TRACK_POOL_SIZE } from './constants.js';
 import { Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
 import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
+import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -139,7 +140,7 @@ export function indicesInRange(path: string): boolean {
   }
   if (tokens[2] === 'engines' && tokens[3] === 'synth2' && tokens[4] === 'matrix') {
     const slotIdx = Number(tokens[5]);
-    if (!Number.isInteger(slotIdx) || slotIdx < 0 || slotIdx >= 8) return false;
+    if (!Number.isInteger(slotIdx) || slotIdx < 0 || slotIdx >= MATRIX_SLOT_COUNT) return false;
   }
   return true;
 }
