@@ -20,6 +20,12 @@ export class MorphOscillator {
   private phase = 0;
   private tri = 0;
 
+  /** Set every sample: did the phase cross a full cycle this sample? */
+  wrapped = false;
+  /** When `wrapped`, the fraction of the sample elapsed AFTER the wrap
+   *  (= overflow / dt ∈ [0,1)); used by a slave for sub-sample sync reset. */
+  wrapFrac = 0;
+
   constructor(
     private readonly morph: ParamSlot,
     private readonly pulseWidth: ParamSlot,
@@ -34,7 +40,14 @@ export class MorphOscillator {
     this.tri = 0;
   }
 
-  next(baseFreq: number, fmInput = 0, fmAmount = 0): number {
+  /**
+   * @param syncReset  -1 = free-running; >= 0 = hard-sync this sample, resetting
+   *   phase to `syncReset * |dt|` (the master's post-wrap fraction × this osc's
+   *   increment), sub-sample-accurate per spec §6.8. The reset takes effect for
+   *   the NEXT sample's output; the sync-edge itself is left un-BLEPed (spec's
+   *   accepted v1 residual aliasing).
+   */
+  next(baseFreq: number, fmInput = 0, fmAmount = 0, syncReset = -1): number {
     const semis = this.coarse.next() + this.fine.next() / 100;
     const f = baseFreq * Math.pow(2, semis / 12);
     const dt0 = f / this.sampleRate;
@@ -57,8 +70,24 @@ export class MorphOscillator {
     if (frac > 0) out += Math.sin(frac * HALF_PI) * this.shape(seg + 1, dt, pw);
 
     this.phase += dt;
-    if (this.phase >= 1) this.phase -= 1;
-    else if (this.phase < 0) this.phase += 1;
+    this.wrapped = false;
+    if (this.phase >= 1) {
+      this.phase -= 1;
+      this.wrapped = true;
+      // dt is the per-sample increment (>0 for a free/forward master). After the
+      // wrap phase ∈ [0, dt); wrapFrac = phase/dt ∈ [0,1) is the post-wrap
+      // fraction of this sample. Degenerate near-halted carrier (dt ≤ 1e-12):
+      // unmeasurable, so report wrapFrac 0 (reset lands at phase 0).
+      this.wrapFrac = dt > 1e-12 ? this.phase / dt : 0;
+    } else if (this.phase < 0) {
+      this.phase += 1; // backward wrap (deep TZFM); not used as a sync master in v1
+    }
+    // Hard sync: master wrapped → reset this slave's phase sub-sample-accurately.
+    if (syncReset >= 0) {
+      const adt = dt < 0 ? -dt : dt;
+      this.phase = syncReset * adt;
+      if (this.phase >= 1) this.phase -= 1; // safety: syncReset∈[0,1) and |dt|≤~0.7 at musical freqs (no TZFM) ⇒ phase<1
+    }
     return out;
   }
 

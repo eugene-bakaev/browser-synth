@@ -13,7 +13,7 @@
 // are awaited in useSynth.buildAudioState.
 
 import { SoundEngine } from './types';
-import { DEFAULT_SYNTH2_PARAMS, type Synth2EngineParams } from '@fiddle/shared';
+import { DEFAULT_SYNTH2_PARAMS, encodeBool, type Synth2EngineParams } from '@fiddle/shared';
 import { PARAM_INDEX, defaultParamBlock } from './synth2/kernel/params';
 
 export class Synth2Engine implements SoundEngine {
@@ -42,14 +42,19 @@ export class Synth2Engine implements SoundEngine {
     for (const [mod, fields] of Object.entries(params)) {
       if (typeof fields !== 'object' || fields === null) continue;
       for (const [field, value] of Object.entries(fields as Record<string, unknown>)) {
-        if (typeof value !== 'number') continue;
         const idx = PARAM_INDEX[`${mod}.${field}`];
         if (idx === undefined) continue;
+        // Continuous params arrive as numbers; discrete bools as true/false
+        // (encoded 0/1 — spec §6.6). Strings (e.g. mode) ride the trigger, not
+        // the block, so they're skipped here.
         // Float32Array stores 32-bit values; Math.fround converts the incoming
         // number to the same precision before comparing so the no-op path works
         // even when DEFAULT_SYNTH2_PARAMS values have 64-bit fractions that
         // round to the same float32 as the stored block entry.
-        const f32 = Math.fround(value);
+        let f32: number;
+        if (typeof value === 'number') f32 = Math.fround(value);
+        else if (typeof value === 'boolean') f32 = encodeBool(value);
+        else continue;
         if (this.block[idx] === f32) continue;
         this.block[idx] = f32;
         changed = true;

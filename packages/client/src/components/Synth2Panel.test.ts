@@ -61,3 +61,31 @@ describe('Synth2Panel osc2/osc3/noise/fm controls', () => {
     expect(text).toContain('FM');
   });
 });
+
+describe('Synth2Panel hard-sync toggles', () => {
+  it('renders a SYNC toggle on osc2 and osc3 (not osc1)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const syncBtns = el.querySelectorAll<HTMLButtonElement>('.sync-btn');
+    expect(syncBtns.length).toBe(2); // osc2 + osc3 only
+  });
+
+  it('toggles osc2.sync on click', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const syncBtns = el.querySelectorAll<HTMLButtonElement>('.sync-btn');
+    expect(params.osc2.sync).toBe(false);
+    syncBtns[0].click();
+    expect(params.osc2.sync).toBe(true);
+    syncBtns[0].click();
+    expect(params.osc2.sync).toBe(false);
+  });
+
+  it('toggles osc3.sync on click', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const syncBtns = el.querySelectorAll<HTMLButtonElement>('.sync-btn');
+    syncBtns[1].click();
+    expect(params.osc3.sync).toBe(true);
+  });
+});

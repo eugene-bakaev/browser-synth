@@ -29,6 +29,8 @@ export class Voice {
   private readonly noise: Noise;
   private freq = 440;
   private velocity = 1;
+  private osc2Sync = false;
+  private osc3Sync = false;
 
   constructor(sampleRate: number, seed = 1) {
     this.slots = SYNTH2_DESCRIPTORS.map(d => new ParamSlot(d, sampleRate));
@@ -50,6 +52,13 @@ export class Voice {
     );
   }
 
+  /** Block-boundary discrete update: osc2 syncs to osc1's wraps, osc3 to osc2's.
+   *  (osc1.sync is inert — osc1 is the master.) */
+  setSync(osc2Sync: boolean, osc3Sync: boolean): void {
+    this.osc2Sync = osc2Sync;
+    this.osc3Sync = osc3Sync;
+  }
+
   get active(): boolean {
     return this.env1.active;
   }
@@ -65,10 +74,18 @@ export class Voice {
   renderAdd(out: Float32Array, from: number, to: number): void {
     for (let n = from; n < to; n++) {
       const e = this.env1.next();
-      // TZFM chain: osc1 → osc2 → osc3. Every ParamSlot.next() called exactly once per sample.
+      // TZFM + hard-sync chain: osc1 master → osc2 → osc3. Each ParamSlot.next()
+      // called exactly once per sample. A slave resets when its master wrapped
+      // this sample AND its sync toggle is on.
       const o1 = this.osc1.next(this.freq);
-      const o2 = this.osc2.next(this.freq, o1, this.fmOsc2.next());
-      const o3 = this.osc3.next(this.freq, o2, this.fmOsc3.next());
+      const o2 = this.osc2.next(
+        this.freq, o1, this.fmOsc2.next(),
+        this.osc2Sync && this.osc1.wrapped ? this.osc1.wrapFrac : -1,
+      );
+      const o3 = this.osc3.next(
+        this.freq, o2, this.fmOsc3.next(),
+        this.osc3Sync && this.osc2.wrapped ? this.osc2.wrapFrac : -1,
+      );
       const nz = this.noise.next(this.noiseColor.next());
       const mix =
         o1 * this.osc1Level.next() +

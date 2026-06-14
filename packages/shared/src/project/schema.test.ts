@@ -106,10 +106,18 @@ describe('synth2 schema (generated from descriptors)', () => {
     for (const d of SYNTH2_DESCRIPTORS) {
       const leaf = SYNTH2_LEAF_SCHEMAS[d.key];
       expect(leaf, d.key).toBeDefined();
-      expect(leaf.safeParse(d.min).success, d.key).toBe(true);
-      expect(leaf.safeParse(d.max).success, d.key).toBe(true);
-      expect(leaf.safeParse(d.min - 1e-6).success, d.key).toBe(false);
-      expect(leaf.safeParse(d.max + 1e-6).success, d.key).toBe(false);
+      if (d.kind === 'bool') {
+        // Bool descriptors map to z.boolean() — number inputs are rejected.
+        expect(leaf.safeParse(true).success, d.key).toBe(true);
+        expect(leaf.safeParse(false).success, d.key).toBe(true);
+        expect(leaf.safeParse(0).success, d.key).toBe(false);
+        expect(leaf.safeParse(1).success, d.key).toBe(false);
+      } else {
+        expect(leaf.safeParse(d.min).success, d.key).toBe(true);
+        expect(leaf.safeParse(d.max).success, d.key).toBe(true);
+        expect(leaf.safeParse(d.min - 1e-6).success, d.key).toBe(false);
+        expect(leaf.safeParse(d.max + 1e-6).success, d.key).toBe(false);
+      }
     }
   });
 
@@ -118,5 +126,28 @@ describe('synth2 schema (generated from descriptors)', () => {
     expect(Schemas.Synth2Params.safeParse(ok).success).toBe(true);
     const bad = { ...DEFAULT_SYNTH2_PARAMS, mode: 'chord' };
     expect(Schemas.Synth2Params.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe('synth2 discrete (bool) leaves', () => {
+  it('maps osc.sync to a boolean leaf schema', () => {
+    for (const key of ['osc1.sync', 'osc2.sync', 'osc3.sync']) {
+      expect(SYNTH2_LEAF_SCHEMAS[key].safeParse(true).success, key).toBe(true);
+      expect(SYNTH2_LEAF_SCHEMAS[key].safeParse(false).success, key).toBe(true);
+      expect(SYNTH2_LEAF_SCHEMAS[key].safeParse(1).success, key).toBe(false);
+      expect(SYNTH2_LEAF_SCHEMAS[key].safeParse('x').success, key).toBe(false);
+    }
+  });
+
+  it('Synth2ParamsSchema requires osc.sync to be boolean', () => {
+    // Validate via the full schema — .shape.osc2 is a dynamic key not statically
+    // typed by TypeScript, so we use structuredClone + field override instead.
+    const withSyncTrue = structuredClone(DEFAULT_SYNTH2_PARAMS);
+    withSyncTrue.osc2.sync = true;
+    expect(Schemas.Synth2Params.safeParse(withSyncTrue).success).toBe(true);
+
+    const withSyncNumber = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
+    withSyncNumber.osc2.sync = 1;
+    expect(Schemas.Synth2Params.safeParse(withSyncNumber).success).toBe(false);
   });
 });

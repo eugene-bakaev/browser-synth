@@ -203,6 +203,7 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
 // across the accept-list (no continuous and discrete field share a name).
 const DISCRETE_LEAF_FIELDS = new Set<string>([
   'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
+  'sync', // synth2 osc hard-sync toggle: an instantaneous discrete flip, like muted/soloed
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {
   return DISCRETE_LEAF_FIELDS.has(leafKey);

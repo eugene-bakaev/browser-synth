@@ -168,6 +168,79 @@ describe('Synth2Kernel oscillator section', () => {
   });
 });
 
+describe('Synth2Kernel hard sync', () => {
+  /** Normalized autocorrelation at `lag` samples. */
+  function autocorr(buf: Float32Array, lag: number): number {
+    const n = buf.length - lag;
+    let num = 0, den0 = 0, den1 = 0;
+    for (let i = 0; i < n; i++) {
+      num += buf[i] * buf[i + lag];
+      den0 += buf[i] * buf[i];
+      den1 += buf[i + lag] * buf[i + lag];
+    }
+    const den = Math.sqrt(den0 * den1);
+    return den > 0 ? num / den : 0;
+  }
+
+  // Silence osc1/osc3/noise; osc1 still RUNS as the sync master.
+  // osc2 is detuned +7 semitones (~1.5×, free ≈ 330 Hz) so its natural period
+  // clearly differs from the 220 Hz master. Settled for 100ms so the coarse
+  // smoother has converged before we measure.
+  function renderOsc2Only(syncOn: boolean): Float32Array {
+    const k = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['osc1.level']] = 0;
+    block[PARAM_INDEX['osc3.level']] = 0;
+    block[PARAM_INDEX['noise.level']] = 0;
+    block[PARAM_INDEX['osc2.level']] = 1;
+    block[PARAM_INDEX['osc2.coarse']] = 7;          // +7 semitones (~1.5×)
+    block[PARAM_INDEX['osc2.sync']] = syncOn ? 1 : 0;
+    k.applyParams(block);
+    k.noteOn(0, 220, 10, 1, true);                  // mono, 220 Hz master pitch, long gate
+    // Let param smoothers converge (100ms >> 5ms time constant)
+    const settleBlocks = Math.ceil(SR * 0.1 / BLOCK);
+    renderBlocks(k, 0, settleBlocks);
+    // Measure ~1s
+    const measureStart = settleBlocks * BLOCK;
+    return renderBlocks(k, measureStart, Math.ceil(SR / BLOCK));
+  }
+
+  it('osc2.sync locks osc2 to the played (master) pitch', () => {
+    // Hard sync forces the waveform to REPEAT at the master period (220 Hz),
+    // not the slave's natural period (330 Hz). Autocorrelation detects this:
+    // the synced signal should correlate strongly at masterLag but NOT slaveLag;
+    // the free signal should correlate strongly at slaveLag but NOT masterLag.
+    const masterLag = Math.round(SR / 220); // ~218 samples
+    const slaveLag  = Math.round(SR / 330); // ~145 samples
+
+    const freeOut = renderOsc2Only(false);
+    const syncOut = renderOsc2Only(true);
+
+    const freeAtSlave  = autocorr(freeOut, slaveLag);   // ~1.0 (periodic at 330 Hz)
+    const freeAtMaster = autocorr(freeOut, masterLag);  // ~-0.5 (not 220 Hz periodic)
+    const syncAtMaster = autocorr(syncOut, masterLag);  // ~0.999 (locked to master)
+    const syncAtSlave  = autocorr(syncOut, slaveLag);   // ~0.0 (not slave-periodic)
+
+    // Free osc2: autocorrelated at its own period (330 Hz), not the master
+    expect(freeAtSlave).toBeGreaterThan(0.95);
+    expect(freeAtMaster).toBeLessThan(0.5);
+    // Synced osc2: autocorrelated at the master period (220 Hz), not its own
+    expect(syncAtMaster).toBeGreaterThan(0.95);
+    expect(syncAtSlave).toBeLessThan(0.5);
+  });
+
+  it('renders finite, bounded audio with sync on', () => {
+    const out = renderOsc2Only(true);
+    let peak = 0;
+    for (let i = 0; i < out.length; i++) {
+      expect(Number.isFinite(out[i])).toBe(true);
+      peak = Math.max(peak, Math.abs(out[i]));
+    }
+    expect(peak).toBeLessThan(2);
+    expect(peak).toBeGreaterThan(0);
+  });
+});
+
 describe('Synth2Kernel polyphony', () => {
   it('sounds 8 simultaneous poly voices and never grows past 8', () => {
     const kernel = new Synth2Kernel(SR);

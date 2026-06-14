@@ -336,6 +336,15 @@ describe('sync integration', () => {
     expect(volOp?.value).toBe(0.5);
   });
 
+  it('emits a synth2 osc.sync toggle immediately (discrete leaf)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth2.osc2.sync = true;
+    // No timer advance: sync is in DISCRETE_LEAF_FIELDS → flushes immediately.
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'osc2', 'sync']));
+    expect(op).toBeDefined();
+    expect(op.value).toBe(true);
+  });
+
   it('emits a step edit as a leaf op', async () => {
     const { fake, synth } = await bootWithFakeSocket();
     synth.project.tracks[0].steps[3].note = 'C'; // discrete → immediate

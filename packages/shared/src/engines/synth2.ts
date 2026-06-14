@@ -5,7 +5,7 @@
 // agreement. Params are uniformly nested per module: descriptor key
 // 'osc1.morph' ⇒ params.osc1.morph (spec §7).
 
-import { SYNTH2_DESCRIPTORS } from './synth2-descriptors.js';
+import { SYNTH2_DESCRIPTORS, decodeBool } from './synth2-descriptors.js';
 
 export interface Synth2OscParams {
   morph: number;       // 0 sine → 1 tri → 2 saw → 3 pulse (continuous)
@@ -13,6 +13,7 @@ export interface Synth2OscParams {
   coarse: number;      // semitones
   fine: number;        // cents
   level: number;
+  sync: boolean;       // hard-sync to the previous osc (inert on osc1 — master)
 }
 
 export interface Synth2EnvParams {
@@ -45,10 +46,10 @@ export interface Synth2EngineParams {
 }
 
 function buildDefaults(): Synth2EngineParams {
-  const out: Record<string, Record<string, number>> = {};
+  const out: Record<string, Record<string, number | boolean>> = {};
   for (const d of SYNTH2_DESCRIPTORS) {
     const [mod, field] = d.key.split('.');
-    (out[mod] ??= {})[field] = d.default;
+    (out[mod] ??= {})[field] = d.kind === 'bool' ? decodeBool(d.default) : d.default;
   }
   return { ...(out as unknown as Synth2EngineParams), mode: 'mono' };
 }

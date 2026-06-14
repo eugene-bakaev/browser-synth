@@ -121,4 +121,18 @@ describe('reconcileWithDefaults', () => {
     const hi = reconcileWithDefaults({ schemaVersion: 2, bpm: 120, tracks: [{ patternLength: 999 }] });
     expect(hi.tracks[0].patternLength).toBe(64);
   });
+
+  it('heals a synth2 slice missing osc.sync to false', () => {
+    // Simulate a pre-I2c-1 snapshot: a synth2 track whose oscillators lack sync.
+    const p = freshProject();
+    const synth2 = p.tracks[0].engines.synth2 as any;
+    delete synth2.osc1.sync;
+    delete synth2.osc2.sync;
+    delete synth2.osc3.sync;
+    const healed = reconcileWithDefaults(p);
+    const healedSynth2 = healed.tracks[0].engines.synth2;
+    expect(healedSynth2.osc1.sync).toBe(false);
+    expect(healedSynth2.osc2.sync).toBe(false);
+    expect(healedSynth2.osc3.sync).toBe(false);
+  });
 });

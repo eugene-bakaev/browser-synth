@@ -109,3 +109,50 @@ describe('Synth2Engine protocol', () => {
     expect(lastNode(engine).disconnect).toHaveBeenCalled();
   });
 });
+
+describe('Synth2Engine boolean (discrete) params', () => {
+  it('encodes osc2.sync=true as 1 in the posted block', () => {
+    const engine = new Synth2Engine(mockCtx());
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+
+    engine.applyParams({ osc2: { sync: true } });
+
+    const msg = port.posted.find((m: any) => m.type === 'params');
+    expect(msg).toBeTruthy();
+    expect(msg.block[PARAM_INDEX['osc2.sync']]).toBe(1);
+  });
+
+  it('encodes osc2.sync=false as 0 and is a no-op when already 0', () => {
+    const engine = new Synth2Engine(mockCtx());
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+    // Default sync is 0; setting false again should not post.
+    engine.applyParams({ osc2: { sync: false } });
+    expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
+    // Flip true then false: the false flip posts a 0.
+    engine.applyParams({ osc2: { sync: true } });
+    port.posted.length = 0;
+    engine.applyParams({ osc2: { sync: false } });
+    const msg = port.posted.find((m: any) => m.type === 'params');
+    expect(msg).toBeTruthy();
+    expect(msg.block[PARAM_INDEX['osc2.sync']]).toBe(0);
+  });
+
+  it('ignores string params (mode rides the trigger, not the block)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+    engine.applyParams({ mode: 'poly' } as any);
+    expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
+  });
+
+  it('skips a string-valued field that has a valid param index (inner else-continue)', () => {
+    const ctx = mockCtx();
+    const engine = new Synth2Engine(ctx);
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+    engine.applyParams({ osc2: { morph: 'x' } } as any);
+    expect(port.posted.some(m => m.type === 'params')).toBe(false);
+  });
+});
