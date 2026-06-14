@@ -149,6 +149,72 @@ describe('MorphOscillator', () => {
   });
 });
 
+describe('MorphOscillator hard sync', () => {
+  it('syncReset = -1 is bit-identical to the no-sync call (saw, morph 2)', () => {
+    const n = 512;
+    const freq = 220;
+    const a = makeOsc(2);
+    const b = makeOsc(2);
+    for (let i = 0; i < n; i++) {
+      expect(a.next(freq, 0, 0, -1)).toBeCloseTo(b.next(freq), 12);
+    }
+  });
+
+  it('exposes wrapped/wrapFrac when the phase crosses a cycle', () => {
+    const osc = makeOsc(2);
+    let sawWrap = false;
+    for (let i = 0; i < SR; i++) {
+      osc.next(440);
+      if (osc.wrapped) {
+        sawWrap = true;
+        expect(osc.wrapFrac).toBeGreaterThanOrEqual(0);
+        expect(osc.wrapFrac).toBeLessThan(1);
+      }
+    }
+    expect(sawWrap).toBe(true);
+  });
+
+  it('hard sync locks the slave period to the master', () => {
+    // Master 220 Hz; slave detuned +7 semitones (free ≈ 330 Hz) and hard-synced.
+    // The synced output must repeat at the MASTER rate (~220), not ~330.
+    const SEMI = 7;
+    const masterFreq = 220;
+    const master = makeOsc(2);
+    const slaveSynced = new MorphOscillator(
+      slot('osc2.morph', 0, 3, 2), slot('osc2.pulseWidth', 0.05, 0.95, 0.5),
+      slot('osc2.coarse', -36, 36, SEMI), slot('osc2.fine', -100, 100, 0), SR,
+    );
+    const slaveFree = new MorphOscillator(
+      slot('osc2.morph', 0, 3, 2), slot('osc2.pulseWidth', 0.05, 0.95, 0.5),
+      slot('osc2.coarse', -36, 36, SEMI), slot('osc2.fine', -100, 100, 0), SR,
+    );
+    const synced = new Float32Array(SR);
+    const free = new Float32Array(SR);
+    for (let i = 0; i < SR; i++) {
+      master.next(masterFreq);
+      synced[i] = slaveSynced.next(masterFreq, 0, 0, master.wrapped ? master.wrapFrac : -1);
+      free[i] = slaveFree.next(masterFreq);
+    }
+    const freeHz = positiveZeroCrossings(free);
+    const syncHz = positiveZeroCrossings(synced);
+    expect(freeHz).toBeGreaterThan(310);   // ~330
+    expect(syncHz).toBeLessThan(260);      // locked toward ~220
+    expect(syncHz).toBeGreaterThan(190);
+  });
+
+  it('stays finite and bounded under sync while sweeping master pitch', () => {
+    const master = makeOsc(2);
+    const slave = makeOsc(2);
+    for (let i = 0; i < 8192; i++) {
+      const f = 110 + i / 8192 * 800;
+      master.next(f);
+      const s = slave.next(f * 1.5, 0, 0, master.wrapped ? master.wrapFrac : -1);
+      expect(Number.isFinite(s)).toBe(true);
+      expect(Math.abs(s)).toBeLessThan(2);
+    }
+  });
+});
+
 describe('MorphOscillator TZFM', () => {
   it('fmAmount 0 produces bit-identical output regardless of fmInput', () => {
     // osc.next(freq, fmInput, 0) must equal osc.next(freq) for every sample
