@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Synth2Engine } from './Synth2Engine';
-import { SYNTH2_DESCRIPTORS, DEFAULT_SYNTH2_PARAMS } from '@fiddle/shared';
-import { PARAM_INDEX } from './synth2/kernel/params';
+import { SYNTH2_DESCRIPTORS, DEFAULT_SYNTH2_PARAMS, MOD_SOURCES } from '@fiddle/shared';
+import { PARAM_INDEX, MATRIX_BASE, MATRIX_STRIDE } from './synth2/kernel/params';
 
 class MockPort {
   posted: any[] = [];
@@ -191,5 +191,53 @@ describe('Synth2Engine enum (filter.type) params', () => {
     port.posted.length = 0;
     engine.applyParams({ mode: 'poly' } as any);
     expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
+  });
+});
+
+describe('Synth2Engine matrix encoding (I3a)', () => {
+  it('encodes a matrix route into the block (source idx, dest+1, amount) (I3a)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.applyParams({
+      matrix: [
+        { source: 'env1', dest: 'filter.cutoff', amount: 0.5 },
+        ...Array.from({ length: 7 }, () => ({ source: 'none', dest: 'none', amount: 0 })),
+      ],
+    });
+    const msg = lastNode(engine).port.posted.at(-1);
+    expect(msg.type).toBe('params');
+    expect(msg.block[MATRIX_BASE]).toBe(MOD_SOURCES.indexOf('env1'));           // slot 0 source
+    expect(msg.block[MATRIX_BASE + 1]).toBe(PARAM_INDEX['filter.cutoff'] + 1); // dest encoded (+1)
+    expect(msg.block[MATRIX_BASE + 2]).toBeCloseTo(0.5, 6);                    // amount
+  });
+
+  it('encodes dest = none as 0 (I3a)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.applyParams({
+      matrix: [
+        { source: 'lfo1', dest: 'none', amount: 0.9 },
+        ...Array.from({ length: 7 }, () => ({ source: 'none', dest: 'none', amount: 0 })),
+      ],
+    });
+    const msg = lastNode(engine).port.posted.at(-1);
+    expect(msg.block[MATRIX_BASE + 1]).toBe(0);
+  });
+
+  it('does not repost when the same matrix route is applied twice (Float32 dirty-check) (I3a)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    const port = lastNode(engine).port;
+    const route = {
+      matrix: [
+        { source: 'env1', dest: 'filter.cutoff', amount: 0.5 },
+        ...Array.from({ length: 7 }, () => ({ source: 'none', dest: 'none', amount: 0 })),
+      ],
+    };
+    // First apply — must post (block changes from zero-init).
+    engine.applyParams(route);
+    const countAfterFirst = port.posted.filter((m: any) => m.type === 'params').length;
+    expect(countAfterFirst).toBeGreaterThan(0);
+    // Second apply with identical values — dirty-check must suppress the post.
+    engine.applyParams(route);
+    const countAfterSecond = port.posted.filter((m: any) => m.type === 'params').length;
+    expect(countAfterSecond).toBe(countAfterFirst);
   });
 });

@@ -13,8 +13,8 @@
 // are awaited in useSynth.buildAudioState.
 
 import { SoundEngine } from './types';
-import { DEFAULT_SYNTH2_PARAMS, encodeBool, encodeEnum, SYNTH2_ENUM_VALUES, type Synth2EngineParams } from '@fiddle/shared';
-import { PARAM_INDEX, defaultParamBlock } from './synth2/kernel/params';
+import { DEFAULT_SYNTH2_PARAMS, encodeBool, encodeEnum, MOD_SOURCES, SYNTH2_ENUM_VALUES, type Synth2EngineParams } from '@fiddle/shared';
+import { PARAM_INDEX, MATRIX_BASE, MATRIX_SLOTS, MATRIX_STRIDE, defaultParamBlock } from './synth2/kernel/params';
 
 export class Synth2Engine implements SoundEngine {
   readonly engineType = 'synth2';
@@ -40,6 +40,8 @@ export class Synth2Engine implements SoundEngine {
   applyParams(params: Record<string, any>): void {
     let changed = false;
     for (const [mod, fields] of Object.entries(params)) {
+      // Matrix is an array (not a nested module object): skip here, encode below.
+      if (mod === 'matrix') continue;
       if (typeof fields !== 'object' || fields === null) continue;
       for (const [field, value] of Object.entries(fields as Record<string, unknown>)) {
         const idx = PARAM_INDEX[`${mod}.${field}`];
@@ -67,6 +69,24 @@ export class Synth2Engine implements SoundEngine {
         if (this.block[idx] === f32) continue;
         this.block[idx] = f32;
         changed = true;
+      }
+    }
+    // Matrix is an array of routes (not a nested module object): encode each
+    // slot into the block's matrix region. source → MOD_SOURCES index; dest →
+    // PARAM_INDEX(key)+1 (0 = none, append-stable); amount → float32.
+    const matrix = params.matrix;
+    if (Array.isArray(matrix)) {
+      for (let s = 0; s < MATRIX_SLOTS; s++) {
+        const slot = matrix[s];
+        if (!slot) continue;
+        const base = MATRIX_BASE + s * MATRIX_STRIDE;
+        const srcIdx = Math.max(0, (MOD_SOURCES as readonly string[]).indexOf(slot.source ?? 'none'));
+        const destKey = slot.dest ?? 'none';
+        const destEnc = destKey === 'none' || PARAM_INDEX[destKey] === undefined ? 0 : PARAM_INDEX[destKey] + 1;
+        const amt = Math.fround(typeof slot.amount === 'number' ? slot.amount : 0);
+        if (this.block[base] !== srcIdx) { this.block[base] = srcIdx; changed = true; }
+        if (this.block[base + 1] !== destEnc) { this.block[base + 1] = destEnc; changed = true; }
+        if (this.block[base + 2] !== amt) { this.block[base + 2] = amt; changed = true; }
       }
     }
     if (changed) {
