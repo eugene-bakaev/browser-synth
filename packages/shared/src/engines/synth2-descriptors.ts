@@ -12,10 +12,10 @@ export type Synth2Taper = 'linear' | 'expOctaves';
 
 // Discrete kinds ride the SAME Float32Array param block as continuous params
 // (spec §6.6: "enums and booleans encoded as floats") but are applied at block
-// boundaries WITHOUT a smoother and are excluded from the mod matrix. I2c-1
-// adds only 'bool' (osc hard-sync toggles); 'enum' (filter model/type) lands in
-// I2c-2 — widen this union then.
-export type Synth2Kind = 'continuous' | 'bool';
+// boundaries WITHOUT a smoother and are excluded from the mod matrix.
+//   'bool' — I2c-1 osc hard-sync toggles (encoded 0/1).
+//   'enum' — I2c-2 filter.type (encoded as the value's index; see enumValues).
+export type Synth2Kind = 'continuous' | 'bool' | 'enum';
 
 export interface Synth2ParamDescriptor {
   /** '<module>.<field>' — also the wire-path tail under engines.synth2 */
@@ -32,6 +32,8 @@ export interface Synth2ParamDescriptor {
   modScale: number;
   /** Discrete kinds skip the smoother and the mod matrix. Omitted ⇒ 'continuous'. */
   kind?: Synth2Kind;
+  /** For kind:'enum' only — the ordered value set; the block stores the index. */
+  enumValues?: readonly string[];
 }
 
 /** A param is discrete (block-boundary, no smoother, not a mod dest) when it
@@ -43,6 +45,17 @@ export const isDiscrete = (d: Synth2ParamDescriptor): boolean =>
  *  float32-roundtripped 1 still reads true. */
 export const encodeBool = (v: boolean): number => (v ? 1 : 0);
 export const decodeBool = (n: number): boolean => n >= 0.5;
+
+/** Enum ⇄ float-block encoding (spec §6.6): the block stores the value's index.
+ *  Unknown value → 0 (first), so a corrupt/old wire value degrades to the default. */
+export const encodeEnum = (value: string, values: readonly string[]): number => {
+  const i = values.indexOf(value);
+  return i < 0 ? 0 : i;
+};
+export const decodeEnum = (n: number, values: readonly string[]): string => {
+  const i = Math.round(n);
+  return values[i < 0 ? 0 : i >= values.length ? values.length - 1 : i] ?? values[0];
+};
 
 export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // osc1 — spec §5.2. morph: 0 sine → 1 triangle → 2 saw → 3 pulse.
@@ -85,4 +98,26 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'osc1.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'osc2.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'osc3.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
+  // --- I2c-2 filter section (append-only). env2 mirrors env1 (a/d/r expOctaves
+  // time taper, s linear). filter cutoff is expOctaves (±4 oct mod range);
+  // resonance/keyTrack linear. filter.envAmount is the HARDWIRED env2→cutoff
+  // depth in bipolar octaves (±4): continuous (smoothed) but NOT a mod dest
+  // (spec §5.6 omits it), so modulatable:false. filter.type is the first ENUM —
+  // rides the block as an index (lp=0,bp=1,hp=2), applied at the block boundary.
+  { key: 'env2.a',          min: 0.001, max: 10,    default: 0.01, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env2.d',          min: 0.001, max: 10,    default: 0.2,  taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env2.s',          min: 0,     max: 1,     default: 0.5,  taper: 'linear',     modulatable: true,  modScale: 1 },
+  { key: 'env2.r',          min: 0.001, max: 10,    default: 0.5,  taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'filter.cutoff',   min: 20,    max: 20000, default: 2000, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'filter.resonance',min: 0,     max: 1,     default: 0.15, taper: 'linear',     modulatable: true,  modScale: 1 },
+  { key: 'filter.keyTrack', min: 0,     max: 1,     default: 0,    taper: 'linear',     modulatable: true,  modScale: 1 },
+  { key: 'filter.envAmount',min: -4,    max: 4,     default: 2.4,  taper: 'linear',     modulatable: false, modScale: 0 },
+  { key: 'filter.type',     min: 0,     max: 2,     default: 0,    taper: 'linear',     modulatable: false, modScale: 0, kind: 'enum', enumValues: ['lp', 'bp', 'hp'] },
 ];
+
+/** key → enum value set, for the descriptors that declare one. Engine + kernel
+ *  use this to encode/decode enum leaves without re-walking the table. */
+export const SYNTH2_ENUM_VALUES: Readonly<Record<string, readonly string[]>> =
+  Object.fromEntries(
+    SYNTH2_DESCRIPTORS.filter(d => d.kind === 'enum' && d.enumValues).map(d => [d.key, d.enumValues!]),
+  );
