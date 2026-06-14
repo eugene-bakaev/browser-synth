@@ -5,7 +5,7 @@
 // agreement. Params are uniformly nested per module: descriptor key
 // 'osc1.morph' ⇒ params.osc1.morph (spec §7).
 
-import { SYNTH2_DESCRIPTORS, decodeBool } from './synth2-descriptors.js';
+import { SYNTH2_DESCRIPTORS, decodeBool, decodeEnum } from './synth2-descriptors.js';
 
 export interface Synth2OscParams {
   morph: number;       // 0 sine → 1 tri → 2 saw → 3 pulse (continuous)
@@ -33,6 +33,14 @@ export interface Synth2FmParams {
   osc3: number; // osc2 → osc3 TZFM index
 }
 
+export interface Synth2FilterParams {
+  cutoff: number;     // Hz
+  resonance: number;  // 0..1
+  keyTrack: number;   // 0..1 — cutoff follows note pitch
+  envAmount: number;  // bipolar octaves (±4): env2 → cutoff depth
+  type: 'lp' | 'bp' | 'hp';
+}
+
 export interface Synth2EngineParams {
   osc1: Synth2OscParams;
   osc2: Synth2OscParams;
@@ -40,16 +48,21 @@ export interface Synth2EngineParams {
   noise: Synth2NoiseParams;
   fm: Synth2FmParams;
   env1: Synth2EnvParams;
+  env2: Synth2EnvParams;
+  filter: Synth2FilterParams;
   // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
   // (it's not a Float32Array param); lives here so presets carry their mode.
   mode: 'mono' | 'poly';
 }
 
 function buildDefaults(): Synth2EngineParams {
-  const out: Record<string, Record<string, number | boolean>> = {};
+  const out: Record<string, Record<string, number | boolean | string>> = {};
   for (const d of SYNTH2_DESCRIPTORS) {
     const [mod, field] = d.key.split('.');
-    (out[mod] ??= {})[field] = d.kind === 'bool' ? decodeBool(d.default) : d.default;
+    (out[mod] ??= {})[field] =
+      d.kind === 'bool' ? decodeBool(d.default)
+      : d.kind === 'enum' ? decodeEnum(d.default, d.enumValues!)
+      : d.default;
   }
   return { ...(out as unknown as Synth2EngineParams), mode: 'mono' };
 }
