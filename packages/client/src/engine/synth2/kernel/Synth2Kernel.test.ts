@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Synth2Kernel } from './Synth2Kernel';
-import { PARAM_INDEX, PARAM_COUNT, defaultParamBlock } from './params';
-import { SYNTH2_DESCRIPTORS } from '@fiddle/shared';
+import { PARAM_INDEX, PARAM_COUNT, defaultParamBlock, MATRIX_BASE, MATRIX_STRIDE } from './params';
+import { SYNTH2_DESCRIPTORS, MOD_SOURCES } from '@fiddle/shared';
 
 const SR = 48000;
 const BLOCK = 128;
@@ -351,5 +351,39 @@ describe('Synth2Kernel polyphony', () => {
     // stole the oldest active voice would leave activeCount 1 and longVoice idle.
     expect(activeCount(kernel)).toBe(2);
     expect(voices[longVoice].active).toBe(true);
+  });
+});
+
+describe('Synth2Kernel mod matrix (I3a)', () => {
+  // Render 2048 samples mono with a given param block and return RMS energy.
+  function renderRms(block: Float32Array): number {
+    const k = new Synth2Kernel(SR);
+    k.applyParams(block);
+    // noteOn(time, freq, duration, velocity, mono)
+    // time=0 (absolute seconds on ctx clock → frame 0), mono=true
+    k.noteOn(0, 220, 1.0, 1.0, true);
+    const out = new Float32Array(2048);
+    k.process(out, 2048, 0);
+    let rms = 0;
+    for (const x of out) rms += x * x;
+    return Math.sqrt(rms / out.length);
+  }
+
+  it('applyParams routes a matrix slot from the block (velocity → osc1.level) (I3a)', () => {
+    // Without a route the default block sets osc1.level to its descriptor default.
+    // With velocity→osc1.level at amount=1, the mod adds velocity (1.0) to the
+    // base osc1.level, making the output louder (more energy).
+    const blockNoRoute = defaultParamBlock();
+
+    const blockWithRoute = defaultParamBlock();
+    const base = MATRIX_BASE + 0 * MATRIX_STRIDE;
+    blockWithRoute[base]     = MOD_SOURCES.indexOf('velocity'); // source index
+    blockWithRoute[base + 1] = PARAM_INDEX['osc1.level'] + 1;  // destEncoded (+1)
+    blockWithRoute[base + 2] = 1;                               // amount
+
+    const rmsNoRoute   = renderRms(blockNoRoute);
+    const rmsWithRoute = renderRms(blockWithRoute);
+
+    expect(rmsWithRoute).toBeGreaterThan(rmsNoRoute);
   });
 });

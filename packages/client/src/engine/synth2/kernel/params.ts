@@ -24,6 +24,8 @@ export const BLOCK_LENGTH = PARAM_COUNT + MATRIX_SLOTS * MATRIX_STRIDE;
 export function defaultParamBlock(): Float32Array {
   const block = new Float32Array(BLOCK_LENGTH);
   SYNTH2_DESCRIPTORS.forEach((d, i) => { block[i] = d.default; });
-  // Matrix region stays all-zero: source=none(0), dest=none(0), amount=0.
+  // Matrix region stays all-zero ⇒ every route inert. The disable sentinel is
+  // destEncoded=0 (decodes to destSlot=-1, skipped); source index 0 is just
+  // MOD_SOURCES[0]='none' whose per-sample value is always 0, and amount=0.
   return block;
 }
