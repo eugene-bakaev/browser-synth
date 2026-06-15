@@ -113,6 +113,16 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'filter.keyTrack', min: 0,     max: 1,     default: 0,    taper: 'linear',     modulatable: true,  modScale: 1 },
   { key: 'filter.envAmount',min: -4,    max: 4,     default: 2.4,  taper: 'linear',     modulatable: false, modScale: 0 },
   { key: 'filter.type',     min: 0,     max: 2,     default: 0,    taper: 'linear',     modulatable: false, modScale: 0, kind: 'enum', enumValues: ['lp', 'bp', 'hp'] },
+  // --- I3b LFOs (append-only). Two per-voice retriggered LFOs filling the
+  // inert lfo1/lfo2 mod sources. rate as a mod DEST is exponential ±4 oct (like
+  // filter.cutoff); its base value is plain Hz (log response is a panel-knob
+  // mapping). shape is a continuous 0..4 morph (sine→tri→saw-up→saw-down→square),
+  // linear/full-range like osc morph. Both modulatable so the matrix can sweep
+  // them (incl. LFO→LFO). MOD_SOURCES is unchanged — lfo1/lfo2 already exist there.
+  { key: 'lfo1.rate',  min: 0.01, max: 2000, default: 5,   taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'lfo1.shape', min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'lfo2.shape', min: 0,    max: 4,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1 },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel
