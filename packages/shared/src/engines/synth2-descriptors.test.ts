@@ -23,7 +23,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
     }
   });
 
-  it('covers exactly the I2c-2 param set (append-only from here)', () => {
+  it('covers exactly the I3b param set (append-only from here)', () => {
     expect(SYNTH2_DESCRIPTORS.map(d => d.key)).toEqual([
       'osc1.morph', 'osc1.pulseWidth', 'osc1.coarse', 'osc1.fine', 'osc1.level',
       'env1.a', 'env1.d', 'env1.s', 'env1.r',
@@ -34,6 +34,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'osc1.sync', 'osc2.sync', 'osc3.sync',
       'env2.a', 'env2.d', 'env2.s', 'env2.r',
       'filter.cutoff', 'filter.resonance', 'filter.keyTrack', 'filter.envAmount', 'filter.type',
+      'lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape',
     ]);
   });
 
@@ -118,5 +119,44 @@ describe('mod matrix enums (I3a)', () => {
     for (const key of ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'filter.envAmount']) {
       expect(MOD_DESTS).not.toContain(key);
     }
+  });
+});
+
+describe('LFO descriptor rows (I3b)', () => {
+  it('appends exactly four LFO rows at the tail (append-only)', () => {
+    const tail = SYNTH2_DESCRIPTORS.slice(-4).map(d => d.key);
+    expect(tail).toEqual(['lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape']);
+  });
+
+  it('LFO rate is exponential ±4 oct, shape is linear full-range, both modulatable', () => {
+    const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map(d => [d.key, d]));
+    for (const k of ['lfo1.rate', 'lfo2.rate']) {
+      expect(byKey[k].min).toBe(0.01);
+      expect(byKey[k].max).toBe(2000);
+      expect(byKey[k].taper).toBe('expOctaves');
+      expect(byKey[k].modScale).toBe(4);
+      expect(byKey[k].modulatable).toBe(true);
+    }
+    for (const k of ['lfo1.shape', 'lfo2.shape']) {
+      expect(byKey[k].min).toBe(0);
+      expect(byKey[k].max).toBe(4);
+      expect(byKey[k].taper).toBe('linear');
+      expect(byKey[k].modScale).toBe(1);
+      expect(byKey[k].modulatable).toBe(true);
+    }
+    expect(byKey['lfo1.rate'].default).toBe(5);
+    expect(byKey['lfo1.shape'].default).toBe(0);
+    expect(byKey['lfo2.rate'].default).toBe(0.5);
+    expect(byKey['lfo2.shape'].default).toBe(1);
+  });
+
+  it('makes the LFO rate/shape keys modulation destinations (derived MOD_DESTS)', () => {
+    for (const k of ['lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape']) {
+      expect(MOD_DESTS).toContain(k);
+    }
+  });
+
+  it('leaves MOD_SOURCES untouched (lfo1/lfo2 already existed inert)', () => {
+    expect(MOD_SOURCES).toEqual(['none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise']);
   });
 });

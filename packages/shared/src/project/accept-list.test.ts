@@ -227,6 +227,17 @@ describe('synth2 matrix accept-list (I3a)', () => {
   });
 });
 
+describe('synth2 LFO accept-list (I3b)', () => {
+  it('accepts in-range lfo leaves and rejects out-of-range / bad paths', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.lfo1.rate')).toBe(true);
+    expect(pathIsWritable('tracks.0.engines.synth2.lfo2.shape')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.lfo1.rate', 12).ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.lfo1.rate', 9000).ok).toBe(false);
+    expect(validatePathAndValue('tracks.0.engines.synth2.lfo2.shape', 2).ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.lfo2.shape', 5).ok).toBe(false);
+  });
+});
+
 describe('enabled flag path', () => {
   it('tracks.<i>.enabled is writable and accepts a boolean', () => {
     expect(validatePathAndValue('tracks.5.enabled', true)).toEqual({ ok: true });

@@ -205,6 +205,17 @@ describe('synth2 matrix schema (I3a)', () => {
   });
 });
 
+describe('synth2 LFO leaf schemas (I3b)', () => {
+  it('generates lfo rate/shape leaf schemas from the descriptor table', () => {
+    expect(SYNTH2_LEAF_SCHEMAS['lfo1.rate'].safeParse(5).success).toBe(true);
+    expect(SYNTH2_LEAF_SCHEMAS['lfo1.rate'].safeParse(0).success).toBe(false);     // < 0.01
+    expect(SYNTH2_LEAF_SCHEMAS['lfo1.rate'].safeParse(2001).success).toBe(false);  // > 2000
+    expect(SYNTH2_LEAF_SCHEMAS['lfo2.shape'].safeParse(0).success).toBe(true);
+    expect(SYNTH2_LEAF_SCHEMAS['lfo2.shape'].safeParse(4).success).toBe(true);
+    expect(SYNTH2_LEAF_SCHEMAS['lfo2.shape'].safeParse(4.1).success).toBe(false);  // > 4
+  });
+});
+
 describe('synth2 enum (filter.type) leaf', () => {
   it('maps filter.type to a string-enum leaf schema', () => {
     const leaf = SYNTH2_LEAF_SCHEMAS['filter.type'];

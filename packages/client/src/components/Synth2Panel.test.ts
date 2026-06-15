@@ -148,3 +148,14 @@ describe('Synth2Panel mod matrix (I3a)', () => {
     amtLabels.forEach(lbl => expect(lbl.textContent?.trim()).toBe('Amt'));
   });
 });
+
+describe('Synth2Panel LFO column (I3b)', () => {
+  it('renders LFO1 + LFO2 rate/shape knobs', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const labels = Array.from(el.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels.filter((l) => l === 'Rate')).toHaveLength(2);
+    expect(labels.filter((l) => l === 'Shape')).toHaveLength(2);
+  });
+});

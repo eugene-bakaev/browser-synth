@@ -136,7 +136,25 @@
       </div>
     </div>
 
-    <!-- Column 7: Mod matrix -->
+    <!-- Column 7: LFOs -->
+    <div class="rack-column">
+      <div class="module-group">
+        <h3>LFO 1</h3>
+        <div class="knob-row">
+          <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo1.rate" v-model="params.lfo1.rate" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
+          <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" v-model="params.lfo1.shape" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
+        </div>
+      </div>
+      <div class="module-group">
+        <h3>LFO 2</h3>
+        <div class="knob-row">
+          <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo2.rate" v-model="params.lfo2.rate" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
+          <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" v-model="params.lfo2.shape" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Column 8: Mod matrix -->
     <div class="rack-column">
       <div class="module-group">
         <h3>MATRIX</h3>
@@ -154,7 +172,7 @@
       </div>
     </div>
 
-    <!-- Column 8: Visualizer -->
+    <!-- Column 9: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
     </div>

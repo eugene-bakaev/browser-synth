@@ -435,6 +435,34 @@ describe('sync integration', () => {
     ).toBeUndefined();
   });
 
+  it('emits a synth2 lfo1.rate change to a leaf path (throttled continuous) (I3b)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    synth.project.tracks[0].engines.synth2.lfo1.rate = 12;
+    vi.advanceTimersByTime(50); // clear the throttle window
+    const op = fake.sent.find(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate']),
+    );
+    expect(op).toBeDefined();
+    expect(op!.value).toBe(12);
+    // never a whole-module write
+    expect(fake.sent.some(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'lfo1']),
+    )).toBe(false);
+  });
+
+  it('applies a remote lfo1.rate op without echoing it back out (I3b)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate'], value: 7,
+    });
+    expect(synth.project.tracks[0].engines.synth2.lfo1.rate).toBe(7);
+    vi.advanceTimersByTime(100);
+    expect(fake.sent.some(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate']),
+    )).toBe(false);
+  });
+
   it('stopPlayback halts a running sequencer and resets the step cursor', async () => {
     const { synth } = await bootWithFakeSocket();
     await synth.togglePlay();

@@ -34,6 +34,11 @@ export interface Synth2FmParams {
   osc3: number; // osc2 → osc3 TZFM index
 }
 
+export interface Synth2LfoParams {
+  rate: number;   // Hz (0.01..2000)
+  shape: number;  // 0..4 morph: sine → tri → saw-up → saw-down → square
+}
+
 export interface Synth2FilterParams {
   cutoff: number;     // Hz
   resonance: number;  // 0..1
@@ -54,6 +59,8 @@ export interface Synth2EngineParams {
   osc3: Synth2OscParams;
   noise: Synth2NoiseParams;
   fm: Synth2FmParams;
+  lfo1: Synth2LfoParams;
+  lfo2: Synth2LfoParams;
   env1: Synth2EnvParams;
   env2: Synth2EnvParams;
   filter: Synth2FilterParams;
