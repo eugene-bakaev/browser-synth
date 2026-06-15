@@ -67,3 +67,69 @@ describe('Voice mod matrix (I3a)', () => {
     expect(outA[0]).toBeCloseTo(outB[0], 6);
   });
 });
+
+describe('Voice LFO sources (I3b)', () => {
+  const SR = 48000;
+
+  it('routes lfo1 → osc1.level so the LFO audibly modulates the output', () => {
+    const levelIdx = PARAM_INDEX['osc1.level'];
+    const lfo1Src = MOD_SOURCES.indexOf('lfo1');
+    const render = (route: boolean) => {
+      const v = new Voice(SR, 1);
+      v.slots[PARAM_INDEX['lfo1.rate']].setBase(200); // fast ⇒ clearly cyclic in-window
+      if (route) v.setMatrixSlot(0, lfo1Src, levelIdx, 1);
+      v.noteOn(220, 1.0, SR);
+      const out = new Float32Array(4096);
+      v.renderAdd(out, 0, 4096);
+      return out;
+    };
+    const base = render(false), routed = render(true);
+    let maxDiff = 0;
+    for (let i = 0; i < base.length; i++) maxDiff = Math.max(maxDiff, Math.abs(base[i] - routed[i]));
+    expect(maxDiff).toBeGreaterThan(0.01);
+  });
+
+  it('routes lfo2 → osc1.level too (the second LFO is wired symmetrically)', () => {
+    const levelIdx = PARAM_INDEX['osc1.level'];
+    const lfo2Src = MOD_SOURCES.indexOf('lfo2');
+    const render = (route: boolean) => {
+      const v = new Voice(SR, 1);
+      v.slots[PARAM_INDEX['lfo2.rate']].setBase(200);
+      if (route) v.setMatrixSlot(0, lfo2Src, levelIdx, 1);
+      v.noteOn(220, 1.0, SR);
+      const out = new Float32Array(4096);
+      v.renderAdd(out, 0, 4096);
+      return out;
+    };
+    const base = render(false), routed = render(true);
+    let maxDiff = 0;
+    for (let i = 0; i < base.length; i++) maxDiff = Math.max(maxDiff, Math.abs(base[i] - routed[i]));
+    expect(maxDiff).toBeGreaterThan(0.01);
+  });
+
+  it('noteOn retriggers LFO phase so a reused voice has no bleed on the first sample', () => {
+    // Mirrors the env1Prev bleed test: both voices share identical osc/filter/slot
+    // state; only the LFO phase/prev differs between reset (real) and no-reset (broken).
+    const lfo1Src = MOD_SOURCES.indexOf('lfo1');
+    const levelIdx = PARAM_INDEX['osc1.level'];
+    const gate = 11000;
+
+    const a = new Voice(SR, 1); // warmed-up + retriggered → exercises the reset
+    const b = new Voice(SR, 1); // fresh reference
+    a.slots[PARAM_INDEX['lfo1.rate']].setBase(200);
+    b.slots[PARAM_INDEX['lfo1.rate']].setBase(200);
+
+    a.noteOn(220, 1.0, gate); b.noteOn(220, 1.0, gate);
+    const buf = new Float32Array(gate);
+    a.renderAdd(buf, 0, gate);          // advances A's LFO well past phase 0
+    b.renderAdd(buf.fill(0), 0, gate);
+
+    a.setMatrixSlot(0, lfo1Src, levelIdx, 1); // route on A only, after warmup
+    a.noteOn(220, 1.0, SR); b.noteOn(220, 1.0, SR); // retrigger both
+
+    const outA = new Float32Array(1); const outB = new Float32Array(1);
+    a.renderAdd(outA, 0, 1); b.renderAdd(outB, 0, 1);
+    // With phase + lfo1Prev reset: lfo1Prev=0 on the first frame ⇒ A's route is inert ⇒ A==B.
+    expect(outA[0]).toBeCloseTo(outB[0], 6);
+  });
+});
