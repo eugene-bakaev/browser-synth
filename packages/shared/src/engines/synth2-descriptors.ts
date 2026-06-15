@@ -134,8 +134,8 @@ export const SYNTH2_ENUM_VALUES: Readonly<Record<string, readonly string[]>> =
 
 // --- I3 modulation matrix (spec §5.6) -------------------------------------
 // Source enum: ORDER IS THE WIRE ENCODING for matrix[*].source and the index
-// into the kernel's per-sample sources[] array. Append-only. lfo1/lfo2/env3
-// exist in the list from I3a but read 0 until I3b/I3c add their DSP.
+// into the kernel's per-sample sources[] array. Append-only. lfo1/lfo2 went
+// live in I3b; env3 still reads 0 until I3c adds its DSP.
 export const MOD_SOURCES = [
   'none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise',
 ] as const;
