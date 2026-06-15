@@ -132,6 +132,8 @@ Add an **LFO section**: two module-groups (LFO1, LFO2), each with a `rate` Knob 
 
 - **Band-limited LFO shapes (PolyBLEP).** If audio-rate LFO → pitch/cutoff FM sounds harsh in practice, add PolyBLEP to the saw/square edges (reusing the oscillator technique). Deferred from v1 by decision; revisit if the naive shapes prove audibly poor.
 
+- **Waveshape visualizer for morph controls (osc + LFO).** Render the *actual* current waveform next to (or inside) every continuous morph knob — the osc `MORPH` knobs (sine→tri→saw→pulse) and the LFO `SHAPE` knobs (sine→tri→saw-up→saw-down→square) — so the user can see what they're dialing in rather than reading a bare 0..4 number. Motivation: during I3b browser-verify, both LFO `SHAPE` knobs were parked at ≈2.5, the saw-up↔saw-down crossfade null where the morph output cancels to ~0 (mathematically inherent: `wave(2.5) = 0.5·(2p−1) + 0.5·(1−2p) = 0`), which read as "the LFO does nothing." A small inline waveform preview would make such dead zones (and the chosen shape generally) immediately legible. Spans the I2 osc panel and the I3b LFO panel — a shared `WaveformPreview` mini-component driven by the same shape math the kernel uses. Optional companion: reconsider the shape ordering so the knob midpoint isn't a null (e.g. sine→tri→saw→square), though the visualizer largely removes the need.
+
 ## ABI / invariants touched
 
 - `SYNTH2_DESCRIPTORS` append-only honored (+4 rows at the tail; no row reordered or changed).
