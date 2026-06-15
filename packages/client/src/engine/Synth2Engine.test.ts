@@ -240,4 +240,16 @@ describe('Synth2Engine matrix encoding (I3a)', () => {
     const countAfterSecond = port.posted.filter((m: any) => m.type === 'params').length;
     expect(countAfterSecond).toBe(countAfterFirst);
   });
+
+  it('encodes lfo leaves into the param block via the descriptor walk (I3b)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.applyParams({ lfo1: { rate: 12, shape: 2 }, lfo2: { rate: 3 } });
+    const msg = lastNode(engine).port.posted.at(-1);
+    expect(msg.type).toBe('params');
+    expect(msg.block[PARAM_INDEX['lfo1.rate']]).toBeCloseTo(12);
+    expect(msg.block[PARAM_INDEX['lfo1.shape']]).toBeCloseTo(2);
+    expect(msg.block[PARAM_INDEX['lfo2.rate']]).toBeCloseTo(3);
+    // untouched lfo leaf stays at its default
+    expect(msg.block[PARAM_INDEX['lfo2.shape']]).toBeCloseTo(DEFAULT_SYNTH2_PARAMS.lfo2.shape);
+  });
 });
