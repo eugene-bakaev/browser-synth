@@ -43,8 +43,8 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
     expect(f.envAmount).toBeCloseTo(2.4, 6);
   });
 
-  it('defaults env2 to the same a/d/s/r as env1', () => {
-    expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+  it('defaults env2 to the same a/d/s/r as env1, loop off', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
   });
 
   it('default matrix is 8 inert slots (I3a)', () => {
@@ -57,5 +57,15 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
   it('defaults LFO1 to 5 Hz sine and LFO2 to 0.5 Hz triangle (I3b)', () => {
     expect(DEFAULT_SYNTH2_PARAMS.lfo1).toEqual({ rate: 5, shape: 0 });
     expect(DEFAULT_SYNTH2_PARAMS.lfo2).toEqual({ rate: 0.5, shape: 1 });
+  });
+
+  it('defaults env3 to a 0.2 / d 0.3 / s 0 / r 0.3, loop off (I3c)', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.env3).toEqual({ a: 0.2, d: 0.3, s: 0, r: 0.3, loop: false });
+  });
+
+  it('defaults env1.loop and env2.loop to false (boolean, not number) (I3c)', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.env1.loop).toBe(false);
+    expect(DEFAULT_SYNTH2_PARAMS.env2.loop).toBe(false);
+    expect(typeof DEFAULT_SYNTH2_PARAMS.env3.loop).toBe('boolean');
   });
 });

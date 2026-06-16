@@ -22,6 +22,7 @@ export interface Synth2EnvParams {
   d: number;
   s: number;
   r: number;
+  loop: boolean; // I3c: cycle attack→decay→attack while gated (shared by env1/env2/env3)
 }
 
 export interface Synth2NoiseParams {
@@ -63,6 +64,7 @@ export interface Synth2EngineParams {
   lfo2: Synth2LfoParams;
   env1: Synth2EnvParams;
   env2: Synth2EnvParams;
+  env3: Synth2EnvParams; // I3c: third envelope — matrix source only, not hardwired
   filter: Synth2FilterParams;
   // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
   // (it's not a Float32Array param); lives here so presets carry their mode.
