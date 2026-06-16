@@ -6,7 +6,7 @@ import {
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -23,7 +23,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
     }
   });
 
-  it('covers exactly the I3b param set (append-only from here)', () => {
+  it('covers exactly the I3c param set (append-only from here)', () => {
     expect(SYNTH2_DESCRIPTORS.map(d => d.key)).toEqual([
       'osc1.morph', 'osc1.pulseWidth', 'osc1.coarse', 'osc1.fine', 'osc1.level',
       'env1.a', 'env1.d', 'env1.s', 'env1.r',
@@ -35,6 +35,8 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'env2.a', 'env2.d', 'env2.s', 'env2.r',
       'filter.cutoff', 'filter.resonance', 'filter.keyTrack', 'filter.envAmount', 'filter.type',
       'lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape',
+      'env3.a', 'env3.d', 'env3.s', 'env3.r',
+      'env1.loop', 'env2.loop', 'env3.loop',
     ]);
   });
 
@@ -123,9 +125,10 @@ describe('mod matrix enums (I3a)', () => {
 });
 
 describe('LFO descriptor rows (I3b)', () => {
-  it('appends exactly four LFO rows at the tail (append-only)', () => {
-    const tail = SYNTH2_DESCRIPTORS.slice(-4).map(d => d.key);
-    expect(tail).toEqual(['lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape']);
+  it('keeps the four LFO rows consecutive in table order (I3b)', () => {
+    const i = SYNTH2_DESCRIPTORS.findIndex(d => d.key === 'lfo1.rate');
+    expect(SYNTH2_DESCRIPTORS.slice(i, i + 4).map(d => d.key))
+      .toEqual(['lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape']);
   });
 
   it('LFO rate is exponential ±4 oct, shape is linear full-range, both modulatable', () => {
@@ -158,5 +161,45 @@ describe('LFO descriptor rows (I3b)', () => {
 
   it('leaves MOD_SOURCES untouched (lfo1/lfo2 already existed inert)', () => {
     expect(MOD_SOURCES).toEqual(['none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise']);
+  });
+});
+
+describe('env3 + loop descriptor rows (I3c)', () => {
+  const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map(d => [d.key, d]));
+
+  it('appends the seven I3c rows at the tail (append-only)', () => {
+    const tail = SYNTH2_DESCRIPTORS.slice(-7).map(d => d.key);
+    expect(tail).toEqual([
+      'env3.a', 'env3.d', 'env3.s', 'env3.r', 'env1.loop', 'env2.loop', 'env3.loop',
+    ]);
+  });
+
+  it('env3 a/d/s/r mirror env1/env2 (continuous, modulatable, expOctaves times)', () => {
+    expect(byKey['env3.a']).toMatchObject({ min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true, modScale: 4 });
+    expect(byKey['env3.d']).toMatchObject({ default: 0.3, taper: 'expOctaves', modulatable: true });
+    expect(byKey['env3.s']).toMatchObject({ min: 0, max: 1, default: 0, taper: 'linear', modulatable: true, modScale: 1 });
+    expect(byKey['env3.r']).toMatchObject({ default: 0.3, taper: 'expOctaves', modulatable: true });
+    for (const k of ['env3.a', 'env3.d', 'env3.s', 'env3.r']) {
+      expect(byKey[k].kind, k).toBeUndefined(); // continuous
+    }
+  });
+
+  it('loop rows are discrete booleans, default off, excluded from the mod matrix', () => {
+    for (const k of ['env1.loop', 'env2.loop', 'env3.loop']) {
+      const d = byKey[k];
+      expect(d.kind, k).toBe('bool');
+      expect(isDiscrete(d), k).toBe(true);
+      expect(d.modulatable, k).toBe(false);
+      expect(d.default, k).toBe(0); // false
+    }
+  });
+
+  it('MOD_SOURCES is unchanged (env3 was always present; now live)', () => {
+    expect(MOD_SOURCES).toEqual(['none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise']);
+  });
+
+  it('MOD_DESTS gains the four env3 keys but NOT the loop bools', () => {
+    for (const k of ['env3.a', 'env3.d', 'env3.s', 'env3.r']) expect(MOD_DESTS).toContain(k);
+    for (const k of ['env1.loop', 'env2.loop', 'env3.loop']) expect(MOD_DESTS).not.toContain(k);
   });
 });
