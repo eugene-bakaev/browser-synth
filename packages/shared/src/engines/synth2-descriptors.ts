@@ -123,6 +123,18 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'lfo1.shape', min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4 },
   { key: 'lfo2.shape', min: 0,    max: 4,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1 },
+  // --- I3c env3 + loop mode (append-only). env3 mirrors env1/env2 (a/d/r
+  // expOctaves time taper, s linear) but is NOT hardwired to anything — it
+  // exists solely as the env3 mod source (live as of I3c). The three loop rows
+  // mirror the sync toggles: kind:'bool', applied at the block boundary, NOT
+  // mod-matrix destinations (modulatable:false). Default off ⇒ behavior unchanged.
+  { key: 'env3.a',    min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env3.d',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env3.s',    min: 0,     max: 1,  default: 0,   taper: 'linear',     modulatable: true,  modScale: 1 },
+  { key: 'env3.r',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env1.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env2.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env3.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel
@@ -135,7 +147,7 @@ export const SYNTH2_ENUM_VALUES: Readonly<Record<string, readonly string[]>> =
 // --- I3 modulation matrix (spec §5.6) -------------------------------------
 // Source enum: ORDER IS THE WIRE ENCODING for matrix[*].source and the index
 // into the kernel's per-sample sources[] array. Append-only. lfo1/lfo2 went
-// live in I3b; env3 still reads 0 until I3c adds its DSP.
+// live in I3b; env3 went live in I3c. All listed sources now produce real values.
 export const MOD_SOURCES = [
   'none', 'lfo1', 'lfo2', 'env1', 'env2', 'env3', 'velocity', 'noise',
 ] as const;

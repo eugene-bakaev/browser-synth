@@ -159,3 +159,30 @@ describe('Synth2Panel LFO column (I3b)', () => {
     expect(labels.filter((l) => l === 'Shape')).toHaveLength(2);
   });
 });
+
+describe('Synth2Panel envelope loop + ENV 3 (I3c)', () => {
+  it('renders the ENV 3 column', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect((el.textContent || '').toUpperCase()).toContain('ENV 3');
+  });
+
+  it('renders a LOOP toggle on AMP ENV, FILTER ENV, and ENV 3 (3 total)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const loopBtns = el.querySelectorAll<HTMLButtonElement>('.loop-btn');
+    expect(loopBtns.length).toBe(3);
+  });
+
+  it('toggles env1.loop and env3.loop via the LOOP buttons', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    // DOM order follows column order: [0] AMP ENV (env1), [1] FILTER ENV (env2), [2] ENV 3 (env3).
+    const loopBtns = el.querySelectorAll<HTMLButtonElement>('.loop-btn');
+    expect(params.env1.loop).toBe(false);
+    loopBtns[0].click();
+    expect(params.env1.loop).toBe(true);
+    loopBtns[2].click();
+    expect(params.env3.loop).toBe(true);
+  });
+});

@@ -158,6 +158,15 @@ describe('synth2 accept-list (generated from descriptors)', () => {
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.code).toBe('value.invalid');
   });
+
+  it('accepts synth2 env3 leaves and the env loop booleans (I3c)', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.env3.a')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.env3.a', 1.5)).toEqual({ ok: true });
+    expect(pathIsWritable('tracks.0.engines.synth2.env3.loop')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.env1.loop', true)).toEqual({ ok: true });
+    // a number at a loop (bool) leaf is rejected (spec §6.6 — booleans on the wire)
+    expect(validatePathAndValue('tracks.0.engines.synth2.env2.loop', 1).ok).toBe(false);
+  });
 });
 
 describe('synth2 osc.sync wire validation', () => {

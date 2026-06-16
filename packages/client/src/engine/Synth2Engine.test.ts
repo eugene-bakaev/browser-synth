@@ -155,6 +155,20 @@ describe('Synth2Engine boolean (discrete) params', () => {
     engine.applyParams({ osc2: { morph: 'x' } } as any);
     expect(port.posted.some(m => m.type === 'params')).toBe(false);
   });
+
+  it('encodes env1.loop=true as 1 in the posted block (I3c)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.applyParams({ env1: { loop: true } });
+    const msg = lastNode(engine).port.posted.at(-1);
+    expect(msg.block[PARAM_INDEX['env1.loop']]).toBe(1);
+  });
+
+  it('encodes an env3 ADSR leaf onto its descriptor index (I3c)', () => {
+    const engine = new Synth2Engine(mockCtx());
+    engine.applyParams({ env3: { a: 1.5 } });
+    const msg = lastNode(engine).port.posted.at(-1);
+    expect(msg.block[PARAM_INDEX['env3.a']]).toBeCloseTo(1.5);
+  });
 });
 
 describe('Synth2Engine enum (filter.type) params', () => {

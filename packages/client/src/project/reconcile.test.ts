@@ -147,7 +147,7 @@ describe('reconcileWithDefaults', () => {
     expect(s2.filter.type).toBe('lp');
     expect(s2.filter.cutoff).toBe(2000);
     expect(s2.filter.envAmount).toBeCloseTo(2.4, 6);
-    expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5 });
+    expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
   });
 
   describe('synth2 matrix reconcile (I3a)', () => {

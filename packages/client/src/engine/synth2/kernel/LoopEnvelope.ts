@@ -27,6 +27,7 @@ export class LoopEnvelope {
   level = 0;
 
   private stage: Stage = 'idle';
+  private loop = false;
   private gateRemaining = 0;
   private releaseFrom = 1;
   private readonly dt: number;
@@ -41,6 +42,13 @@ export class LoopEnvelope {
   ) {
     this.dt = 1 / sampleRate;
     this.stealStep = 1 / (STEAL_SECONDS * sampleRate);
+  }
+
+  /** Block-boundary discrete toggle (spec §5.4). loop mode cycles attack→decay
+   *  →attack while the gate is held. No smoother — latched until the next param
+   *  update, exactly like the osc sync / filter type discrete params. */
+  setLoop(loop: boolean): void {
+    this.loop = loop;
   }
 
   get active(): boolean {
@@ -75,12 +83,16 @@ export class LoopEnvelope {
         this.level -= (this.dt * (1 - sus)) / this.d.next();
         if (this.level <= sus) {
           this.level = sus;
-          this.stage = 'sustain';
+          this.stage = this.loop ? 'attack' : 'sustain';
         }
         break;
       }
       case 'sustain':
-        this.level = this.s.next();
+        if (this.loop) {
+          this.stage = 'attack'; // loop: no resting stage — climb again from here
+        } else {
+          this.level = this.s.next();
+        }
         break;
       case 'release':
         this.level -= (this.dt * this.releaseFrom) / this.r.next();

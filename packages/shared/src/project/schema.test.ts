@@ -135,6 +135,23 @@ describe('synth2 schema (generated from descriptors)', () => {
     const bad = { ...DEFAULT_SYNTH2_PARAMS, mode: 'chord' };
     expect(Schemas.Synth2Params.safeParse(bad).success).toBe(false);
   });
+
+  it('accepts an env3 ADSR + loop and the env1/env2 loop booleans (I3c)', () => {
+    const base = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
+    base.env3 = { a: 1, d: 2, s: 0.3, r: 1.5, loop: true };
+    base.env1.loop = true;
+    base.env2.loop = false;
+    expect(() => Schemas.Synth2Params.parse(base)).not.toThrow();
+  });
+
+  it('rejects a non-boolean env loop and an out-of-range env3 time (I3c)', () => {
+    const bad1 = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
+    bad1.env1.loop = 1; // number, not boolean
+    expect(() => Schemas.Synth2Params.parse(bad1)).toThrow();
+    const bad2 = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
+    bad2.env3.a = 999; // > max 10
+    expect(() => Schemas.Synth2Params.parse(bad2)).toThrow();
+  });
 });
 
 describe('synth2 discrete (bool) leaves', () => {

@@ -60,9 +60,13 @@ export class Synth2Kernel {
     const osc2Sync = this.block[PARAM_INDEX['osc2.sync']] >= 0.5;
     const osc3Sync = this.block[PARAM_INDEX['osc3.sync']] >= 0.5;
     const filterType = Math.round(this.block[PARAM_INDEX['filter.type']]);
+    const env1Loop = this.block[PARAM_INDEX['env1.loop']] >= 0.5;
+    const env2Loop = this.block[PARAM_INDEX['env2.loop']] >= 0.5;
+    const env3Loop = this.block[PARAM_INDEX['env3.loop']] >= 0.5;
     for (const voice of this.voices) {
       voice.setSync(osc2Sync, osc3Sync);
       voice.setFilterType(filterType);
+      voice.setEnvLoop(env1Loop, env2Loop, env3Loop);
     }
     // Mod matrix region (spec §5.6): [sourceIdx, destEncoded, amount] per slot.
     // Read directly from the incoming block (not this.block, which is bounded to
