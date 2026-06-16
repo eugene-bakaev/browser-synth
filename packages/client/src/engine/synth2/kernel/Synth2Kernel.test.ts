@@ -387,3 +387,34 @@ describe('Synth2Kernel mod matrix (I3a)', () => {
     expect(rmsWithRoute).toBeGreaterThan(rmsNoRoute);
   });
 });
+
+describe('Synth2Kernel env loop decode (I3c)', () => {
+  const SR = 48000;
+
+  it('decodes env3.loop and drives it to the voices (looping env3 mod differs from non-looping)', () => {
+    const env3Src = MOD_SOURCES.indexOf('env3');
+    const levelIdx = PARAM_INDEX['osc1.level'];
+    const render = (loopVal: number) => {
+      const k = new Synth2Kernel(SR);
+      const block = defaultParamBlock();
+      block[PARAM_INDEX['env3.a']] = 0.005;
+      block[PARAM_INDEX['env3.d']] = 0.01;
+      block[PARAM_INDEX['env3.s']] = 0;
+      block[PARAM_INDEX['env3.loop']] = loopVal;
+      // matrix slot 0: env3 → osc1.level, amount 1 (destEnc = PARAM_INDEX + 1)
+      const base = MATRIX_BASE + 0 * MATRIX_STRIDE;
+      block[base] = env3Src;
+      block[base + 1] = levelIdx + 1;
+      block[base + 2] = 1;
+      k.applyParams(block);
+      k.noteOn(0, 220, 1, 1, true);
+      const out = new Float32Array(8192);
+      k.process(out, 8192, 0);
+      return out;
+    };
+    const off = render(0), on = render(1);
+    let maxDiff = 0;
+    for (let i = 0; i < off.length; i++) maxDiff = Math.max(maxDiff, Math.abs(off[i] - on[i]));
+    expect(maxDiff).toBeGreaterThan(0.01);
+  });
+});
