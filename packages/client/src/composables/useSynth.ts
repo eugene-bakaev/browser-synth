@@ -204,6 +204,7 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
 const DISCRETE_LEAF_FIELDS = new Set<string>([
   'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
   'sync', // synth2 osc hard-sync toggle: an instantaneous discrete flip, like muted/soloed
+  'loop', // synth2 envelope loop toggle (I3c): a discrete flip — flush immediately
   'type', // synth2 filter.type enum: a discrete selector flip — flush immediately
   'source', // synth2 matrix route source enum — discrete selector flip
   'dest',   // synth2 matrix route dest enum — discrete selector flip
