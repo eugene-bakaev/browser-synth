@@ -19,13 +19,14 @@ import { ModMatrix } from './ModMatrix';
 // Keytrack reference pitch: keyTrack 1 makes cutoff track the note 1:1 about C4.
 const KEYTRACK_REF_HZ = 261.6256;
 
-// Source slots the voice produces. lfo1/lfo2 added in I3b; env3 still reads 0 until I3c.
+// Source slots the voice produces. lfo1/lfo2 added in I3b; env3 went live in I3c.
 const SRC_ENV1 = MOD_SOURCES.indexOf('env1');
 const SRC_ENV2 = MOD_SOURCES.indexOf('env2');
 const SRC_VELOCITY = MOD_SOURCES.indexOf('velocity');
 const SRC_NOISE = MOD_SOURCES.indexOf('noise');
 const SRC_LFO1 = MOD_SOURCES.indexOf('lfo1');
 const SRC_LFO2 = MOD_SOURCES.indexOf('lfo2');
+const SRC_ENV3 = MOD_SOURCES.indexOf('env3');
 
 export class Voice {
   readonly slots: ParamSlot[];
@@ -47,6 +48,7 @@ export class Voice {
   private osc2Sync = false;
   private osc3Sync = false;
   private readonly env2: LoopEnvelope;
+  private readonly env3: LoopEnvelope;
   private readonly filter: ClassicFilter;
   private readonly cutoffSlot: ParamSlot;
   private readonly resSlot: ParamSlot;
@@ -60,6 +62,7 @@ export class Voice {
   private readonly sources = new Float32Array(MOD_SOURCES.length);
   private env1Prev = 0;
   private env2Prev = 0;
+  private env3Prev = 0;
   private noisePrev = 0;
   private lfo1Prev = 0;
   private lfo2Prev = 0;
@@ -85,6 +88,9 @@ export class Voice {
     this.env2 = new LoopEnvelope(
       slot('env2.a'), slot('env2.d'), slot('env2.s'), slot('env2.r'), sampleRate,
     );
+    this.env3 = new LoopEnvelope(
+      slot('env3.a'), slot('env3.d'), slot('env3.s'), slot('env3.r'), sampleRate,
+    );
     this.filter = new ClassicFilter(sampleRate);
     this.cutoffSlot = slot('filter.cutoff');
     this.resSlot = slot('filter.resonance');
@@ -106,6 +112,14 @@ export class Voice {
     this.filter.setType(type);
   }
 
+  /** Block-boundary discrete toggle: loop mode for the three envelopes
+   *  (spec §5.4). Mirrors setSync — applied per block, no smoother. */
+  setEnvLoop(env1Loop: boolean, env2Loop: boolean, env3Loop: boolean): void {
+    this.env1.setLoop(env1Loop);
+    this.env2.setLoop(env2Loop);
+    this.env3.setLoop(env3Loop);
+  }
+
   /** Block-boundary matrix route config. destSlot < 0 ⇒ none (spec §5.6). */
   setMatrixSlot(i: number, srcIndex: number, destSlot: number, amount: number): void {
     this.matrix.setSlot(i, srcIndex, destSlot, amount);
@@ -123,6 +137,7 @@ export class Voice {
     // prior note's tail into the matrix for one sample.
     this.env1Prev = 0;
     this.env2Prev = 0;
+    this.env3Prev = 0;
     this.noisePrev = 0;
     this.lfo1.reset();
     this.lfo2.reset();
@@ -134,20 +149,22 @@ export class Voice {
     }
     this.env1.noteOn(gateFrames);
     this.env2.noteOn(gateFrames);
+    this.env3.noteOn(gateFrames);
   }
 
   /** Adds into out[from..to). Caller must skip inactive voices (gating). */
   renderAdd(out: Float32Array, from: number, to: number): void {
     for (let n = from; n < to; n++) {
       // Mod matrix (spec §5.6): previous-sample source values → dest slot.mod,
-      // BEFORE any slot.next() consumes its mod this sample. env3 stays 0 until
-      // I3c. velocity is constant (no delay artifact).
+      // BEFORE any slot.next() consumes its mod this sample. velocity is
+      // constant (no delay artifact).
       this.sources[SRC_ENV1] = this.env1Prev;
       this.sources[SRC_ENV2] = this.env2Prev;
       this.sources[SRC_VELOCITY] = this.velocity;
       this.sources[SRC_NOISE] = this.noisePrev;
       this.sources[SRC_LFO1] = this.lfo1Prev;
       this.sources[SRC_LFO2] = this.lfo2Prev;
+      this.sources[SRC_ENV3] = this.env3Prev;
       this.matrix.apply(this.slots, this.sources);
 
       const e = this.env1.next();
@@ -186,6 +203,7 @@ export class Voice {
       this.noisePrev = nz;
       this.lfo1Prev = this.lfo1.next();
       this.lfo2Prev = this.lfo2.next();
+      this.env3Prev = this.env3.next();
     }
   }
 }
