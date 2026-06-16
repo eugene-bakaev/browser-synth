@@ -69,3 +69,52 @@ describe('LoopEnvelope (I1: plain ADSR)', () => {
     expect(env.level).toBeLessThan(0.05); // reached ~0, now attacking from the floor
   });
 });
+
+describe('LoopEnvelope loop mode (I3c)', () => {
+  it('loop off (default): settles and holds at sustain — plain ADSR, unchanged', () => {
+    const env = makeEnv(0.005, 0.01, 0.5, 0.05);
+    env.noteOn(SR);
+    run(env, Math.round(SR * 0.1));
+    expect(env.level).toBeCloseTo(0.5, 2); // resting at sustain, not cycling
+  });
+
+  it('loop on: cycles while gated — level both falls to the floor and climbs back', () => {
+    const env = makeEnv(0.005, 0.01, 0, 0.05); // s=0 → full-depth ramp
+    env.setLoop(true);
+    env.noteOn(SR); // long gate
+    const buf = run(env, Math.round(SR * 0.1)); // 100ms = many AD cycles
+    expect(Math.min(...buf)).toBeLessThan(0.1);    // reaches the floor
+    expect(Math.max(...buf)).toBeGreaterThan(0.9); // climbs back to peak
+    let crossings = 0;
+    for (let i = 1; i < buf.length; i++) if (buf[i - 1] < 0.5 && buf[i] >= 0.5) crossings++;
+    expect(crossings).toBeGreaterThan(2); // multiple cycles in 100ms
+  });
+
+  it('sustain level sets the loop floor: lower s swings deeper', () => {
+    const deep = makeEnv(0.005, 0.01, 0.0, 0.05); deep.setLoop(true); deep.noteOn(SR);
+    const shallow = makeEnv(0.005, 0.01, 0.7, 0.05); shallow.setLoop(true); shallow.noteOn(SR);
+    const dBuf = run(deep, Math.round(SR * 0.1));
+    const sBuf = run(shallow, Math.round(SR * 0.1));
+    expect(Math.min(...dBuf)).toBeLessThan(Math.min(...sBuf));
+  });
+
+  it('gate-off from a looping envelope enters release and reaches 0', () => {
+    const env = makeEnv(0.005, 0.01, 0, 0.02);
+    env.setLoop(true);
+    env.noteOn(Math.round(SR * 0.05)); // 50ms gate
+    run(env, Math.round(SR * 0.05));   // gate elapses mid-cycle
+    run(env, Math.round(SR * 0.03));   // > r past release
+    expect(env.level).toBe(0);
+    expect(env.active).toBe(false);
+  });
+
+  it('toggling loop on while resting in sustain resumes cycling (live-toggle responsive)', () => {
+    const env = makeEnv(0.005, 0.01, 0.5, 0.05);
+    env.noteOn(SR);
+    run(env, Math.round(SR * 0.05)); // reach + hold sustain with loop off
+    expect(env.level).toBeCloseTo(0.5, 2);
+    env.setLoop(true);
+    const buf = run(env, Math.round(SR * 0.05));
+    expect(Math.max(...buf)).toBeGreaterThan(0.9); // climbs back to peak again
+  });
+});
