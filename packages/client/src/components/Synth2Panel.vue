@@ -40,6 +40,7 @@
           <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env1.s" v-model="params.env1.s" :syncPath="ks.pathFor(['env1', 's'])" @gesture-end="ks.end(['env1', 's'])" />
           <Knob label="R" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env1.r" v-model="params.env1.r" :syncPath="ks.pathFor(['env1', 'r'])" @gesture-end="ks.end(['env1', 'r'])" />
         </div>
+        <button type="button" class="loop-btn" :class="{ active: params.env1.loop }" @click="params.env1.loop = !params.env1.loop">LOOP</button>
       </div>
     </div>
 
@@ -133,10 +134,25 @@
           <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env2.s" v-model="params.env2.s" :syncPath="ks.pathFor(['env2', 's'])" @gesture-end="ks.end(['env2', 's'])" />
           <Knob label="R" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env2.r" v-model="params.env2.r" :syncPath="ks.pathFor(['env2', 'r'])" @gesture-end="ks.end(['env2', 'r'])" />
         </div>
+        <button type="button" class="loop-btn" :class="{ active: params.env2.loop }" @click="params.env2.loop = !params.env2.loop">LOOP</button>
       </div>
     </div>
 
-    <!-- Column 7: LFOs -->
+    <!-- Column 7: Mod envelope (env3) -->
+    <div class="rack-column">
+      <div class="module-group">
+        <h3>ENV 3</h3>
+        <div class="knob-row">
+          <Knob label="A" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env3.a" v-model="params.env3.a" :syncPath="ks.pathFor(['env3', 'a'])" @gesture-end="ks.end(['env3', 'a'])" />
+          <Knob label="D" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env3.d" v-model="params.env3.d" :syncPath="ks.pathFor(['env3', 'd'])" @gesture-end="ks.end(['env3', 'd'])" />
+          <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env3.s" v-model="params.env3.s" :syncPath="ks.pathFor(['env3', 's'])" @gesture-end="ks.end(['env3', 's'])" />
+          <Knob label="R" :min="0.001" :max="10" :step="0.001" format="ms" :defaultValue="DEFAULTS.env3.r" v-model="params.env3.r" :syncPath="ks.pathFor(['env3', 'r'])" @gesture-end="ks.end(['env3', 'r'])" />
+        </div>
+        <button type="button" class="loop-btn" :class="{ active: params.env3.loop }" @click="params.env3.loop = !params.env3.loop">LOOP</button>
+      </div>
+    </div>
+
+    <!-- Column 8: LFOs -->
     <div class="rack-column">
       <div class="module-group">
         <h3>LFO 1</h3>
@@ -154,7 +170,7 @@
       </div>
     </div>
 
-    <!-- Column 8: Mod matrix -->
+    <!-- Column 9: Mod matrix -->
     <div class="rack-column">
       <div class="module-group">
         <h3>MATRIX</h3>
@@ -172,7 +188,7 @@
       </div>
     </div>
 
-    <!-- Column 9: Visualizer -->
+    <!-- Column 10: Visualizer -->
     <div class="rack-column">
       <Visualizer :analyser="analyser" :color="color" />
     </div>
@@ -228,7 +244,8 @@ defineProps<{
   border-color: #555;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
-.sync-btn {
+.sync-btn,
+.loop-btn {
   width: 100%;
   margin-top: 6px;
   background: #181818;
@@ -243,8 +260,10 @@ defineProps<{
   cursor: pointer;
   transition: all 0.2s ease;
 }
-.sync-btn:hover { color: #aaa; border-color: #444; }
-.sync-btn.active { background: #222; color: #fff; border-color: #555; }
+.sync-btn:hover,
+.loop-btn:hover { color: #aaa; border-color: #444; }
+.sync-btn.active,
+.loop-btn.active { background: #222; color: #fff; border-color: #555; }
 .filter-type-selector {
   display: flex;
   gap: 6px;
