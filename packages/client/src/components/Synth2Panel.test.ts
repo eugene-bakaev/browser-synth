@@ -117,7 +117,8 @@ describe('Synth2Panel filter model toggle (I3d)', () => {
     expect(params.filter.model).toBe('classic');
     const el = mountPanel(params);
     expect(el.querySelector('.filter-type-selector')).not.toBeNull();
-    const filterGroup = el.querySelector('.filter-type-selector')!.closest('.module-group')!;
+    const modelSelector = el.querySelector('.filter-model-selector')!;
+    const filterGroup = modelSelector.closest('.module-group')!;
     const labels = Array.from(filterGroup.querySelectorAll<HTMLLabelElement>('.knob-label'))
       .map((n) => n.textContent?.trim());
     expect(labels).not.toContain('Morph');

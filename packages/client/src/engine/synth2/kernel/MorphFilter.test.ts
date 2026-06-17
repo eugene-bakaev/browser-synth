@@ -45,8 +45,11 @@ describe('MorphFilter', () => {
   it('clamps morph outside 0..2', () => {
     const x = noise(500);
     const refLo = refOutputs(x, 1200, 0.4).low;
+    const refHigh = refOutputs(x, 1200, 0.4).high;
     const f = new MorphFilter(SR);
     for (let i = 0; i < x.length; i++) expect(f.process(x[i], 1200, 0.4, -1)).toBeCloseTo(refLo[i], 10);
+    const g = new MorphFilter(SR);
+    for (let i = 0; i < x.length; i++) expect(g.process(x[i], 1200, 0.4, 3)).toBeCloseTo(refHigh[i], 10);
   });
 
   it('reset clears state (post-reset tick equals a fresh filter)', () => {

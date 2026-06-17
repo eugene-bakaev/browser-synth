@@ -23,7 +23,7 @@ export class MorphFilter implements FilterModule {
   setType(_type: number): void {}
 
   process(input: number, cutoffHz: number, resonance: number, morph: number): number {
-    let m = morph < 0 ? 0 : morph > 2 ? 2 : morph;
+    const m = morph < 0 ? 0 : morph > 2 ? 2 : morph;
     this.svf.tick(input, cutoffHz, resonance);
     let a: number, b: number, frac: number;
     if (m <= 1) { a = this.svf.low; b = this.svf.band; frac = m; }       // LP → BP
