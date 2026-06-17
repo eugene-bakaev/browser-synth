@@ -209,6 +209,19 @@ describe('synth2 filter wire validation', () => {
     expect(validatePathAndValue('tracks.0.engines.synth2.filter.envAmount', -4).ok).toBe(true);
     expect(validatePathAndValue('tracks.0.engines.synth2.env2.a', 0.5).ok).toBe(true);
   });
+
+  it('round-trips filter.morph and filter.model (I3d)', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.filter.morph')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.morph', 2).ok).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.morph', 3).ok).toBe(false);
+
+    const path = 'tracks.0.engines.synth2.filter.model';
+    expect(pathIsWritable(path)).toBe(true);
+    expect(validatePathAndValue(path, 'classic').ok).toBe(true);
+    expect(validatePathAndValue(path, 'morph').ok).toBe(true);
+    expect(validatePathAndValue(path, 1).ok).toBe(false);
+    expect(validatePathAndValue(path, 'moog').ok).toBe(false);
+  });
 });
 
 describe('synth2 matrix accept-list (I3a)', () => {
