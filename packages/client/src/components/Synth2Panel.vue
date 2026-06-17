@@ -110,10 +110,17 @@
     <div class="rack-column">
       <div class="module-group synth2-panel">
         <h3>FILTER</h3>
-        <div class="filter-type-selector">
+        <div class="filter-model-selector">
+          <button type="button" class="filter-model-btn to-classic" :class="{ active: params.filter.model === 'classic' }" @click="params.filter.model = 'classic'">CLASSIC</button>
+          <button type="button" class="filter-model-btn to-morph" :class="{ active: params.filter.model === 'morph' }" @click="params.filter.model = 'morph'">MORPH</button>
+        </div>
+        <div v-if="params.filter.model === 'classic'" class="filter-type-selector">
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'lp' }" @click="params.filter.type = 'lp'">LP</button>
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'bp' }" @click="params.filter.type = 'bp'">BP</button>
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'hp' }" @click="params.filter.type = 'hp'">HP</button>
+        </div>
+        <div v-else class="knob-row">
+          <Knob label="Morph" :min="0" :max="2" :step="0.01" :defaultValue="DEFAULTS.filter.morph" v-model="params.filter.morph" :syncPath="ks.pathFor(['filter', 'morph'])" @gesture-end="ks.end(['filter', 'morph'])" />
         </div>
         <div class="knob-row">
           <Knob label="Cutoff" :min="20" :max="20000" :step="1" format="hz" :defaultValue="DEFAULTS.filter.cutoff" v-model="params.filter.cutoff" :syncPath="ks.pathFor(['filter', 'cutoff'])" @gesture-end="ks.end(['filter', 'cutoff'])" />
@@ -286,6 +293,23 @@ defineProps<{
 }
 .filter-type-btn:hover { color: #aaa; border-color: #444; }
 .filter-type-btn.active { background: #222; color: #fff; border-color: #555; }
+.filter-model-selector { display: flex; gap: 4px; margin-bottom: 6px; }
+.filter-model-btn {
+  flex: 1;
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 5px 0;
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.filter-model-btn:hover { color: #aaa; border-color: #444; }
+.filter-model-btn.active { background: #222; color: #fff; border-color: #555; }
 .matrix-grid { display: flex; flex-direction: column; gap: 4px; }
 .matrix-row { display: flex; align-items: center; gap: 4px; }
 .matrix-row select {

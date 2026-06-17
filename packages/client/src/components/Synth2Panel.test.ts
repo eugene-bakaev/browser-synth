@@ -111,6 +111,43 @@ describe('Synth2Panel filter section', () => {
   });
 });
 
+describe('Synth2Panel filter model toggle (I3d)', () => {
+  it('classic model shows the LP/BP/HP selector and no Morph knob in the filter column', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    expect(params.filter.model).toBe('classic');
+    const el = mountPanel(params);
+    expect(el.querySelector('.filter-type-selector')).not.toBeNull();
+    const filterGroup = el.querySelector('.filter-type-selector')!.closest('.module-group')!;
+    const labels = Array.from(filterGroup.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels).not.toContain('Morph');
+  });
+
+  it('morph model hides the type selector and shows a Morph knob bound to params.filter.morph', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.filter.model = 'morph';
+    const el = mountPanel(params);
+    expect(el.querySelector('.filter-type-selector')).toBeNull();
+    const modelSelector = el.querySelector('.filter-model-selector')!;
+    const filterGroup = modelSelector.closest('.module-group')!;
+    const labels = Array.from(filterGroup.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels).toContain('Morph');
+  });
+
+  it('the CLASSIC|MORPH toggle updates params.filter.model', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect(params.filter.model).toBe('classic');
+    const toMorph = el.querySelector<HTMLButtonElement>('.filter-model-btn.to-morph')!;
+    toMorph.click();
+    expect(params.filter.model).toBe('morph');
+    const toClassic = el.querySelector<HTMLButtonElement>('.filter-model-btn.to-classic')!;
+    toClassic.click();
+    expect(params.filter.model).toBe('classic');
+  });
+});
+
 describe('Synth2Panel mod matrix (I3a)', () => {
   it('renders 8 matrix rows', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
