@@ -365,6 +365,44 @@ describe('sync integration', () => {
     expect(op.value).toBe('hp');
   });
 
+  it('filter.morph change and filter.model flip converge to a remote client (no echo) (I3d)', async () => {
+    const { fake, synth } = await bootWithFakeSocket();
+
+    // filter.model is a discrete enum flip — flushes immediately, no timer needed.
+    synth.project.tracks[0].engines.synth2.filter.model = 'morph';
+    const modelOp = fake.sent.find(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'model']),
+    );
+    expect(modelOp).toBeDefined();
+    expect(modelOp.value).toBe('morph');
+
+    // filter.morph is continuous — rides the 50ms throttle.
+    synth.project.tracks[0].engines.synth2.filter.morph = 1.5;
+    vi.advanceTimersByTime(50);
+    const morphOp = fake.sent.find(
+      (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'morph']),
+    );
+    expect(morphOp).toBeDefined();
+    expect(morphOp.value).toBeCloseTo(1.5, 6);
+
+    // Simulate the remote client applying both ops back (the convergence half):
+    // a second client receiving these as inbound 'set' ops must land on the same
+    // values, and applying them must not re-emit (suppression holds).
+    fake.sent.length = 0;
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 1, clientId: 'other',
+      path: ['tracks', 0, 'engines', 'synth2', 'filter', 'model'], value: 'morph',
+    });
+    fake._opts.onMessage({
+      v: 1, type: 'set', opId: 2, clientId: 'other',
+      path: ['tracks', 0, 'engines', 'synth2', 'filter', 'morph'], value: 1.5,
+    });
+    expect(synth.project.tracks[0].engines.synth2.filter.model).toBe('morph');
+    expect(synth.project.tracks[0].engines.synth2.filter.morph).toBeCloseTo(1.5, 6);
+    vi.advanceTimersByTime(100);
+    expect(fake.sent.length).toBe(0);
+  });
+
   it('emits a synth2 matrix source change immediately (discrete leaf) (I3a)', async () => {
     const { fake, synth } = await bootWithFakeSocket();
     synth.project.tracks[0].engines.synth2.matrix[1].source = 'env2';
