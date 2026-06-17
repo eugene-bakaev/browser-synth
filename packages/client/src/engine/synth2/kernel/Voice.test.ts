@@ -198,3 +198,58 @@ describe('Voice env3 source + loop (I3c)', () => {
     expect(maxDiff).toBeGreaterThan(0.01);
   });
 });
+
+describe('Voice filter model (I3d)', () => {
+  const SR = 48000;
+  const morphIdx = PARAM_INDEX['filter.morph'];
+
+  const render = (v: Voice, frames = 1024) => { const o = new Float32Array(frames); v.renderAdd(o, 0, frames); return o; };
+  const sumAbsDiff = (a: Float32Array, b: Float32Array) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s; };
+
+  it('morph model at morph=0 is sample-identical to classic LP (both are the SVF low output)', () => {
+    const classic = new Voice(SR, 1); classic.setFilterModel(0); classic.setFilterType(0); classic.noteOn(220, 1, SR);
+    const morph0 = new Voice(SR, 1); morph0.setFilterModel(1); morph0.slots[morphIdx].setBase(0); morph0.noteOn(220, 1, SR);
+    const a = render(classic); const b = render(morph0);
+    for (let i = 0; i < a.length; i++) expect(b[i]).toBeCloseTo(a[i], 6);
+  });
+
+  it('morph=2 (HP) differs from morph=0 (LP) on the same note', () => {
+    const lp = new Voice(SR, 1); lp.setFilterModel(1); lp.slots[morphIdx].setBase(0); lp.noteOn(220, 1, SR);
+    const hp = new Voice(SR, 1); hp.setFilterModel(1); hp.slots[morphIdx].setBase(2); hp.noteOn(220, 1, SR);
+    expect(sumAbsDiff(render(lp), render(hp))).toBeGreaterThan(1); // clearly different signals
+  });
+
+  it('switching back to classic restores the classic path', () => {
+    const a = new Voice(SR, 1); a.noteOn(440, 1, SR);            // default model classic
+    const b = new Voice(SR, 1); b.setFilterModel(1); b.setFilterModel(0); b.noteOn(440, 1, SR);
+    const oa = new Float32Array(512); const ob = new Float32Array(512);
+    a.renderAdd(oa, 0, 512); b.renderAdd(ob, 0, 512);
+    for (let i = 0; i < oa.length; i++) expect(ob[i]).toBeCloseTo(oa[i], 6);
+  });
+
+  it('re-selecting morph resets its filter (no stale-state bleed across a classic detour)', () => {
+    // Reset-on-change guard. A accumulates morph-filter state, detours to classic,
+    // then returns to morph — the return must reset() morph's SvfCore to zero.
+    // B is the freshly-reset reference: it warms up on CLASSIC (so its morph filter
+    // is never ticked = zero) with the SAME osc/env evolution, then switches to morph
+    // just before the final sample. With reset-on-change, A's re-selected morph filter
+    // is also zero-state => A == B. WITHOUT the reset, A re-enters morph carrying its
+    // stale accumulated state while B's is zero => A != B (the test fails).
+    const A = new Voice(SR, 1); const B = new Voice(SR, 1);
+    A.slots[morphIdx].setBase(1); B.slots[morphIdx].setBase(1);
+    A.setFilterModel(1); A.noteOn(440, 1, 200000);   // A on morph
+    B.setFilterModel(0); B.noteOn(440, 1, 200000);   // B on classic (morph filter stays fresh)
+    const warm = new Float32Array(2048);
+    A.renderAdd(warm, 0, 2048);            // A's morph filter accumulates state
+    B.renderAdd(warm.fill(0), 0, 2048);    // identical osc/env evolution, on classic
+    A.setFilterModel(0);                   // A: morph -> classic (detour)
+    A.renderAdd(warm.fill(0), 0, 64);      // morph filter idle, would go stale without reset
+    B.renderAdd(warm.fill(0), 0, 64);      // B stays on classic, same osc/env advance
+    A.setFilterModel(1);                   // A: classic -> morph => reset() drops stale state
+    B.setFilterModel(1);                   // B: classic -> morph => fresh (zero) state
+    const oa = new Float32Array(1); const ob = new Float32Array(1);
+    A.renderAdd(oa, 0, 1); B.renderAdd(ob, 0, 1);
+    expect(oa[0]).toBeCloseTo(ob[0], 6);   // fails if setFilterModel doesn't reset on change
+  });
+});
+
