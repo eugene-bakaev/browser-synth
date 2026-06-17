@@ -28,7 +28,7 @@ export class ClassicFilter implements FilterModule {
     this.type = t < 0 ? 0 : t > 2 ? 2 : t;
   }
 
-  process(input: number, cutoffHz: number, resonance: number): number {
+  process(input: number, cutoffHz: number, resonance: number, _morph = 0): number {
     this.svf.tick(input, cutoffHz, resonance);
     return this.type === 0 ? this.svf.low : this.type === 1 ? this.svf.band : this.svf.high;
   }
