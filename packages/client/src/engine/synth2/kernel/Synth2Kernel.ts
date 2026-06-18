@@ -87,15 +87,24 @@ export class Synth2Kernel {
 
   /** time/duration in seconds on the AudioContext clock (SoundEngine contract). */
   noteOn(time: number, freq: number, duration: number, velocity: number, mono = true): void {
+    // I4 Layer 1 (root cause): coerce the trigger boundary. A meaningless pitch
+    // makes no note; garbage velocity/duration/time become safe finite values.
+    if (!Number.isFinite(freq) || freq <= 0) return; // reject — no note
+    const vel = Number.isFinite(velocity)
+      ? (velocity < 0 ? 0 : velocity > 1 ? 1 : velocity)
+      : 1; // NaN -> full
+    const dur = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    const t = Number.isFinite(time) ? time : 0;
+
     if (this.count === MAX_EVENTS) { // drop oldest
       this.head = (this.head + 1) % MAX_EVENTS;
       this.count--;
     }
     const ev = this.events[(this.head + this.count) % MAX_EVENTS];
-    ev.frame = Math.round(time * this.sampleRate);
+    ev.frame = Math.round(t * this.sampleRate);
     ev.freq = freq;
-    ev.gateFrames = Math.max(1, Math.round(duration * this.sampleRate));
-    ev.velocity = velocity;
+    ev.gateFrames = Math.max(1, Math.round(dur * this.sampleRate));
+    ev.velocity = vel;
     ev.mono = mono;
     this.count++;
   }

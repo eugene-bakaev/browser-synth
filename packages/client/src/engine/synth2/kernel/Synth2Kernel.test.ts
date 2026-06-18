@@ -446,3 +446,32 @@ describe('Synth2Kernel env loop decode (I3c)', () => {
     expect(maxDiff).toBeGreaterThan(0.01);
   });
 });
+
+describe('Synth2Kernel trigger coercion (I4 Layer 1)', () => {
+  const finite = (a: Float32Array) => a.every(Number.isFinite);
+
+  it('drops a non-finite or non-positive freq: no note, output stays exact zero', () => {
+    for (const bad of [NaN, 0, -1, -440, Infinity, -Infinity]) {
+      const k = new Synth2Kernel(SR);
+      k.noteOn(0, bad, 0.5, 1);
+      const out = renderBlocks(k, 0, 4);
+      for (let i = 0; i < out.length; i++) expect(out[i]).toBe(0);
+    }
+  });
+
+  it('a NaN velocity still produces finite, audible output (NaN -> 1)', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, 0.5, NaN);
+    const out = renderBlocks(k, 0, 8);
+    expect(finite(out)).toBe(true);
+    let energy = 0; for (const x of out) energy += Math.abs(x);
+    expect(energy).toBeGreaterThan(0);
+  });
+
+  it('a non-finite duration falls back to a finite gate (output finite)', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, NaN, 1);
+    const out = renderBlocks(k, 0, 8);
+    expect(finite(out)).toBe(true);
+  });
+});

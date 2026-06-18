@@ -145,9 +145,12 @@ export class Voice {
   }
 
   noteOn(freq: number, velocity: number, gateFrames: number): void {
-    this.freq = freq;
-    this.velocity = velocity < 0 ? 0 : velocity > 1 ? 1 : velocity;
-    this.keyTrackOctaves = Math.log2(freq / KEYTRACK_REF_HZ);
+    // I4 belt: guarantee finite, in-range internals for any direct caller. The
+    // kernel choke point is the authoritative coercion and runs first in
+    // production; this only secures Voice against bad input reaching it directly.
+    this.freq = Number.isFinite(freq) && freq > 0 ? freq : KEYTRACK_REF_HZ;
+    this.velocity = velocity >= 0 ? (velocity > 1 ? 1 : velocity) : 0; // NaN -> 0
+    this.keyTrackOctaves = Math.log2(this.freq / KEYTRACK_REF_HZ); // this.freq now safe
     // Reset prev-sample source memory so a reused/stolen voice doesn't carry the
     // prior note's tail into the matrix for one sample.
     this.env1Prev = 0;
@@ -208,7 +211,7 @@ export class Voice {
       const octShift =
         this.keyTrackSlot.next() * this.keyTrackOctaves + this.envAmountSlot.next() * env2v;
       let fc = this.cutoffSlot.next() * Math.pow(2, octShift); // I4: Math.pow → approx (cf. SvfCore tan)
-      if (fc < 20) fc = 20; else if (fc > 20000) fc = 20000;
+      fc = fc > 20000 ? 20000 : fc >= 20 ? fc : 20; // I4 NaN-safe clamp: NaN -> 20
       const filtered = this.activeFilter.process(mix, fc, this.resSlot.next(), this.morphSlot.next());
       out[n] += filtered * e * this.velocity;
 

@@ -253,3 +253,16 @@ describe('Voice filter model (I3d)', () => {
   });
 });
 
+describe('Voice NaN belts (I4 Layer 1)', () => {
+  const SR = 48000;
+  it('renders finite audio even when noteOn gets a bad freq/velocity', () => {
+    for (const f of [NaN, 0, -1, Infinity, -Infinity]) {
+      const v = new Voice(SR, 1);
+      v.noteOn(f, NaN, SR);
+      const out = new Float32Array(2048);
+      v.renderAdd(out, 0, 2048);
+      expect(out.every(Number.isFinite)).toBe(true);
+    }
+  });
+});
+
