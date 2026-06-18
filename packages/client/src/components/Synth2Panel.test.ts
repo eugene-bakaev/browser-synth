@@ -147,6 +147,22 @@ describe('Synth2Panel filter model toggle (I3d)', () => {
     toClassic.click();
     expect(params.filter.model).toBe('classic');
   });
+
+  it('an un-healed old snapshot (filter.model/morph missing) renders the classic selector without crashing', () => {
+    // Regression: a pre-I3d snapshot reaching the panel before heal had model
+    // undefined → the old `=== 'classic'` v-if fell through to the morph branch,
+    // whose Morph knob then read filter.morph (undefined) and threw in Knob.
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    delete params.filter.model;
+    delete params.filter.morph;
+    const el = mountPanel(params); // must not throw
+    expect(el.querySelector('.filter-type-selector')).not.toBeNull(); // defaults to classic
+    const modelSelector = el.querySelector('.filter-model-selector')!;
+    const filterGroup = modelSelector.closest('.module-group')!;
+    const labels = Array.from(filterGroup.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels).not.toContain('Morph');
+  });
 });
 
 describe('Synth2Panel mod matrix (I3a)', () => {

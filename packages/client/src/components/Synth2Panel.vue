@@ -114,7 +114,7 @@
           <button type="button" class="filter-model-btn to-classic" :class="{ active: params.filter.model === 'classic' }" @click="params.filter.model = 'classic'">CLASSIC</button>
           <button type="button" class="filter-model-btn to-morph" :class="{ active: params.filter.model === 'morph' }" @click="params.filter.model = 'morph'">MORPH</button>
         </div>
-        <div v-if="params.filter.model === 'classic'" class="filter-type-selector">
+        <div v-if="params.filter.model !== 'morph'" class="filter-type-selector">
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'lp' }" @click="params.filter.type = 'lp'">LP</button>
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'bp' }" @click="params.filter.type = 'bp'">BP</button>
           <button type="button" class="filter-type-btn" :class="{ active: params.filter.type === 'hp' }" @click="params.filter.type = 'hp'">HP</button>

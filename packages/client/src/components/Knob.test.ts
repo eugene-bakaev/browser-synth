@@ -76,3 +76,20 @@ describe('Knob drag listeners', () => {
     }
   });
 });
+
+describe('Knob missing-value guard', () => {
+  it('renders a blank value (no throw) when modelValue is undefined', () => {
+    // An un-healed param leaf can reach a Knob as undefined before the snapshot
+    // is repaired. The display must not call undefined.toString() and crash the
+    // whole panel — it shows blank until a real value arrives.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const app = createApp(Knob, {
+      label: 'Morph', min: 0, max: 2, step: 0.01, modelValue: undefined,
+    });
+    expect(() => app.mount(host)).not.toThrow();
+    expect((host.querySelector('.knob-value')?.textContent ?? '').trim()).toBe('');
+    app.unmount();
+    host.remove();
+  });
+});
