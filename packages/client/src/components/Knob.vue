@@ -102,6 +102,9 @@ const filterId = `knob-filter-${instanceId}`;
 
 const formattedValue = computed(() => {
   const val = props.modelValue;
+  // Defensive: a param leaf missing from an old/partial snapshot can arrive as
+  // undefined/null/NaN before heal — never let it throw and take down the panel.
+  if (val === undefined || val === null || Number.isNaN(val)) return '';
   if (!props.format) return val.toString();
   
   switch (props.format) {

@@ -208,6 +208,7 @@ const DISCRETE_LEAF_FIELDS = new Set<string>([
   'type', // synth2 filter.type enum: a discrete selector flip — flush immediately
   'source', // synth2 matrix route source enum — discrete selector flip
   'dest',   // synth2 matrix route dest enum — discrete selector flip
+  'model',  // synth2 filter.model enum (I3d): a discrete selector flip — flush immediately
   // ('amount' is intentionally NOT here — a continuous knob that rides the throttle.)
 ]);
 function gestureEndForLeaf(leafKey: string): boolean {

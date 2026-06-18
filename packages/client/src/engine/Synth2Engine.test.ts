@@ -198,6 +198,18 @@ describe('Synth2Engine enum (filter.type) params', () => {
     expect(port.posted.some((m: any) => m.type === 'params')).toBe(false);
   });
 
+  it('encodes filter.morph (continuous) and filter.model (enum index) into the block (I3d)', () => {
+    const ctx = mockCtx();
+    const engine = new Synth2Engine(ctx);
+    const port = lastNode(engine).port;
+    port.posted.length = 0;
+
+    engine.applyParams({ filter: { morph: 2, model: 'morph' } });
+    const msg = port.posted.find((m: any) => m.type === 'params');
+    expect(msg.block[PARAM_INDEX['filter.morph']]).toBeCloseTo(2, 6);
+    expect(msg.block[PARAM_INDEX['filter.model']]).toBe(1); // enumValues.indexOf('morph')
+  });
+
   it('still ignores the top-level mode string (rides the trigger, not the block)', () => {
     const ctx = mockCtx();
     const engine = new Synth2Engine(ctx);

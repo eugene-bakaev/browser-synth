@@ -313,6 +313,34 @@ describe('Synth2Kernel classic filter', () => {
   });
 });
 
+describe('Synth2Kernel filter model (I3d)', () => {
+  // Isolate osc1 (saw) → filter; silence osc2/osc3/noise; play a 220 Hz note.
+  function render(opts: { model?: number; morph?: number }): Float32Array {
+    const k = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['osc2.level']] = 0;
+    block[PARAM_INDEX['osc3.level']] = 0;
+    block[PARAM_INDEX['noise.level']] = 0;
+    block[PARAM_INDEX['osc1.level']] = 1;
+    block[PARAM_INDEX['osc1.morph']] = 2;                  // saw — rich harmonics
+    block[PARAM_INDEX['filter.cutoff']] = 1000;
+    block[PARAM_INDEX['filter.type']] = 0;                 // classic lp (irrelevant when model=morph)
+    block[PARAM_INDEX['filter.model']] = opts.model ?? 0;
+    block[PARAM_INDEX['filter.morph']] = opts.morph ?? 0;
+    k.applyParams(block);
+    k.noteOn(0, 220, 2, 1, true);                          // mono
+    return renderBlocks(k, 0, Math.ceil(SR / BLOCK));      // ~1s
+  }
+
+  it('decodes filter.model so the morph filter reaches the voices (output differs from classic default)', () => {
+    const classic = render({ model: 0, morph: 0 });    // default model classic (LP)
+    const morphHp = render({ model: 1, morph: 2 });    // morph model, HP end
+    let diff = 0;
+    for (let i = 0; i < classic.length; i++) diff += Math.abs(classic[i] - morphHp[i]);
+    expect(diff).toBeGreaterThan(1);                   // model decode took effect; voices used the morph path
+  });
+});
+
 describe('Synth2Kernel polyphony', () => {
   it('sounds 8 simultaneous poly voices and never grows past 8', () => {
     const kernel = new Synth2Kernel(SR);

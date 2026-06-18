@@ -150,6 +150,18 @@ describe('reconcileWithDefaults', () => {
     expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
   });
 
+  it('heals a synth2 slice missing filter.morph/filter.model to defaults (I3d)', () => {
+    // Simulate a pre-I3d snapshot: a synth2 filter slice that predates the morph leaves.
+    const p = freshProject();
+    const synth2 = p.tracks[0].engines.synth2 as any;
+    delete synth2.filter.morph;
+    delete synth2.filter.model;
+    const healed = reconcileWithDefaults(p);
+    const s2 = healed.tracks[0].engines.synth2;
+    expect(s2.filter.morph).toBe(0);
+    expect(s2.filter.model).toBe('classic');
+  });
+
   describe('synth2 matrix reconcile (I3a)', () => {
     it('heals a synth2 slice missing matrix to 8 default slots', () => {
       const p = freshProject();

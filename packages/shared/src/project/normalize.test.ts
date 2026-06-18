@@ -249,6 +249,61 @@ describe('synth2 slice healing (old-snapshot regression — spec §7 item 7)', (
   });
 });
 
+// A present engine slice that is missing a PARAM LEAF (e.g. a session saved
+// before a new descriptor was appended) must be deep-healed from defaults at
+// this boundary — not just structurally accepted. Otherwise the missing leaf
+// reaches the UI as `undefined` and crashes a panel that binds to it.
+describe('engine param-leaf deep heal (old-snapshot regression — descriptor appends)', () => {
+  it('fills a synth2.filter slice missing new leaves (morph/model), preserving present values', () => {
+    const p = freshProject();
+    const f = p.tracks[0].engines.synth2.filter as unknown as Record<string, unknown>;
+    f.cutoff = 1234; // a present value that must survive the heal
+    delete f.morph;
+    delete f.model;
+
+    const out = normalizeProject(p);
+    expect(out).not.toBe(p); // an incomplete slice must NOT ride the fast path
+    const healed = out.tracks[0].engines.synth2.filter;
+    expect(healed.morph).toBe(DEFAULT_SYNTH2_PARAMS.filter.morph); // 0
+    expect(healed.model).toBe(DEFAULT_SYNTH2_PARAMS.filter.model); // 'classic'
+    expect(healed.cutoff).toBe(1234); // present value preserved
+  });
+
+  it('fills a missing nested envelope leaf without touching sibling values', () => {
+    const p = freshProject();
+    const env = p.tracks[2].engines.synth2.env3 as unknown as Record<string, unknown>;
+    env.a = 0.42;
+    delete env.s;
+
+    const out = normalizeProject(p);
+    expect(out.tracks[2].engines.synth2.env3.s).toBe(DEFAULT_SYNTH2_PARAMS.env3.s);
+    expect(out.tracks[2].engines.synth2.env3.a).toBe(0.42); // sibling preserved
+  });
+
+  it('keeps a sibling complete slice by reference when another slice needs a leaf heal', () => {
+    const p = freshProject();
+    const keptKick = p.tracks[0].engines.kick;
+    delete (p.tracks[0].engines.synth2.filter as unknown as Record<string, unknown>).morph;
+
+    const out = normalizeProject(p);
+    expect(out.tracks[0].engines.kick).toBe(keptKick); // complete slice unchanged
+  });
+
+  it('still fast-paths a fully-complete project by reference (deep check is not a false negative)', () => {
+    const p = freshProject();
+    expect(normalizeProject(p)).toBe(p);
+  });
+
+  it('produces a schema-valid project after a leaf heal', () => {
+    const p = freshProject();
+    const f = p.tracks[0].engines.synth2.filter as unknown as Record<string, unknown>;
+    delete f.morph;
+    delete f.model;
+    const out = normalizeProject(p);
+    expect(() => ProjectSchema.parse(out)).not.toThrow();
+  });
+});
+
 describe('coerceBpm', () => {
   it('returns DEFAULT_BPM for non-finite / non-number values', () => {
     expect(coerceBpm(undefined)).toBe(DEFAULT_BPM);

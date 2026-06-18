@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   SYNTH2_DESCRIPTORS, isDiscrete, encodeBool, decodeBool, encodeEnum, decodeEnum,
-  MOD_SOURCES, MOD_DESTS,
+  MOD_SOURCES, MOD_DESTS, SYNTH2_ENUM_VALUES,
 } from './synth2-descriptors.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -23,7 +23,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
     }
   });
 
-  it('covers exactly the I3c param set (append-only from here)', () => {
+  it('covers exactly the I3d param set (append-only from here)', () => {
     expect(SYNTH2_DESCRIPTORS.map(d => d.key)).toEqual([
       'osc1.morph', 'osc1.pulseWidth', 'osc1.coarse', 'osc1.fine', 'osc1.level',
       'env1.a', 'env1.d', 'env1.s', 'env1.r',
@@ -37,6 +37,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'lfo1.rate', 'lfo1.shape', 'lfo2.rate', 'lfo2.shape',
       'env3.a', 'env3.d', 'env3.s', 'env3.r',
       'env1.loop', 'env2.loop', 'env3.loop',
+      'filter.morph', 'filter.model',
     ]);
   });
 
@@ -167,9 +168,10 @@ describe('LFO descriptor rows (I3b)', () => {
 describe('env3 + loop descriptor rows (I3c)', () => {
   const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map(d => [d.key, d]));
 
-  it('appends the seven I3c rows at the tail (append-only)', () => {
-    const tail = SYNTH2_DESCRIPTORS.slice(-7).map(d => d.key);
-    expect(tail).toEqual([
+  it('appends the seven I3c rows consecutively (append-only)', () => {
+    const i = SYNTH2_DESCRIPTORS.findIndex(d => d.key === 'env3.a');
+    const i3c = SYNTH2_DESCRIPTORS.slice(i, i + 7).map(d => d.key);
+    expect(i3c).toEqual([
       'env3.a', 'env3.d', 'env3.s', 'env3.r', 'env1.loop', 'env2.loop', 'env3.loop',
     ]);
   });
@@ -201,5 +203,26 @@ describe('env3 + loop descriptor rows (I3c)', () => {
   it('MOD_DESTS gains the four env3 keys but NOT the loop bools', () => {
     for (const k of ['env3.a', 'env3.d', 'env3.s', 'env3.r']) expect(MOD_DESTS).toContain(k);
     for (const k of ['env1.loop', 'env2.loop', 'env3.loop']) expect(MOD_DESTS).not.toContain(k);
+  });
+});
+
+describe('morph filter descriptor rows (I3d)', () => {
+  const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map(d => [d.key, d]));
+
+  it('filter.morph is a continuous 0..2 modulatable blend (auto mod dest)', () => {
+    expect(byKey['filter.morph']).toMatchObject({
+      min: 0, max: 2, default: 0, taper: 'linear', modulatable: true, modScale: 1,
+    });
+    expect(byKey['filter.morph'].kind).toBeUndefined();
+    expect(MOD_DESTS).toContain('filter.morph');
+  });
+
+  it('filter.model is the second enum (classic/morph), not a mod dest', () => {
+    const d = byKey['filter.model'];
+    expect(d.kind).toBe('enum');
+    expect(d.enumValues).toEqual(['classic', 'morph']);
+    expect(d.modulatable).toBe(false);
+    expect(SYNTH2_ENUM_VALUES['filter.model']).toEqual(['classic', 'morph']);
+    expect(MOD_DESTS).not.toContain('filter.model');
   });
 });

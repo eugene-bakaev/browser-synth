@@ -43,6 +43,11 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
     expect(f.envAmount).toBeCloseTo(2.4, 6);
   });
 
+  it('filter morph defaults to 0 (LP) and model to classic', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.filter.morph).toBe(0);
+    expect(DEFAULT_SYNTH2_PARAMS.filter.model).toBe('classic');
+  });
+
   it('defaults env2 to the same a/d/s/r as env1, loop off', () => {
     expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
   });

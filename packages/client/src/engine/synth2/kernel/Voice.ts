@@ -11,6 +11,8 @@ import { MorphOscillator } from './MorphOscillator';
 import { LoopEnvelope } from './LoopEnvelope';
 import { Noise } from './Noise';
 import { ClassicFilter } from './ClassicFilter';
+import { MorphFilter } from './MorphFilter';
+import type { FilterModule } from './FilterModule';
 import { Lfo } from './Lfo';
 import { PARAM_INDEX } from './params';
 import { SYNTH2_DESCRIPTORS, MOD_SOURCES } from '@fiddle/shared';
@@ -49,7 +51,10 @@ export class Voice {
   private osc3Sync = false;
   private readonly env2: LoopEnvelope;
   private readonly env3: LoopEnvelope;
-  private readonly filter: ClassicFilter;
+  private readonly classicFilter: ClassicFilter;
+  private readonly morphFilter: MorphFilter;
+  private activeFilter: FilterModule;
+  private readonly morphSlot: ParamSlot;
   private readonly cutoffSlot: ParamSlot;
   private readonly resSlot: ParamSlot;
   private readonly keyTrackSlot: ParamSlot;
@@ -91,7 +96,10 @@ export class Voice {
     this.env3 = new LoopEnvelope(
       slot('env3.a'), slot('env3.d'), slot('env3.s'), slot('env3.r'), sampleRate,
     );
-    this.filter = new ClassicFilter(sampleRate);
+    this.classicFilter = new ClassicFilter(sampleRate);
+    this.morphFilter = new MorphFilter(sampleRate);
+    this.activeFilter = this.classicFilter; // model default 'classic'
+    this.morphSlot = slot('filter.morph');
     this.cutoffSlot = slot('filter.cutoff');
     this.resSlot = slot('filter.resonance');
     this.keyTrackSlot = slot('filter.keyTrack');
@@ -107,9 +115,16 @@ export class Voice {
     this.osc3Sync = osc3Sync;
   }
 
-  /** Block-boundary discrete update: select LP(0)/BP(1)/HP(2). */
+  /** Block-boundary discrete update: select LP(0)/BP(1)/HP(2) on the classic filter. */
   setFilterType(type: number): void {
-    this.filter.setType(type);
+    this.classicFilter.setType(type);
+  }
+
+  /** Block-boundary discrete update: select classic(0) / morph(≥1). On a change,
+   *  reset the newly-active filter so its stale SvfCore state can't click. */
+  setFilterModel(modelIndex: number): void {
+    const next: FilterModule = modelIndex >= 1 ? this.morphFilter : this.classicFilter;
+    if (next !== this.activeFilter) { next.reset(); this.activeFilter = next; }
   }
 
   /** Block-boundary discrete toggle: loop mode for the three envelopes
@@ -145,7 +160,7 @@ export class Voice {
     this.lfo2Prev = 0;
     if (!this.env1.active) {
       this.osc1.reset(); this.osc2.reset(); this.osc3.reset();
-      this.filter.reset();
+      this.activeFilter.reset();
     }
     this.env1.noteOn(gateFrames);
     this.env2.noteOn(gateFrames);
@@ -194,7 +209,7 @@ export class Voice {
         this.keyTrackSlot.next() * this.keyTrackOctaves + this.envAmountSlot.next() * env2v;
       let fc = this.cutoffSlot.next() * Math.pow(2, octShift); // I4: Math.pow → approx (cf. SvfCore tan)
       if (fc < 20) fc = 20; else if (fc > 20000) fc = 20000;
-      const filtered = this.filter.process(mix, fc, this.resSlot.next());
+      const filtered = this.activeFilter.process(mix, fc, this.resSlot.next(), this.morphSlot.next());
       out[n] += filtered * e * this.velocity;
 
       // Capture this sample's source values for next sample's matrix eval.

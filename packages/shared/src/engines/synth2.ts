@@ -46,6 +46,8 @@ export interface Synth2FilterParams {
   keyTrack: number;   // 0..1 — cutoff follows note pitch
   envAmount: number;  // bipolar octaves (±4): env2 → cutoff depth
   type: 'lp' | 'bp' | 'hp';
+  morph: number;               // 0 LP → 1 BP → 2 HP (continuous MorphFilter blend)
+  model: 'classic' | 'morph';  // which FilterModule the voice uses
 }
 
 export interface Synth2MatrixSlot {

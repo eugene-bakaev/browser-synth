@@ -135,6 +135,13 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'env1.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'env2.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'env3.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  // --- I3d morph filter (append-only). filter.morph is the continuous LP→BP→HP
+  // blend (0..2), modulatable so the matrix can sweep the filter ARCHITECTURE
+  // (auto-joins MOD_DESTS). filter.model selects the FilterModule per track — the
+  // 2nd enum after filter.type, riding the block as an index (classic=0, morph=1),
+  // applied at the block boundary, NOT a mod dest (modulatable:false).
+  { key: 'filter.morph', min: 0, max: 2, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
+  { key: 'filter.model', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ['classic', 'morph'] },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel
