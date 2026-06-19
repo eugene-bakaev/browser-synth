@@ -45,6 +45,9 @@ const OSC_PW = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.pulseWidth']];
 const OSC_COARSE = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.coarse']];
 const OSC_FINE = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.fine']];
 
+// NB: overriding `default` bypasses ParamSlot.setBase's NaN clamp, but next()'s
+// own output clamp (non-finite → desc.min) keeps a garbage value finite — that
+// clamp, not the constructor, is what makes the NaN-hardening case safe here.
 const slotWithValue = (desc: Synth2ParamDescriptor, value: number): ParamSlot =>
   new ParamSlot({ ...desc, default: value }, PREVIEW_SR);
 
@@ -64,8 +67,11 @@ export function renderOscShape(morph: number, pulseWidth: number): Float32Array 
   // Settle the triangle integrator.
   for (let i = 0; i < WARMUP_SAMPLES; i++) osc.next(DISPLAY_FREQ);
   // Phase-align: start capture at a wrap (phase ≈ 0) so the drawing doesn't
-  // slide horizontally as the user sweeps morph.
-  while (!osc.wrapped) osc.next(DISPLAY_FREQ);
+  // slide horizontally as the user sweeps morph. A wrap always occurs within one
+  // period (coarse/fine are fixed at 0 ⇒ DISPLAY_FREQ is a fixed small dt); the
+  // bound is a defensive cap so a future caller threading a degenerate pitch
+  // (NaN / zero dt) can't spin forever — matching the kernel's I4 posture.
+  for (let i = 0; i <= SAMPLES_PER_CYCLE && !osc.wrapped; i++) osc.next(DISPLAY_FREQ);
   const out = new Float32Array(PREVIEW_POINTS);
   for (let i = 0; i < PREVIEW_POINTS; i++) out[i] = osc.next(DISPLAY_FREQ);
   return out;
