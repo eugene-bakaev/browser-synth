@@ -14,7 +14,7 @@
 - Commit only the files each task names — never `git add -A` / `git add .`.
 - End every commit message with: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - `SYNTH2_DESCRIPTORS` is **append-only and read-only here** — this feature never edits the descriptor table, schema, sync accept-list, or worklet.
-- Preview constants (verbatim from spec §4): `PREVIEW_POINTS = 512`, `PREVIEW_CYCLES = 3`, `PREVIEW_SR = 48000`; `dt = PREVIEW_CYCLES / PREVIEW_POINTS`; `displayFreq = dt * PREVIEW_SR`.
+- Preview constants (spec §4): `PREVIEW_POINTS = 512`, `PREVIEW_CYCLES = 3`, `PREVIEW_SR = 48000`. Display period is floored to whole samples — `SAMPLES_PER_CYCLE = floor(PREVIEW_POINTS / PREVIEW_CYCLES)` (= 170), `displayFreq = PREVIEW_SR / SAMPLES_PER_CYCLE` — so every saw-fall lands on an interior sample (a non-integer period clips the last tooth on the buffer boundary). The saw test counts 1–2 sample PolyBLEP fall *events*, not a single >1.0 step.
 - The preview is **static** (repaint on shape-prop change only) — **no `requestAnimationFrame`**.
 - The preview is a **read-only projection** of existing params: it adds no reactive state, stores nothing, serializes nothing, sends nothing over the wire.
 - Component tests run under jsdom, which has **no real 2D canvas** (`canvas.getContext('2d')` returns `null`) — drawing code must guard a null context and no-op (the visible drawing is verified in the browser, like the existing untested `Visualizer.vue`).

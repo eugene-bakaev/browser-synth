@@ -63,10 +63,23 @@ to show `PREVIEW_CYCLES` cycles across `PREVIEW_POINTS` samples:
 ```
 PREVIEW_SR     = 48000   // nominal; the preview is a drawing, not tied to the audio context
 PREVIEW_CYCLES = 3
-PREVIEW_POINTS = 512      // samples captured = polyline points drawn
-dt             = PREVIEW_CYCLES / PREVIEW_POINTS        // ≈ 0.00586 cycles/sample
-displayFreq    = dt * PREVIEW_SR                        // ≈ 281 Hz (intuition only)
+PREVIEW_POINTS  = 512     // samples captured = polyline points drawn
+SAMPLES_PER_CYCLE = floor(PREVIEW_POINTS / PREVIEW_CYCLES)  // 170 — whole samples
+displayFreq     = PREVIEW_SR / SAMPLES_PER_CYCLE            // ≈ 282 Hz (intuition only)
 ```
+
+**Whole-sample period (implementation refinement).** The intuitive increment
+`dt = PREVIEW_CYCLES / PREVIEW_POINTS` gives a 170.67-sample period, which is
+non-integer: phase-aligned capture (start at a wrap) of exactly `PREVIEW_CYCLES`
+such periods lands the final saw-fall precisely on the buffer's closing boundary,
+outside the captured window — so the last tooth is clipped and a forward scan only
+sees `PREVIEW_CYCLES − 1` falls. Flooring the period to a whole sample count (170)
+makes `PREVIEW_CYCLES` periods span 510 ≤ `PREVIEW_POINTS` samples, so every
+discontinuity lands on an interior sample and the thumbnail shows complete cycles.
+The PolyBLEP edge is then anti-aliased across ~2 samples (correct band-limiting),
+so the saw unit test counts each fall as a 1–2 sample *event*, not a single >1.0
+step. Display pitch shifts ≈ 0.4 % (281 → 282 Hz) — negligible against the window
+below.
 
 At `dt ≈ 0.0059`, the BLEP window is ±0.59 % of a cycle — on a thumbnail that is
 sub-pixel, so the edges read clean while still being the genuine engine output.
@@ -118,15 +131,17 @@ export function renderLfoShape(shape: number): Float32Array;
    engine), at `PREVIEW_SR`. Construct one `MorphOscillator`.
 2. `setBase(morph)` / `setBase(pulseWidth)`; coarse and fine slots keep their
    neutral defaults (0).
-3. **Warm-up:** call `osc.next(displayFreq)` for `WARMUP_SAMPLES` (2048) to let
-   the 5 ms param smoother and the triangle leaky-integrator reach steady state,
-   discarding output. `displayFreq = dt * PREVIEW_SR` with `dt = CYCLES/POINTS`.
-4. **Phase-align:** keep calling `next` until `osc.wrapped === true`, so capture
-   begins at phase ≈ 0. This stops the drawing from sliding horizontally as the
-   user sweeps `morph`.
+3. **Warm-up:** call `osc.next(displayFreq)` for `WARMUP_SAMPLES` to let the
+   triangle leaky-integrator reach steady state, discarding output. `displayFreq
+   = PREVIEW_SR / SAMPLES_PER_CYCLE` (whole-sample period; see §4). (Slots built
+   with `default` = value need no smoother warm-up — `next()` returns the value
+   immediately when unmodulated.)
+4. **Phase-align:** keep calling `next` (bounded by one period, defensively) until
+   `osc.wrapped === true`, so capture begins at phase ≈ 0. This stops the drawing
+   from sliding horizontally as the user sweeps `morph`.
 5. **Capture:** the next `PREVIEW_POINTS` outputs into a preallocated
-   `Float32Array`. Because `dt = CYCLES/POINTS`, those points span exactly
-   `PREVIEW_CYCLES` cycles. Return it.
+   `Float32Array`. Those points span ~`PREVIEW_CYCLES` cycles (510 of 512 samples),
+   with all `PREVIEW_CYCLES` falls interior. Return it.
 
    Input hardening: `morph`/`pulseWidth` go through `ParamSlot.setBase`, which is
    already NaN-safe and range-clamping (I4), so a garbage prop cannot produce
