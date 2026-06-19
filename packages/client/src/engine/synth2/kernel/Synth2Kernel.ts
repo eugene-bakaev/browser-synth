@@ -16,6 +16,7 @@
 import { Voice } from './Voice';
 import { PARAM_COUNT, PARAM_INDEX, MATRIX_BASE, MATRIX_SLOTS, MATRIX_STRIDE, defaultParamBlock } from './params';
 import { pickVoice, VOICE_COUNT } from './allocator';
+import { flushNonFinite } from './sanitize';
 
 const MAX_EVENTS = 64;
 
@@ -39,6 +40,12 @@ export class Synth2Kernel {
   private readonly ages: number[] = new Array(VOICE_COUNT).fill(0);
   private rr = 0;
   private ageCounter = 1;
+
+  private _nonFiniteFlushed = 0;
+  /** Cumulative count of non-finite output samples the Layer-2 net flushed to 0
+   *  (I4). 0 in normal operation; a positive value means a NaN source slipped
+   *  past the Layer-1 coercion. */
+  get nonFiniteFlushed(): number { return this._nonFiniteFlushed; }
 
   constructor(private readonly sampleRate: number) {
     this.voices = Array.from({ length: VOICE_COUNT }, (_, i) => new Voice(sampleRate, (i + 1) * 0x9e3779b9));
@@ -87,15 +94,28 @@ export class Synth2Kernel {
 
   /** time/duration in seconds on the AudioContext clock (SoundEngine contract). */
   noteOn(time: number, freq: number, duration: number, velocity: number, mono = true): void {
+    // I4 Layer 1 (root cause): coerce the trigger boundary. A meaningless pitch
+    // makes no note; garbage velocity/duration/time become safe finite values.
+    if (!Number.isFinite(freq) || freq <= 0) return; // reject — no note
+    // Cap to Nyquist: a higher pitch only aliases, and an extreme value would
+    // overrun the oscillator phase wrap (belt; the oscillator also clamps dt).
+    const nyquist = this.sampleRate * 0.5;
+    const f = freq > nyquist ? nyquist : freq;
+    const vel = Number.isFinite(velocity)
+      ? (velocity < 0 ? 0 : velocity > 1 ? 1 : velocity)
+      : 1; // NaN -> full
+    const dur = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    const t = Number.isFinite(time) ? time : 0;
+
     if (this.count === MAX_EVENTS) { // drop oldest
       this.head = (this.head + 1) % MAX_EVENTS;
       this.count--;
     }
     const ev = this.events[(this.head + this.count) % MAX_EVENTS];
-    ev.frame = Math.round(time * this.sampleRate);
-    ev.freq = freq;
-    ev.gateFrames = Math.max(1, Math.round(duration * this.sampleRate));
-    ev.velocity = velocity;
+    ev.frame = Math.round(t * this.sampleRate);
+    ev.freq = f;
+    ev.gateFrames = Math.max(1, Math.round(dur * this.sampleRate));
+    ev.velocity = vel;
     ev.mono = mono;
     this.count++;
   }
@@ -115,6 +135,7 @@ export class Synth2Kernel {
       this.count--;
     }
     this.renderActive(out, cursor, frames);
+    this._nonFiniteFlushed += flushNonFinite(out, frames); // I4 Layer 2 net
   }
 
   private allocate(): number {

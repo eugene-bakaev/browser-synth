@@ -15,6 +15,12 @@ import type { ParamSlot } from './ParamSlot';
 const TWO_PI = Math.PI * 2;
 const TRI_LEAK = 0.995;
 const HALF_PI = Math.PI / 2;
+// The single-subtraction phase wrap (and the TZFM dt cascade) require |dt| < 1;
+// musical use stays ≤ ~0.7. Clamp the magnitude so a garbage-high freq, extreme
+// coarse detune (±36 st ⇒ ×8), or runaway FM can't diverge the phase accumulator
+// into Inf/NaN. Only bounds input that already overran the wrap's domain (already
+// aliasing past Nyquist); working patches at musical |dt| are unaffected. (I4)
+const DT_MAX = 0.95;
 
 export class MorphOscillator {
   private phase = 0;
@@ -51,7 +57,8 @@ export class MorphOscillator {
     const semis = this.coarse.next() + this.fine.next() / 100;
     const f = baseFreq * Math.pow(2, semis / 12);
     const dt0 = f / this.sampleRate;
-    const dt = dt0 * (1 + fmAmount * fmInput); // through-zero FM; dt may go negative
+    let dt = dt0 * (1 + fmAmount * fmInput); // through-zero FM; dt may go negative
+    if (dt > DT_MAX) dt = DT_MAX; else if (dt < -DT_MAX) dt = -DT_MAX; // I4: bound |dt| < 1
     const pw = this.pulseWidth.next();
     const m = this.morph.next();
 

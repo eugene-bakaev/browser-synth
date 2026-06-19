@@ -446,3 +446,69 @@ describe('Synth2Kernel env loop decode (I3c)', () => {
     expect(maxDiff).toBeGreaterThan(0.01);
   });
 });
+
+describe('Synth2Kernel trigger coercion (I4 Layer 1)', () => {
+  const finite = (a: Float32Array) => a.every(Number.isFinite);
+
+  it('drops a non-finite or non-positive freq: no note, output stays exact zero', () => {
+    for (const bad of [NaN, 0, -1, -440, Infinity, -Infinity]) {
+      const k = new Synth2Kernel(SR);
+      k.noteOn(0, bad, 0.5, 1);
+      const out = renderBlocks(k, 0, 4);
+      for (let i = 0; i < out.length; i++) expect(out[i]).toBe(0);
+    }
+  });
+
+  it('a NaN velocity still produces finite, audible output (NaN -> 1)', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, 0.5, NaN);
+    const out = renderBlocks(k, 0, 8);
+    expect(finite(out)).toBe(true);
+    let energy = 0; for (const x of out) energy += Math.abs(x);
+    expect(energy).toBeGreaterThan(0);
+  });
+
+  it('a non-finite duration falls back to a finite gate (output finite)', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, NaN, 1);
+    const out = renderBlocks(k, 0, 8);
+    expect(finite(out)).toBe(true);
+  });
+});
+
+describe('Synth2Kernel output net (I4 Layer 2)', () => {
+  it('nonFiniteFlushed stays 0 across a normal, valid-input render', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, 0.5, 1);
+    renderBlocks(k, 0, 16);
+    expect(k.nonFiniteFlushed).toBe(0);
+  });
+});
+
+describe('Synth2Kernel voice-steal click guard (I4)', () => {
+  it('stealing the oldest active voice causes no output discontinuity spike', () => {
+    const kernel = new Synth2Kernel(SR);
+    // Fill all 8 voices; long gates keep them active, low freqs sum smoothly.
+    for (let i = 0; i < 8; i++) kernel.noteOn(0, 80 + i * 7, 10, 1, false);
+    renderBlocks(kernel, 0, 200); // settle into sustain
+
+    // Reference: steady-state max per-sample slope.
+    const steady = renderBlocks(kernel, 200 * BLOCK, 8);
+    let steadyMaxDiff = 0;
+    for (let i = 1; i < steady.length; i++) {
+      steadyMaxDiff = Math.max(steadyMaxDiff, Math.abs(steady[i] - steady[i - 1]));
+    }
+
+    // 9th poly note steals the oldest active voice mid-stream.
+    const startFrame = 208 * BLOCK;
+    kernel.noteOn(startFrame / SR, 300, 10, 1, false);
+    const around = renderBlocks(kernel, startFrame, 8);
+    let stealMaxDiff = 0;
+    for (let i = 1; i < around.length; i++) {
+      stealMaxDiff = Math.max(stealMaxDiff, Math.abs(around[i] - around[i - 1]));
+    }
+
+    // The 1ms steal ramp must bound the boundary jump near the normal slope.
+    expect(stealMaxDiff).toBeLessThan(steadyMaxDiff * 4 + 0.05);
+  });
+});

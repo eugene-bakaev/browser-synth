@@ -64,4 +64,17 @@ describe('SvfCore', () => {
       expect(Math.abs(svf.low)).toBeLessThan(20);
     }
   });
+
+  it('flushes to exact zero after the signal goes silent (no denormal tail)', () => {
+    const svf = new SvfCore(SR);
+    // Excite, then feed silence at max resonance (highest Q = longest ring =
+    // slowest decay = worst case for reaching exact zero).
+    for (let i = 0; i < 2000; i++) svf.tick(Math.sin((2 * Math.PI * 220 * i) / SR), 1000, 1.0);
+    let zeroed = false;
+    for (let i = 0; i < SR; i++) { // up to 1s of silence
+      svf.tick(0, 1000, 1.0);
+      if (svf.low === 0 && svf.band === 0 && svf.high === 0) { zeroed = true; break; }
+    }
+    expect(zeroed).toBe(true);
+  });
 });
