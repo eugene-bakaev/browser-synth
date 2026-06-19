@@ -33,7 +33,7 @@ export class Lfo {
   }
 
   /** Morphed shape s∈[0,4] at phase p∈[0,1): linear crossfade of two neighbours. */
-  private static wave(s: number, p: number): number {
+  static wave(s: number, p: number): number {
     const c = s < 0 ? 0 : s > 4 ? 4 : s;
     const i = Math.min(3, Math.floor(c)); // 0..3; i+1 reaches 4 (square)
     const f = c - i;
