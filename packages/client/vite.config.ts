@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 
 // The sync layer connects to `ws://<host>/ws/<roomId>`. In dev the client is
@@ -20,5 +20,13 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // I4: expose global.gc to the test workers so the zero-alloc soak test can
+    // force collection and measure retained heap growth. Harmless to every
+    // other test. Vitest 4 removed `poolOptions` (the pre-4 nesting was
+    // `poolOptions.forks.execArgv`) and flattened pool settings to top-level
+    // `test` fields, so `execArgv` lives here directly now.
+    execArgv: ['--expose-gc'],
   },
 })
