@@ -97,6 +97,10 @@ export class Synth2Kernel {
     // I4 Layer 1 (root cause): coerce the trigger boundary. A meaningless pitch
     // makes no note; garbage velocity/duration/time become safe finite values.
     if (!Number.isFinite(freq) || freq <= 0) return; // reject — no note
+    // Cap to Nyquist: a higher pitch only aliases, and an extreme value would
+    // overrun the oscillator phase wrap (belt; the oscillator also clamps dt).
+    const nyquist = this.sampleRate * 0.5;
+    const f = freq > nyquist ? nyquist : freq;
     const vel = Number.isFinite(velocity)
       ? (velocity < 0 ? 0 : velocity > 1 ? 1 : velocity)
       : 1; // NaN -> full
@@ -109,7 +113,7 @@ export class Synth2Kernel {
     }
     const ev = this.events[(this.head + this.count) % MAX_EVENTS];
     ev.frame = Math.round(t * this.sampleRate);
-    ev.freq = freq;
+    ev.freq = f;
     ev.gateFrames = Math.max(1, Math.round(dur * this.sampleRate));
     ev.velocity = vel;
     ev.mono = mono;

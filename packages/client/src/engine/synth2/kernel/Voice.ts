@@ -72,7 +72,7 @@ export class Voice {
   private lfo1Prev = 0;
   private lfo2Prev = 0;
 
-  constructor(sampleRate: number, seed = 1) {
+  constructor(private readonly sampleRate: number, seed = 1) {
     this.slots = SYNTH2_DESCRIPTORS.map(d => new ParamSlot(d, sampleRate));
     const slot = (key: string): ParamSlot => this.slots[PARAM_INDEX[key]];
 
@@ -148,7 +148,9 @@ export class Voice {
     // I4 belt: guarantee finite, in-range internals for any direct caller. The
     // kernel choke point is the authoritative coercion and runs first in
     // production; this only secures Voice against bad input reaching it directly.
-    this.freq = Number.isFinite(freq) && freq > 0 ? freq : KEYTRACK_REF_HZ;
+    this.freq = Number.isFinite(freq) && freq > 0
+      ? (freq > this.sampleRate * 0.5 ? this.sampleRate * 0.5 : freq) // cap to Nyquist
+      : KEYTRACK_REF_HZ;
     this.velocity = velocity >= 0 ? (velocity > 1 ? 1 : velocity) : 0; // NaN -> 0
     this.keyTrackOctaves = Math.log2(this.freq / KEYTRACK_REF_HZ); // this.freq now safe
     // Reset prev-sample source memory so a reused/stolen voice doesn't carry the
