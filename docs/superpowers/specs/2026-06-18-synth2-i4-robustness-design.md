@@ -103,6 +103,22 @@ directly):
 - `fc` clamp rewritten NaN-safe: `fc = fc > 20000 ? 20000 : fc >= 20 ? fc : 20`
   (`NaN` lands on `20`).
 
+> **Implementation note (added post-build).** The fuzz test exposed that
+> finite-but-huge `freq` still reaches NaN: the per-oscillator coarse detune
+> (±36 st ⇒ ×8) and FM (×5) multiply `freq` into the oscillator's phase
+> increment `dt` *downstream* of this boundary, overrunning the single-
+> subtraction phase wrap (`|dt| < 1`) → divergence → Inf/NaN. So Layer 1 ships
+> with two additions beyond the text above: (a) **cap `freq` to Nyquist**
+> (`sampleRate · 0.5`) at both `Synth2Kernel.noteOn` and the Voice belt (the
+> belt also substitutes `KEYTRACK_REF_HZ` for a non-finite/≤0 `freq`, not `0`
+> octaves); and (b) **clamp `|dt|` to `0.95` in `MorphOscillator.next()`** — the
+> one point where `freq · detune · FM` converge — which alone bounds every
+> multiplicative path. A further gap was closed: the §3 premise that
+> `ParamSlot` makes params NaN-safe was false (the ternary clamp passed `NaN`),
+> so `ParamSlot.setBase`/`next` were reordered to the same NaN-safe idiom
+> (`x > max ? max : x >= min ? x : min`, `NaN → min`) and the fuzz now also
+> injects non-finite param bases.
+
 ### Layer 2 — observable production net
 
 In `Synth2Kernel.process`, after the final `renderActive`, sweep `out`:

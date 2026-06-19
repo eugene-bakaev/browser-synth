@@ -151,7 +151,9 @@ export class Voice {
     this.freq = Number.isFinite(freq) && freq > 0
       ? (freq > this.sampleRate * 0.5 ? this.sampleRate * 0.5 : freq) // cap to Nyquist
       : KEYTRACK_REF_HZ;
-    this.velocity = velocity >= 0 ? (velocity > 1 ? 1 : velocity) : 0; // NaN -> 0
+    // NaN -> 0 here (finiteness only); the kernel choke point maps NaN -> 1 and
+    // runs first in production, so this belt's exact target is immaterial.
+    this.velocity = velocity >= 0 ? (velocity > 1 ? 1 : velocity) : 0;
     this.keyTrackOctaves = Math.log2(this.freq / KEYTRACK_REF_HZ); // this.freq now safe
     // Reset prev-sample source memory so a reused/stolen voice doesn't carry the
     // prior note's tail into the matrix for one sample.
