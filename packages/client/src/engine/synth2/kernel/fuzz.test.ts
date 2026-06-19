@@ -26,12 +26,18 @@ describe('Voice fuzz — finite output under randomized params/triggers (I4)', (
     for (let iter = 0; iter < 400; iter++) {
       const v = new Voice(SR, ((iter + 1) * 2654435761) >>> 0);
 
-      // Random param bases; 30% of the time probe outside [min,max] (setBase
-      // clamps — this exercises the clamp path).
+      // Random param bases; 30% of the time probe outside [min,max] and 8% of
+      // the time inject a non-finite base (garbage param input) — setBase must
+      // clamp both to a finite in-range value (exercises the NaN-safe clamp).
+      const BAD_BASE = [NaN, Infinity, -Infinity];
       SYNTH2_DESCRIPTORS.forEach((d, i) => {
         const span = d.max - d.min || 1;
-        const over = rand() < 0.3 ? (rand() - 0.5) * span * 4 : 0;
-        v.slots[i].setBase(d.min + rand() * span + over);
+        if (rand() < 0.08) {
+          v.slots[i].setBase(BAD_BASE[Math.floor(rand() * BAD_BASE.length)]);
+        } else {
+          const over = rand() < 0.3 ? (rand() - 0.5) * span * 4 : 0;
+          v.slots[i].setBase(d.min + rand() * span + over);
+        }
       });
 
       // Random discrete state.

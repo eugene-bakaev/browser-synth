@@ -81,4 +81,28 @@ describe('ParamSlot', () => {
     s.mod = 0.1;
     expect(s.next()).toBeCloseTo(0.9, 3);
   });
+
+  // I4: the descriptor clamp must be NaN-safe. A non-finite base or mod (garbage
+  // param input) must never leak a non-finite value — the spec §3 robustness
+  // surface assumes ParamSlot makes param values finite and in-range.
+  it('coerces a non-finite base to a finite in-range value (NaN -> min)', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const s = new ParamSlot(lin, SR);
+      s.setBase(bad);
+      for (let i = 0; i < SR * 0.05; i++) {
+        const v = s.next();
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBeGreaterThanOrEqual(lin.min);
+        expect(v).toBeLessThanOrEqual(lin.max);
+      }
+    }
+  });
+
+  it('coerces a non-finite mod to a finite in-range output', () => {
+    const s = new ParamSlot(lin, SR);
+    s.mod = NaN;
+    expect(Number.isFinite(s.next())).toBe(true);
+    s.mod = Infinity;
+    expect(Number.isFinite(s.next())).toBe(true);
+  });
 });

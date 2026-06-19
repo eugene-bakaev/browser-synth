@@ -36,7 +36,8 @@ export class ParamSlot {
   }
 
   setBase(v: number): void {
-    this.target = v < this.min ? this.min : v > this.max ? this.max : v;
+    // NaN-safe clamp (I4): ordered so a non-finite v lands on min, never leaks.
+    this.target = v > this.max ? this.max : v >= this.min ? v : this.min;
   }
 
   next(): number {
@@ -47,6 +48,7 @@ export class ParamSlot {
         ? v * Math.pow(2, this.mod * this.modScale)
         : v + this.mod * this.modScale * this.range;
     }
-    return v < this.min ? this.min : v > this.max ? this.max : v;
+    // NaN-safe clamp (I4): a non-finite v (e.g. NaN mod) falls through to min.
+    return v > this.max ? this.max : v >= this.min ? v : this.min;
   }
 }
