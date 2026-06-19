@@ -31,6 +31,7 @@
           <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc1.fine" v-model="params.osc1.fine" :syncPath="ks.pathFor(['osc1', 'fine'])" @gesture-end="ks.end(['osc1', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc1.level" v-model="params.osc1.level" :syncPath="ks.pathFor(['osc1', 'level'])" @gesture-end="ks.end(['osc1', 'level'])" />
         </div>
+        <WavePreview kind="osc" :morph="params.osc1.morph" :pulseWidth="params.osc1.pulseWidth" :color="color" />
       </div>
       <div class="module-group">
         <h3>AMP ENV</h3>
@@ -55,6 +56,7 @@
           <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc2.fine" v-model="params.osc2.fine" :syncPath="ks.pathFor(['osc2', 'fine'])" @gesture-end="ks.end(['osc2', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.level" v-model="params.osc2.level" :syncPath="ks.pathFor(['osc2', 'level'])" @gesture-end="ks.end(['osc2', 'level'])" />
         </div>
+        <WavePreview kind="osc" :morph="params.osc2.morph" :pulseWidth="params.osc2.pulseWidth" :color="color" />
         <button
           type="button"
           class="sync-btn"
@@ -77,6 +79,7 @@
           <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc3.fine" v-model="params.osc3.fine" :syncPath="ks.pathFor(['osc3', 'fine'])" @gesture-end="ks.end(['osc3', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.level" v-model="params.osc3.level" :syncPath="ks.pathFor(['osc3', 'level'])" @gesture-end="ks.end(['osc3', 'level'])" />
         </div>
+        <WavePreview kind="osc" :morph="params.osc3.morph" :pulseWidth="params.osc3.pulseWidth" :color="color" />
         <button
           type="button"
           class="sync-btn"
@@ -167,6 +170,7 @@
           <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo1.rate" v-model="params.lfo1.rate" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" v-model="params.lfo1.shape" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
         </div>
+        <WavePreview kind="lfo" :shape="params.lfo1.shape" :color="color" />
       </div>
       <div class="module-group">
         <h3>LFO 2</h3>
@@ -174,6 +178,7 @@
           <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo2.rate" v-model="params.lfo2.rate" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" v-model="params.lfo2.shape" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
         </div>
+        <WavePreview kind="lfo" :shape="params.lfo2.shape" :color="color" />
       </div>
     </div>
 
@@ -205,6 +210,7 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
+import WavePreview from './WavePreview.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
 import { MOD_SOURCES, MOD_DESTS } from '@fiddle/shared';
 import { useKnobSync } from '../sync/knobSync';
