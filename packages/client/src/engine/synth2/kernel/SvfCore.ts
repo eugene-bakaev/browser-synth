@@ -47,6 +47,12 @@ export class SvfCore {
     const v2 = this.ic2eq + a2 * this.ic1eq + a3 * v3;
     this.ic1eq = 2 * v1 - this.ic1eq;
     this.ic2eq = 2 * v2 - this.ic2eq;
+    // I4 denormal sweep: V8 has no flush-to-zero, so a silent input lets the
+    // integrator state decay through the subnormal range (~100x slower on some
+    // CPUs). 1e-25 is far above the subnormal boundary (~2.2e-308) yet
+    // inaudible. Inline comparisons (no Math.abs call) keep the hot loop lean.
+    if (this.ic1eq < 1e-25 && this.ic1eq > -1e-25) this.ic1eq = 0;
+    if (this.ic2eq < 1e-25 && this.ic2eq > -1e-25) this.ic2eq = 0;
     this.low = v2;
     this.band = v1;
     this.high = input - k * v1 - v2;
