@@ -60,13 +60,15 @@ function draw(): void {
   ctx.stroke();
 
   const buf = samples.value;
+  if (buf.length === 0) return;
+  const span = buf.length > 1 ? buf.length - 1 : 1; // guard divide-by-zero
   ctx.beginPath();
   ctx.lineWidth = 2 * dpr;
   ctx.strokeStyle = props.color;
   ctx.shadowColor = props.color;
   ctx.shadowBlur = 6 * dpr;
   for (let i = 0; i < buf.length; i++) {
-    const x = (i / (buf.length - 1)) * width;
+    const x = (i / span) * width;
     const y = height / 2 - buf[i] * (height / 2) * VPAD;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
