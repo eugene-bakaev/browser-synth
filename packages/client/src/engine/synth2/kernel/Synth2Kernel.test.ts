@@ -475,3 +475,12 @@ describe('Synth2Kernel trigger coercion (I4 Layer 1)', () => {
     expect(finite(out)).toBe(true);
   });
 });
+
+describe('Synth2Kernel output net (I4 Layer 2)', () => {
+  it('nonFiniteFlushed stays 0 across a normal, valid-input render', () => {
+    const k = new Synth2Kernel(SR);
+    k.noteOn(0, 440, 0.5, 1);
+    renderBlocks(k, 0, 16);
+    expect(k.nonFiniteFlushed).toBe(0);
+  });
+});

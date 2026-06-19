@@ -16,6 +16,7 @@
 import { Voice } from './Voice';
 import { PARAM_COUNT, PARAM_INDEX, MATRIX_BASE, MATRIX_SLOTS, MATRIX_STRIDE, defaultParamBlock } from './params';
 import { pickVoice, VOICE_COUNT } from './allocator';
+import { flushNonFinite } from './sanitize';
 
 const MAX_EVENTS = 64;
 
@@ -39,6 +40,12 @@ export class Synth2Kernel {
   private readonly ages: number[] = new Array(VOICE_COUNT).fill(0);
   private rr = 0;
   private ageCounter = 1;
+
+  private _nonFiniteFlushed = 0;
+  /** Cumulative count of non-finite output samples the Layer-2 net flushed to 0
+   *  (I4). 0 in normal operation; a positive value means a NaN source slipped
+   *  past the Layer-1 coercion. */
+  get nonFiniteFlushed(): number { return this._nonFiniteFlushed; }
 
   constructor(private readonly sampleRate: number) {
     this.voices = Array.from({ length: VOICE_COUNT }, (_, i) => new Voice(sampleRate, (i + 1) * 0x9e3779b9));
@@ -124,6 +131,7 @@ export class Synth2Kernel {
       this.count--;
     }
     this.renderActive(out, cursor, frames);
+    this._nonFiniteFlushed += flushNonFinite(out, frames); // I4 Layer 2 net
   }
 
   private allocate(): number {
