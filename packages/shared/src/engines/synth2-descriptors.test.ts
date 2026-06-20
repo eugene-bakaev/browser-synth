@@ -23,6 +23,18 @@ describe('SYNTH2_DESCRIPTORS', () => {
     }
   });
 
+  it('noise.color is a continuous 0..1 color morph defaulting to white (0.5)', () => {
+    // White lives at the center now (was the old lowpass-open default of 1).
+    const d = SYNTH2_DESCRIPTORS.find(x => x.key === 'noise.color')!;
+    expect(d.min).toBe(0);
+    expect(d.max).toBe(1);
+    expect(d.default).toBe(0.5);
+    expect(d.taper).toBe('linear');
+    expect(d.modulatable).toBe(true);
+    expect(d.modScale).toBe(1);
+    expect(d.kind).toBeUndefined(); // continuous, still a mod destination
+  });
+
   it('covers exactly the I3d param set (append-only from here)', () => {
     expect(SYNTH2_DESCRIPTORS.map(d => d.key)).toEqual([
       'osc1.morph', 'osc1.pulseWidth', 'osc1.coarse', 'osc1.fine', 'osc1.level',
