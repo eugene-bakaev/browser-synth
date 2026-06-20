@@ -46,6 +46,29 @@ function refLinearLow(input: Float32Array, cutoff: number, res: number): number[
   return out;
 }
 
+// Steady-state stats of the self-oscillating LOW output: kick/settle, then measure
+// the next second. crest = peak/rms (≈√2 for a sine, → 1 as it squares up under drive).
+function selfOscStats(cutoff: number, res: number, drive: number) {
+  const svf = new SvfCore(SR); svf.reset();
+  let firstAudible = -1;
+  const SETTLE = Math.round(SR * 0.5);
+  for (let i = 0; i < SETTLE; i++) {
+    svf.tick(0, cutoff, res, drive);
+    if (firstAudible < 0 && Math.abs(svf.low) > 0.05) firstAudible = i;
+  }
+  let s = 0, peak = 0; const M = SR;
+  for (let i = 0; i < M; i++) {
+    svf.tick(0, cutoff, res, drive);
+    const y = svf.low; s += y * y; if (Math.abs(y) > peak) peak = Math.abs(y);
+  }
+  const rms = Math.sqrt(s / M);
+  return {
+    peak, rms,
+    crest: rms > 0 ? peak / rms : Infinity,
+    firstAudibleMs: firstAudible < 0 ? Infinity : (firstAudible / SR) * 1000,
+  };
+}
+
 describe('SvfCore', () => {
   it('silence in → silence out', () => {
     const svf = new SvfCore(SR);
@@ -161,26 +184,6 @@ describe('SvfCore self-oscillation (2026-06-20)', () => {
     expect(firstAudible).toBeLessThan(SR * 0.2);
   });
 
-  // Drive's harmonic *character* is a deferred sound-design experiment (decided
-  // 2026-06-20): the tanh(D*x)/D feedback saturator self-regulates the limit
-  // cycle back toward a clean sine, so raising `drive` does not yet add audible
-  // grit (see spec §5.2 note). For now `drive` is only required to keep the
-  // self-oscillation finite and bounded across its whole range — we assert that
-  // safety property, not harmonic richness.
-  it('drive keeps the self-oscillation bounded and finite across its range (character deferred)', () => {
-    for (const drive of [0, 0.5, 1]) {
-      const svf = new SvfCore(SR); svf.reset();
-      let s = 0, peak = 0; const M = SR;
-      for (let i = 0; i < 2 * M; i++) {
-        svf.tick(0, 1000, 1.0, drive);
-        if (i >= M) { const y = svf.low; s += y * y; if (Math.abs(y) > peak) peak = Math.abs(y); }
-      }
-      const rms = Math.sqrt(s / M);
-      expect(peak, `drive ${drive}`).toBeLessThan(10); // bounded
-      expect(Number.isFinite(rms), `drive ${drive}`).toBe(true);
-    }
-  });
-
   it('stays finite with NaN input / extreme finite cutoff at res=1, drive=1', () => {
     const svf = new SvfCore(SR); svf.reset();
     for (let i = 0; i < 2000; i++) {
@@ -188,6 +191,49 @@ describe('SvfCore self-oscillation (2026-06-20)', () => {
       expect(Number.isFinite(svf.low)).toBe(true);
       expect(Number.isFinite(svf.band)).toBe(true);
       expect(Number.isFinite(svf.high)).toBe(true);
+    }
+  });
+});
+
+// 2026-06-20 redesign: the self-oscillation must SING at a consistent, audible
+// level across the whole cutoff range (deep bass included) and start fast, and
+// `drive` must be a real drive — louder + grittier as it rises, not an inverse
+// volume control. These targets were approved by the user after the first cut
+// shipped a cutoff-dependent, drive-attenuated limit cycle.
+describe('SvfCore self-oscillation level + drive (2026-06-20 redesign)', () => {
+  const CUTOFFS = [55, 110, 262, 1000, 2500];
+
+  it('sings at a consistent, audible level across the whole cutoff range', () => {
+    const peaks = CUTOFFS.map((c) => selfOscStats(c, 1.0, 0).peak);
+    CUTOFFS.forEach((c, i) => {
+      expect(peaks[i], `cutoff ${c}Hz peak=${peaks[i].toFixed(4)}`).toBeGreaterThan(0.15);
+      expect(peaks[i], `cutoff ${c}Hz peak=${peaks[i].toFixed(4)}`).toBeLessThan(0.6);
+    });
+    const min = Math.min(...peaks), max = Math.max(...peaks);
+    expect(min / max, `flatness min/max across cutoff (${peaks.map((p) => p.toFixed(3))})`).toBeGreaterThan(0.5);
+  });
+
+  it('builds to an audible level quickly even in the bass (55Hz within ~120ms)', () => {
+    expect(selfOscStats(55, 1.0, 0).firstAudibleMs).toBeLessThan(120);
+  });
+
+  it('drive makes the self-oscillation LOUDER, not quieter', () => {
+    const clean = selfOscStats(1000, 1.0, 0).rms;
+    const driven = selfOscStats(1000, 1.0, 1).rms;
+    expect(driven, `drive1 rms=${driven.toFixed(4)} vs drive0 rms=${clean.toFixed(4)}`).toBeGreaterThan(clean * 1.1);
+  });
+
+  it('drive adds harmonics — the waveform squares up (crest factor drops)', () => {
+    const clean = selfOscStats(1000, 1.0, 0).crest;   // ≈ √2 for a sine
+    const driven = selfOscStats(1000, 1.0, 1).crest;  // lower as it clips
+    expect(driven, `crest driven=${driven.toFixed(3)} vs clean=${clean.toFixed(3)}`).toBeLessThan(clean - 0.1);
+  });
+
+  it('stays bounded across the whole drive × cutoff grid (no blow-up)', () => {
+    for (const c of CUTOFFS) for (const d of [0, 0.5, 1]) {
+      const { peak } = selfOscStats(c, 1.0, d);
+      expect(Number.isFinite(peak), `cutoff ${c} drive ${d}`).toBe(true);
+      expect(peak, `cutoff ${c} drive ${d}`).toBeLessThan(1.5);
     }
   });
 });
