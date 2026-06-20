@@ -24,6 +24,7 @@
     <div class="rack-column">
       <div class="module-group synth2-panel">
         <h3>OSC 1</h3>
+        <WavePreview kind="osc" :morph="params.osc1.morph" :pulseWidth="params.osc1.pulseWidth" :color="color" />
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc1.morph" v-model="params.osc1.morph" :syncPath="ks.pathFor(['osc1', 'morph'])" @gesture-end="ks.end(['osc1', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc1.pulseWidth" v-model="params.osc1.pulseWidth" :syncPath="ks.pathFor(['osc1', 'pulseWidth'])" @gesture-end="ks.end(['osc1', 'pulseWidth'])" />
@@ -48,6 +49,7 @@
     <div class="rack-column">
       <div class="module-group synth2-panel">
         <h3>OSC 2</h3>
+        <WavePreview kind="osc" :morph="params.osc2.morph" :pulseWidth="params.osc2.pulseWidth" :color="color" />
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc2.morph" v-model="params.osc2.morph" :syncPath="ks.pathFor(['osc2', 'morph'])" @gesture-end="ks.end(['osc2', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.pulseWidth" v-model="params.osc2.pulseWidth" :syncPath="ks.pathFor(['osc2', 'pulseWidth'])" @gesture-end="ks.end(['osc2', 'pulseWidth'])" />
@@ -70,6 +72,7 @@
     <div class="rack-column">
       <div class="module-group synth2-panel">
         <h3>OSC 3</h3>
+        <WavePreview kind="osc" :morph="params.osc3.morph" :pulseWidth="params.osc3.pulseWidth" :color="color" />
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc3.morph" v-model="params.osc3.morph" :syncPath="ks.pathFor(['osc3', 'morph'])" @gesture-end="ks.end(['osc3', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.pulseWidth" v-model="params.osc3.pulseWidth" :syncPath="ks.pathFor(['osc3', 'pulseWidth'])" @gesture-end="ks.end(['osc3', 'pulseWidth'])" />
@@ -163,6 +166,7 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>LFO 1</h3>
+        <WavePreview kind="lfo" :shape="params.lfo1.shape" :color="color" />
         <div class="knob-row">
           <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo1.rate" v-model="params.lfo1.rate" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" v-model="params.lfo1.shape" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
@@ -170,6 +174,7 @@
       </div>
       <div class="module-group">
         <h3>LFO 2</h3>
+        <WavePreview kind="lfo" :shape="params.lfo2.shape" :color="color" />
         <div class="knob-row">
           <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" :defaultValue="DEFAULTS.lfo2.rate" v-model="params.lfo2.rate" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" v-model="params.lfo2.shape" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
@@ -205,6 +210,7 @@
 <script setup lang="ts">
 import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
+import WavePreview from './WavePreview.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
 import { MOD_SOURCES, MOD_DESTS } from '@fiddle/shared';
 import { useKnobSync } from '../sync/knobSync';

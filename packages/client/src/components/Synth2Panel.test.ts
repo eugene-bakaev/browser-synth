@@ -240,3 +240,21 @@ describe('Synth2Panel envelope loop + ENV 3 (I3c)', () => {
     expect(params.env3.loop).toBe(true);
   });
 });
+
+describe('Synth2Panel wave previews (2026-06-19)', () => {
+  it('renders exactly five wave previews (osc1/2/3 + lfo1/2)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect(el.querySelectorAll('.wave-preview').length).toBe(5);
+  });
+
+  it('places a wave preview inside each osc and LFO module group (and nowhere else)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const headingsWithPreview = Array.from(el.querySelectorAll('.module-group'))
+      .filter((g) => g.querySelector('.wave-preview'))
+      .map((g) => g.querySelector('h3')?.textContent?.trim())
+      .sort();
+    expect(headingsWithPreview).toEqual(['LFO 1', 'LFO 2', 'OSC 1', 'OSC 2', 'OSC 3']);
+  });
+});
