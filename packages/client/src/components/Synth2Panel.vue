@@ -130,6 +130,7 @@
           <Knob label="Res" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.filter.resonance" v-model="params.filter.resonance" :syncPath="ks.pathFor(['filter', 'resonance'])" @gesture-end="ks.end(['filter', 'resonance'])" />
           <Knob label="KeyTrk" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.filter.keyTrack" v-model="params.filter.keyTrack" :syncPath="ks.pathFor(['filter', 'keyTrack'])" @gesture-end="ks.end(['filter', 'keyTrack'])" />
           <Knob label="EnvAmt" :min="-4" :max="4" :step="0.1" :defaultValue="DEFAULTS.filter.envAmount" v-model="params.filter.envAmount" :syncPath="ks.pathFor(['filter', 'envAmount'])" @gesture-end="ks.end(['filter', 'envAmount'])" />
+          <Knob label="Drive" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.filter.drive" v-model="params.filter.drive" :syncPath="ks.pathFor(['filter', 'drive'])" @gesture-end="ks.end(['filter', 'drive'])" />
         </div>
       </div>
     </div>
