@@ -126,13 +126,29 @@ placement relative to the `2*v - ic` integrator update are an implementation det
 the plan pins down; the invariant is: bypassed at `B = 0`, bounds the limit cycle
 otherwise.
 
-### 5.3 Startup seed
+### 5.3 Startup excitation (gated noise injection)
 
-`reset()` (note-on / voice-steal) seeds the band integrator with a tiny
-deterministic value (≈ `1e-4`) so the marginally-/slightly-unstable oscillator has
-energy to grow from silence when all oscillators are muted. At normal resonance the
-seed decays in microseconds and is inaudible (~ −80 dB); it is deterministic and
-allocation-free, preserving the kernel's determinism and zero-alloc invariants.
+A self-oscillator must be seeded: at `k ≤ 0` with exactly-zero state and zero input
+(all oscillators muted) the filter stays silent — zero amplified is still zero.
+Inside `tick`, **only when `oscZone > 0`**, inject a tiny noise floor into the input,
+scaled by `oscZone`:
+
+```
+if (oscZone > 0) input += SEED * oscZone * white();   // SEED ≈ 1e-4
+```
+
+`white()` is a minimal per-instance xorshift32 (one `uint32` of state, like the
+`Noise` kernel), re-seeded to a fixed constant on `reset()` so each note-on is
+deterministic. Because the injection is **exactly zero for `resonance ≤ 0.9`**
+(`oscZone = 0`), the normal signal path — and every existing exact-silence /
+reset-equality test — is bit-unchanged. In the oscillation zone the continuous floor
+both *starts* the oscillation from silence and guarantees it *sustains* (far more
+robust than a one-shot impulse, and the analog model of thermal noise). It is
+allocation-free; `SEED` is calibrated and locked by the startup test (§7).
+
+The chosen seed mechanism deliberately avoids touching integrator state on `reset()`,
+which would have broken the `ClassicFilter`/`MorphFilter` "reset == fresh filter"
+invariant tests (they compare at 12 decimals).
 
 ### 5.4 Tuning
 
@@ -147,8 +163,8 @@ is added; the tuning test (§7) asserts the oscillation fundamental lands on `fc
 
 - **Allocation-free**: only scalar state/constants added; no arrays, no per-sample
   `new`.
-- **Deterministic**: identical seed + params → identical stream (the startup seed is
-  a fixed constant).
+- **Deterministic**: identical params → identical stream (the per-instance xorshift
+  seed is reset to a fixed constant on note-on).
 - **Per-voice**: filter state lives on the per-voice `SvfCore` (unchanged).
 - **Bounded**: `tanh` bounds all states; the denormal flush, Nyquist clamp, and
   I4 finite-clamp posture are kept.
@@ -157,7 +173,7 @@ is added; the tuning test (§7) asserts the oscillation fundamental lands on `fc
 
 | File | Change |
 |------|--------|
-| `packages/client/src/engine/synth2/kernel/SvfCore.ts` | Add `drive` arg to `tick`; new `k` map (§5.1), feedback saturator (§5.2), reset seed (§5.3). |
+| `packages/client/src/engine/synth2/kernel/SvfCore.ts` | Add `drive` arg to `tick`; new `k` map (§5.1), feedback saturator (§5.2), gated noise-injection startup (§5.3), input NaN-sanitize. Retarget the existing "flushes to exact zero" test (uses `res = 1.0`, which now oscillates) to `res = 0.9`. |
 | `packages/client/src/engine/synth2/kernel/FilterModule.ts` | `process` interface signature gains `drive`. |
 | `packages/client/src/engine/synth2/kernel/ClassicFilter.ts` | Thread `drive` through `process` into `svf.tick`. |
 | `packages/client/src/engine/synth2/kernel/MorphFilter.ts` | Thread `drive` through `process` into `svf.tick`. |
@@ -217,7 +233,7 @@ workspaces; build still emits `worklets/synth2-processor.js`.
    (zero-crossings / autocorrelation over a steady window) lands within tolerance
    (≈ ±30 cents) of `fc`, across a few cutoffs (110 / 262 / 440 Hz).
 6. **Startup from silence** — zero input throughout: oscillation reaches audible RMS
-   within ~50 ms (validates the seed).
+   promptly (test bound ≤ ~200 ms; validates the gated noise injection).
 7. **Drive** — raising `drive` at `res = 1` increases harmonic content (HF metric
    `mean(|x[n]-x[n-1]|)` or a THD proxy) while amplitude stays bounded; `drive > 0`
    differs from `drive = 0`. These tests **calibrate and lock** `DRIVE_RANGE`,
