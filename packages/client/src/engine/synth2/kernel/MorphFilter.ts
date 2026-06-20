@@ -22,9 +22,9 @@ export class MorphFilter implements FilterModule {
   // No discrete type — morph is continuous. Kept for the uniform FilterModule shape.
   setType(_type: number): void {}
 
-  process(input: number, cutoffHz: number, resonance: number, morph: number): number {
+  process(input: number, cutoffHz: number, resonance: number, morph: number, drive = 0): number {
     const m = morph < 0 ? 0 : morph > 2 ? 2 : morph;
-    this.svf.tick(input, cutoffHz, resonance);
+    this.svf.tick(input, cutoffHz, resonance, drive);
     let a: number, b: number, frac: number;
     if (m <= 1) { a = this.svf.low; b = this.svf.band; frac = m; }       // LP → BP
     else        { a = this.svf.band; b = this.svf.high; frac = m - 1; }  // BP → HP

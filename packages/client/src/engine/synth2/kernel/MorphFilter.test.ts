@@ -58,4 +58,16 @@ describe('MorphFilter', () => {
     a.reset();
     expect(a.process(0.7, 1200, 0.5, 1)).toBeCloseTo(b.process(0.7, 1200, 0.5, 1), 12);
   });
+
+  it('passes drive through to the SVF (drive changes the self-osc output)', () => {
+    const a = new MorphFilter(SR); a.reset();
+    const b = new MorphFilter(SR); b.reset();
+    let diff = 0;
+    for (let i = 0; i < 4000; i++) {
+      const ya = a.process(0, 1000, 1.0, 0, 0); // morph 0 (low), drive 0
+      const yb = b.process(0, 1000, 1.0, 0, 1); // morph 0 (low), drive 1
+      diff += Math.abs(ya - yb);
+    }
+    expect(diff).toBeGreaterThan(0);
+  });
 });

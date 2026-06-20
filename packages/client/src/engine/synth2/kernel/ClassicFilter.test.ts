@@ -52,4 +52,16 @@ describe('ClassicFilter', () => {
     a.reset();
     expect(a.process(0.7, 1200, 0.5)).toBeCloseTo(b.process(0.7, 1200, 0.5), 12);
   });
+
+  it('passes drive through to the SVF (drive changes the self-osc output)', () => {
+    const a = new ClassicFilter(SR); a.setType(0); a.reset();
+    const b = new ClassicFilter(SR); b.setType(0); b.reset();
+    let diff = 0;
+    for (let i = 0; i < 4000; i++) {
+      const ya = a.process(0, 1000, 1.0, 0, 0); // res 1, drive 0
+      const yb = b.process(0, 1000, 1.0, 0, 1); // res 1, drive 1
+      diff += Math.abs(ya - yb);
+    }
+    expect(diff).toBeGreaterThan(0);
+  });
 });
