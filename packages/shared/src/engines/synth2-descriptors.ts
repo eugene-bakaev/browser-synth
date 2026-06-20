@@ -83,9 +83,11 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'osc3.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 24 / 72 },
   { key: 'osc3.fine',       min: -100, max: 100,  default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc3.level',      min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  // noise — 4th mixer channel. color = one-pole LP openness 0..1: 0 = darkest, 1 = white/unfiltered (spec §6.8).
+  // noise — 4th mixer channel. color morphs five textbook noise colors, white at
+  // center (spec 2026-06-20): 0 brown(-6 dB/oct) · 0.25 pink(-3) · 0.5 white(0) ·
+  // 0.75 blue(+3) · 1 violet(+6). Loudness-matched so the knob is purely tonal.
   { key: 'noise.level',     min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'noise.color',     min: 0,    max: 1,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'noise.color',     min: 0,    max: 1,    default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
   // TZFM index by carrier: fm.osc2 = osc1→osc2, fm.osc3 = osc2→osc3. Range >1 enables
   // through-zero (dt' = dt·(1 + amt·mod) can go negative). Default 0 (off).
   { key: 'fm.osc2',         min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
