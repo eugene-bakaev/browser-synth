@@ -50,6 +50,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'env3.a', 'env3.d', 'env3.s', 'env3.r',
       'env1.loop', 'env2.loop', 'env3.loop',
       'filter.morph', 'filter.model',
+      'filter.drive',
     ]);
   });
 
@@ -236,5 +237,13 @@ describe('morph filter descriptor rows (I3d)', () => {
     expect(d.modulatable).toBe(false);
     expect(SYNTH2_ENUM_VALUES['filter.model']).toEqual(['classic', 'morph']);
     expect(MOD_DESTS).not.toContain('filter.model');
+  });
+
+  it('filter.drive is a continuous 0..1 modulatable saturation (auto mod dest), default 0', () => {
+    expect(byKey['filter.drive']).toMatchObject({
+      min: 0, max: 1, default: 0, taper: 'linear', modulatable: true, modScale: 1,
+    });
+    expect(byKey['filter.drive'].kind).toBeUndefined();
+    expect(MOD_DESTS).toContain('filter.drive');
   });
 });

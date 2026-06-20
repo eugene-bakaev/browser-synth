@@ -253,11 +253,11 @@ describe('synth2 enum (filter.type) leaf', () => {
     // `.shape.filter` is a dynamically-built key not statically typed, so cast.
     const filterSchema = (Schemas.Synth2Params.shape as any).filter;
     const ok = filterSchema.safeParse({
-      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'lp', morph: 0, model: 'classic',
+      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'lp', morph: 0, model: 'classic', drive: 0,
     });
     expect(ok.success).toBe(true);
     const bad = filterSchema.safeParse({
-      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'moog', morph: 0, model: 'classic',
+      cutoff: 2000, resonance: 0.15, keyTrack: 0, envAmount: 2.4, type: 'moog', morph: 0, model: 'classic', drive: 0,
     });
     expect(bad.success).toBe(false);
   });

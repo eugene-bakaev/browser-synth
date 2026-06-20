@@ -48,6 +48,7 @@ export interface Synth2FilterParams {
   type: 'lp' | 'bp' | 'hp';
   morph: number;               // 0 LP → 1 BP → 2 HP (continuous MorphFilter blend)
   model: 'classic' | 'morph';  // which FilterModule the voice uses
+  drive: number;               // 0..1 feedback saturation (self-osc character)
 }
 
 export interface Synth2MatrixSlot {

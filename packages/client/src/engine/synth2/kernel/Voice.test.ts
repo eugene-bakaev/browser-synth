@@ -265,3 +265,42 @@ describe('Voice NaN belts (I4 Layer 1)', () => {
     }
   });
 });
+
+describe('Voice filter.drive routing (self-oscillation)', () => {
+  const SR = 48000;
+
+  it('routes filter.drive into the filter (drive 0 vs 1 changes the self-osc output)', () => {
+    const render = (drive: number) => {
+      const v = new Voice(SR, 1);
+      for (const key of ['osc1.level', 'osc2.level', 'osc3.level', 'noise.level'] as const) {
+        v.slots[PARAM_INDEX[key]].setBase(0); // mute all sound sources
+      }
+      v.slots[PARAM_INDEX['filter.resonance']].setBase(1); // into the oscillation zone
+      v.slots[PARAM_INDEX['filter.drive']].setBase(drive);
+      v.setFilterModel(0); v.setFilterType(0);             // classic LP
+      v.noteOn(220, 1, SR);                                // noteOn(freq, velocity, gateFrames)
+      const out = new Float32Array(SR);
+      v.renderAdd(out, 0, SR);                             // renderAdd(out, from, to)
+      return out;
+    };
+    const a = render(0), b = render(1);
+    let diff = 0;
+    for (let i = Math.floor(SR * 0.5); i < SR; i++) diff += Math.abs(a[i] - b[i]);
+    expect(diff).toBeGreaterThan(0); // drive actually reached the filter
+  });
+
+  it('self-oscillates with oscillators muted when resonance is maxed (filter as a sine)', () => {
+    const v = new Voice(SR, 1);
+    for (const key of ['osc1.level', 'osc2.level', 'osc3.level', 'noise.level'] as const) {
+      v.slots[PARAM_INDEX[key]].setBase(0);
+    }
+    v.slots[PARAM_INDEX['filter.resonance']].setBase(1);
+    v.setFilterModel(0); v.setFilterType(0);
+    v.noteOn(220, 1, SR);
+    const out = new Float32Array(SR);
+    v.renderAdd(out, 0, SR);
+    let s = 0; for (let i = Math.floor(SR * 0.5); i < SR; i++) s += out[i] * out[i];
+    const rms = Math.sqrt(s / (SR * 0.5));
+    expect(rms).toBeGreaterThan(0.005); // the filter is singing despite muted oscs
+  });
+});

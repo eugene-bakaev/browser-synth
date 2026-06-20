@@ -109,6 +109,16 @@ describe('Synth2Panel filter section', () => {
     typeBtns[1].click();
     expect(params.filter.type).toBe('bp');
   });
+
+  it('renders a Drive knob in the filter column', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const modelSelector = el.querySelector('.filter-model-selector')!;
+    const filterGroup = modelSelector.closest('.module-group')!;
+    const labels = Array.from(filterGroup.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels).toContain('Drive');
+  });
 });
 
 describe('Synth2Panel filter model toggle (I3d)', () => {

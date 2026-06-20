@@ -11,7 +11,9 @@ export interface FilterModule {
   /** Select the output flavour (ClassicFilter: 0 = lp, 1 = bp, 2 = hp). */
   setType(type: number): void;
   /** One sample. cutoffHz is the final cutoff (keytrack + env already applied);
-   *  resonance is 0..1; morph is the 0..2 LP→BP→HP blend used by MorphFilter
-   *  (ClassicFilter ignores it and uses its block-set type). Returns the output. */
-  process(input: number, cutoffHz: number, resonance: number, morph: number): number;
+   *  resonance is 0..1 (>0.9 self-oscillates); morph is the 0..2 LP→BP→HP blend
+   *  used by MorphFilter (ClassicFilter ignores it and uses its block-set type);
+   *  drive is 0..1 feedback saturation (optional, defaults 0 = clean). Returns
+   *  the output. */
+  process(input: number, cutoffHz: number, resonance: number, morph: number, drive?: number): number;
 }
