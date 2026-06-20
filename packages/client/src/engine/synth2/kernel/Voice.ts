@@ -59,6 +59,7 @@ export class Voice {
   private readonly resSlot: ParamSlot;
   private readonly keyTrackSlot: ParamSlot;
   private readonly envAmountSlot: ParamSlot;
+  private readonly driveSlot: ParamSlot;
   private keyTrackOctaves = 0; // log2(freq / C4), cached per note
 
   private readonly matrix = new ModMatrix();
@@ -104,6 +105,7 @@ export class Voice {
     this.resSlot = slot('filter.resonance');
     this.keyTrackSlot = slot('filter.keyTrack');
     this.envAmountSlot = slot('filter.envAmount');
+    this.driveSlot = slot('filter.drive');
     this.lfo1 = new Lfo(slot('lfo1.rate'), slot('lfo1.shape'), sampleRate);
     this.lfo2 = new Lfo(slot('lfo2.rate'), slot('lfo2.shape'), sampleRate);
   }
@@ -216,7 +218,9 @@ export class Voice {
         this.keyTrackSlot.next() * this.keyTrackOctaves + this.envAmountSlot.next() * env2v;
       let fc = this.cutoffSlot.next() * Math.pow(2, octShift); // I4: Math.pow → approx (cf. SvfCore tan)
       fc = fc > 20000 ? 20000 : fc >= 20 ? fc : 20; // I4 NaN-safe clamp: NaN -> 20
-      const filtered = this.activeFilter.process(mix, fc, this.resSlot.next(), this.morphSlot.next());
+      const filtered = this.activeFilter.process(
+        mix, fc, this.resSlot.next(), this.morphSlot.next(), this.driveSlot.next(),
+      );
       out[n] += filtered * e * this.velocity;
 
       // Capture this sample's source values for next sample's matrix eval.
