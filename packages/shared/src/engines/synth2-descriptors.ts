@@ -144,6 +144,11 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // applied at the block boundary, NOT a mod dest (modulatable:false).
   { key: 'filter.morph', min: 0, max: 2, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
   { key: 'filter.model', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ['classic', 'morph'] },
+  // --- filter self-oscillation (2026-06-20, append-only). filter.drive is the
+  // opt-in feedback-saturation amount (0 = clean = today). Continuous + modulatable
+  // (auto-joins MOD_DESTS) so an LFO/env can sweep it. The self-oscillation itself
+  // lives at the top of filter.resonance (>0.9), needing no new param.
+  { key: 'filter.drive', min: 0, max: 1, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel

@@ -222,6 +222,12 @@ describe('synth2 filter wire validation', () => {
     expect(validatePathAndValue(path, 1).ok).toBe(false);
     expect(validatePathAndValue(path, 'moog').ok).toBe(false);
   });
+
+  it('accepts the synth2 filter.drive leaf and validates its 0..1 range (self-osc)', () => {
+    expect(pathIsWritable('tracks.0.engines.synth2.filter.drive')).toBe(true);
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.drive', 0.5)).toEqual({ ok: true });
+    expect(validatePathAndValue('tracks.0.engines.synth2.filter.drive', 1.5).ok).toBe(false);
+  });
 });
 
 describe('synth2 matrix accept-list (I3a)', () => {
