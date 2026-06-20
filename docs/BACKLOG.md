@@ -5,7 +5,53 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
-*(nothing right now)*
+### A single client appears multiple times in the room presence roster
+**Reported:** 2026-06-20 · **Status:** open · **Area:** sync / presence — `packages/server/src/sync/ConnectionHandler.ts`, `packages/server/src/sync/Heartbeat.ts`, `packages/server/src/room/identity.ts`
+
+One browser (one signed-in user) can show up as **3–4 identical roster entries**
+("Eugene B" ×4). It self-heals after ~a minute. It is **not** a display problem and
+not caused by anything in the audio engine — it's stale WebSocket connections
+surviving past their usefulness, multiplied by the authenticated reconnect path
+never reusing the client's identity.
+
+**Root cause — two bugs that compound:**
+
+1. **Authenticated reconnects never reclaim their identity.** The client re-sends its
+   saved `clientId` on every reconnect specifically so the server reuses its roster
+   slot (`WsClient.ts:214-216`). The guest path honors this (resume branch,
+   `ConnectionHandler.ts:330-347`), but the authenticated path takes the
+   `if (msg.token)` branch first and **ignores `msg.clientId`** — `makeAuthenticatedIdentity`
+   mints a brand-new `clientId` every time (`identity.ts:72`, `generateClientId()`).
+   Same handle, fresh identity, **a new roster row per reconnect**.
+2. **Un-cleanly-dropped sockets linger up to ~60s.** A clean close (tab close /
+   navigation) removes the row instantly (`ws.ts:91-98` → `markDisconnected`). But a
+   half-open drop (laptop sleep, backgrounded tab, network blip, a server redeploy,
+   mobile) sends no close frame, so the server keeps the socket "connected" until the
+   heartbeat reaps it after two missed pings (`Heartbeat.ts:9-10`, ~60s).
+
+Stacked: a flaky minute where one browser reconnects 3× → 3 fresh "Eugene B"
+identities + the original = 4 rows, each lingering until its dead socket's ~60s
+heartbeat timeout, then dropping off ("it's gone now"). Guests are partly affected
+too — in the half-open window the lingering old `clientId` trips the
+`duplicate_client` guard (`:341`) and a fresh identity is minted anyway — but the
+authenticated path is strictly worse because it never even attempts resume.
+
+**Proposed fix (in priority order):**
+
+1. Make the authenticated hello **reclaim the presented `clientId`** (mirror the guest
+   resume), so a reconnecting signed-in user takes back its existing slot instead of
+   spawning a new one. This removes the multiplication.
+2. On takeover, **evict the superseded half-open socket immediately** (close it + free
+   its slot) when a reconnect presents a `clientId` that's still marked connected,
+   rather than waiting ~60s for the heartbeat. Applies to guests and authenticated
+   alike.
+3. (Optional) Shorten the heartbeat timeout to bound ghost lifetime for true dead
+   drops that never reconnect.
+
+Test-first; extend `ConnectionHandler.test.ts` (resume + duplicate-client coverage
+already exists). Separate, smaller follow-up: collapse multiple *legitimate*
+connections of the same `userId` into one roster row (cosmetic — `Identity.userId`
+already carries the account id).
 
 ## Resolved
 
