@@ -134,7 +134,15 @@ git commit -m "fix(kick2): make droop audible — deepen to ~3 semitones, front-
 
 ---
 
-## Phase 2 — Factory presets (+ kick2 808/909/Modern)
+## Phase 2 — Factory presets (+ kick2 808/909/Modern) ⏸️ DEFERRED
+
+> **Deferred 2026-06-21** to the backlog ("Factory preset pool for the worklet drum
+> engines", `docs/BACKLOG.md`) — no curated voicings ready yet; the preset *pool* will
+> be built as its own piece later, folding in all engines at once. The engines ship
+> with only their descriptor-default ("modern") voicing for now. The task detail below
+> is retained as the starting point for that future work. **Do not execute Phase 2 in
+> this cycle.** The snare2/hat2 phases below likewise drop their factory-preset
+> sub-steps until then.
 
 **Branch:** `feat/drum-presets`. Adds a reusable factory-preset library and a single preset `<select>` in StudioView's preset controls (works for any engine; populated for kick2 now, snare2/hat2 in later phases). Reuses the existing `applyPreset(track, preset)` (`packages/client/src/project/preset.ts:92`).
 

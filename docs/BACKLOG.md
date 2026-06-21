@@ -53,6 +53,37 @@ already exists). Separate, smaller follow-up: collapse multiple *legitimate*
 connections of the same `userId` into one roster row (cosmetic — `Identity.userId`
 already carries the account id).
 
+### Factory preset pool for the worklet drum engines (kick2 / snare2 / hat2)
+**Reported:** 2026-06-21 · **Status:** open (deferred) · **Area:** `packages/client/src/project/preset.ts`, `packages/client/src/views/StudioView.vue`, + a new `factory-presets.ts`
+
+Deferred from the worklet-drum-engines plan (Phase 2) — we don't have curated
+voicings ready yet, so we'll build the preset *pool* as its own piece later. The
+engines themselves ship without it (their "modern" descriptor defaults are the only
+built-in voicing for now); file Save/Open of presets already works. This entry is the
+design to pick up when we do it.
+
+**What it is:** a small library of named factory voicings per engine, plus a one-line
+apply UI, reusing the existing preset machinery (`Preset` shape + `applyPreset(track,
+preset)` at `preset.ts`). No new persistence — presets are spread over the engine's
+`DEFAULT_*_PARAMS` so they stay schema-complete.
+
+**Shape (from the plan):**
+- New module `packages/client/src/project/factory-presets.ts` exporting
+  `interface FactoryPreset { name: string; preset: Preset }` and
+  `factoryPresetsFor(engineType): FactoryPreset[]` (empty for engines with no curated
+  set). Schema-validity covered by a test (`Schemas.<Engine>Params.safeParse`).
+- Curated voicings grounded in Gordon Reid's SOS "Synth Secrets" (the TR-808/909
+  topologies the engines model): **kick2** `Modern` / `808` (long, pure-ish sine,
+  gentle click, some droop — the new droop knob carries this) / `909` (punchy, brighter
+  click, more drive, short tail, no droop); **snare2** `Modern` / `808` / `909`;
+  **hat2** `Modern` / `808` closed + an `open` variant (longer decay).
+- A `<select>` "PRESET…" picker in StudioView's `.preset-controls`, populated from
+  `factoryPresetsFor(focusedTrack.engineType)`, calling `applyPreset` on change. The
+  existing file SAVE/LOAD PRESET stays.
+
+When we build the broader "preset pool," fold these per-engine sets into it rather than
+shipping the dropdown standalone.
+
 ## Resolved
 
 ### Sequencer step OCT / LEN fields are hard to edit
