@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
 import { SYNTH2_DESCRIPTORS, MOD_SOURCES, MOD_DESTS } from '../engines/synth2-descriptors.js';
 import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
+import { KICK2_DESCRIPTORS } from '../engines/kick2.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -82,6 +83,16 @@ const ClapParamsSchema = z.object({
   tone: z.number().min(500).max(3000),
   sloppy: z.number().min(0.005).max(0.03),
 });
+
+// kick2: GENERATED from the descriptor table (single source of truth). One
+// `z.number().min().max()` leaf per descriptor row; the flat shape matches
+// Kick2EngineParams. Ranges therefore track kick2.ts automatically — no manual
+// lockstep to maintain (unlike the hand-written drum schemas above).
+const Kick2ParamsSchema = z.object(
+  Object.fromEntries(
+    KICK2_DESCRIPTORS.map((d) => [d.key, z.number().min(d.min).max(d.max)]),
+  ) as Record<string, z.ZodNumber>,
+);
 
 // --- synth2: GENERATED from the descriptor table (spec §6.4) ---------------
 // One leaf schema per descriptor: `z.number().min().max()` for continuous rows,
@@ -154,6 +165,7 @@ const EngineTypeSchema = z.union([
   z.literal('snare'),
   z.literal('clap'),
   z.literal('synth2'),
+  z.literal('kick2'),
 ]);
 
 const EnginesMapSchema = z.object({
@@ -163,6 +175,7 @@ const EnginesMapSchema = z.object({
   snare: SnareParamsSchema,
   clap: ClapParamsSchema,
   synth2: Synth2ParamsSchema,
+  kick2: Kick2ParamsSchema,
 });
 
 const TrackSchema = z.object({
@@ -199,6 +212,7 @@ export const Schemas = {
   Synth2Params: Synth2ParamsSchema,
   Synth2MatrixSlot: Synth2MatrixSlotSchema,
   KickParams: KickParamsSchema,
+  Kick2Params: Kick2ParamsSchema,
   HatParams: HatParamsSchema,
   SnareParams: SnareParamsSchema,
   ClapParams: ClapParamsSchema,

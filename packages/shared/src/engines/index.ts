@@ -3,5 +3,7 @@ export * from './kick.js';
 export * from './hat.js';
 export * from './snare.js';
 export * from './clap.js';
+export * from './drum-descriptors.js';
+export * from './kick2.js';
 export * from './synth2-descriptors.js';
 export * from './synth2.js';

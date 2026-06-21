@@ -6,6 +6,7 @@ import { HatEngine }   from '../engine/HatEngine';
 import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine } from '../engine/ClapEngine';
 import { Synth2Engine } from '../engine/Synth2Engine';
+import { Kick2Engine } from '../engine/Kick2Engine';
 import type { Step } from '../sequencer/Sequencer';
 import {
   type Project,
@@ -41,6 +42,7 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
       snare:  deepMerge(SnareEngine.DEFAULT_PARAMS,  loadedEngines.snare),
       clap:   deepMerge(ClapEngine.DEFAULT_PARAMS,   loadedEngines.clap),
       synth2: deepMerge(Synth2Engine.DEFAULT_PARAMS, loadedEngines.synth2),
+      kick2:  deepMerge(Kick2Engine.DEFAULT_PARAMS,  loadedEngines.kick2),
     },
     mixer: deepMerge(DEFAULT_MIXER_STATE, t.mixer),
     // Clamp on load: a corrupted/hand-edited save with patternLength 0 (or out of

@@ -21,7 +21,7 @@ export function coerceBpm(value: unknown): number {
   return Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(n)));
 }
 
-const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2'] as const;
+const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2'] as const;
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
