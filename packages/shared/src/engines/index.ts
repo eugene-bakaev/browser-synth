@@ -6,5 +6,6 @@ export * from './clap.js';
 export * from './drum-descriptors.js';
 export * from './kick2.js';
 export * from './snare2.js';
+export * from './hat2.js';
 export * from './synth2-descriptors.js';
 export * from './synth2.js';
