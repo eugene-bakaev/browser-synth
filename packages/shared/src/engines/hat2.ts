@@ -14,10 +14,10 @@
 import { buildDrumDefaults, type DrumParamDescriptor } from './drum-descriptors.js';
 
 // APPEND-ONLY (block index = array position; see drum-descriptors.ts).
-export const HAT2_DESCRIPTORS = [
-  { key: 'tone',     min: 3000, max: 14000, default: 9000, label: 'Tone',  format: 'hz' },
-  { key: 'decay',    min: 0.02, max: 0.8,   default: 0.08, label: 'Decay', format: 'ms' },
-  { key: 'hpf',      min: 3000, max: 12000, default: 7000, label: 'HPF',   format: 'hz' },
+export const HAT2_DESCRIPTORS: readonly DrumParamDescriptor[] = [
+  { key: 'tone',     min: 3000, max: 14000, default: 9000, label: 'Tone',  format: 'hz', curve: 'exp' },
+  { key: 'decay',    min: 0.02, max: 0.8,   default: 0.08, label: 'Decay', format: 'ms', curve: 'exp' },
+  { key: 'hpf',      min: 3000, max: 12000, default: 7000, label: 'HPF',   format: 'hz', curve: 'exp' },
   { key: 'metallic', min: 0,    max: 1,     default: 0.7,  label: 'Metal', format: 'percent' },
   { key: 'ring',     min: 0,    max: 1,     default: 0.2,  label: 'Ring',  format: 'percent' },
   { key: 'level',    min: 0,    max: 1,     default: 0.8,  label: 'Level', format: 'percent' },

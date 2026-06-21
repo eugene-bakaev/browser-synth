@@ -13,6 +13,8 @@
 // position, so inserting or reordering a row would silently scramble every older
 // client's stored params (same ABI rule as the synth2 descriptor table).
 
+import type { KnobCurve } from './knob-curve.js';
+
 /** Knob display-format hint — a subset of the `format` prop values Knob.vue
  *  accepts (so a descriptor's format binds to <Knob :format> without a cast). */
 export type DrumKnobFormat = 'hz' | 'ms' | 'percent' | 'db';
@@ -28,6 +30,8 @@ export interface DrumParamDescriptor {
   label: string;
   /** Panel knob display format. */
   format: DrumKnobFormat;
+  /** Optional UI knob response curve (presentational only). Omitted ⇒ 'linear'. */
+  curve?: KnobCurve;
 }
 
 /** Build the flat default-params object from a descriptor table. The caller

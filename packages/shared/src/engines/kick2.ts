@@ -13,11 +13,11 @@
 import { buildDrumDefaults, type DrumParamDescriptor } from './drum-descriptors.js';
 
 // APPEND-ONLY (block index = array position; see drum-descriptors.ts).
-export const KICK2_DESCRIPTORS = [
-  { key: 'tune',       min: 30,    max: 120, default: 50,   label: 'Tune',  format: 'hz' },
+export const KICK2_DESCRIPTORS: readonly DrumParamDescriptor[] = [
+  { key: 'tune',       min: 30,    max: 120, default: 50,   label: 'Tune',  format: 'hz', curve: 'exp' },
   { key: 'punch',      min: 0,     max: 1,   default: 0.5,  label: 'Punch', format: 'percent' },
-  { key: 'pitchDecay', min: 0.005, max: 0.2, default: 0.04, label: 'P.Dec', format: 'ms' },
-  { key: 'decay',      min: 0.05,  max: 1.5, default: 0.4,  label: 'Decay', format: 'ms' },
+  { key: 'pitchDecay', min: 0.005, max: 0.2, default: 0.04, label: 'P.Dec', format: 'ms', curve: 'exp' },
+  { key: 'decay',      min: 0.05,  max: 1.5, default: 0.4,  label: 'Decay', format: 'ms', curve: 'exp' },
   { key: 'click',      min: 0,     max: 1,   default: 0.5,  label: 'Click', format: 'percent' },
   { key: 'drive',      min: 0,     max: 1,   default: 0.2,  label: 'Drive', format: 'percent' },
   { key: 'droop',      min: 0,     max: 1,   default: 0,    label: 'Droop', format: 'percent' },

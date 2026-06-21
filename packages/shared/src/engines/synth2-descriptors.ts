@@ -8,6 +8,8 @@
 // APPEND-ONLY once I1 merges: the param block index is the array position, so
 // inserting/reordering would silently scramble every older client's params.
 
+import type { KnobCurve } from './knob-curve.js';
+
 export type Synth2Taper = 'linear' | 'expOctaves';
 
 // Discrete kinds ride the SAME Float32Array param block as continuous params
@@ -34,6 +36,9 @@ export interface Synth2ParamDescriptor {
   kind?: Synth2Kind;
   /** For kind:'enum' only — the ordered value set; the block stores the index. */
   enumValues?: readonly string[];
+  /** Optional UI knob response curve (presentational only). Omitted ⇒ 'linear'.
+   *  Distinct from `taper`, which scales kernel modulation, not the UI. */
+  curve?: KnobCurve;
 }
 
 /** A param is discrete (block-boundary, no smoother, not a mod dest) when it
@@ -66,10 +71,10 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'osc1.fine',       min: -100,  max: 100,  default: 0,    taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc1.level',      min: 0,     max: 1,    default: 0.8,  taper: 'linear',     modulatable: true, modScale: 1 },
   // env1 (amp) — same a/d/s/r units as synth1 (seconds / 0..1 sustain).
-  { key: 'env1.a',          min: 0.001, max: 10,   default: 0.01, taper: 'expOctaves', modulatable: true, modScale: 4 },
-  { key: 'env1.d',          min: 0.001, max: 10,   default: 0.2,  taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'env1.a',          min: 0.001, max: 10,   default: 0.01, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
+  { key: 'env1.d',          min: 0.001, max: 10,   default: 0.2,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
   { key: 'env1.s',          min: 0,     max: 1,    default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'env1.r',          min: 0.001, max: 10,   default: 0.5,  taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'env1.r',          min: 0.001, max: 10,   default: 0.5,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
   // --- I2b oscillator section (append-only) ---
   // osc2 — mirrors osc1. Default: detuned saw (+7 cents) for the classic fat default (spec §5.8).
   { key: 'osc2.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1 },
@@ -106,12 +111,12 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // depth in bipolar octaves (±4): continuous (smoothed) but NOT a mod dest
   // (spec §5.6 omits it), so modulatable:false. filter.type is the first ENUM —
   // rides the block as an index (lp=0,bp=1,hp=2), applied at the block boundary.
-  { key: 'env2.a',          min: 0.001, max: 10,    default: 0.01, taper: 'expOctaves', modulatable: true,  modScale: 4 },
-  { key: 'env2.d',          min: 0.001, max: 10,    default: 0.2,  taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env2.a',          min: 0.001, max: 10,    default: 0.01, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
+  { key: 'env2.d',          min: 0.001, max: 10,    default: 0.2,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
   { key: 'env2.s',          min: 0,     max: 1,     default: 0.5,  taper: 'linear',     modulatable: true,  modScale: 1 },
-  { key: 'env2.r',          min: 0.001, max: 10,    default: 0.5,  taper: 'expOctaves', modulatable: true,  modScale: 4 },
-  { key: 'filter.cutoff',   min: 20,    max: 20000, default: 2000, taper: 'expOctaves', modulatable: true,  modScale: 4 },
-  { key: 'filter.resonance',min: 0,     max: 1,     default: 0.15, taper: 'linear',     modulatable: true,  modScale: 1 },
+  { key: 'env2.r',          min: 0.001, max: 10,    default: 0.5,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
+  { key: 'filter.cutoff',   min: 20,    max: 20000, default: 2000, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
+  { key: 'filter.resonance',min: 0,     max: 1,     default: 0.15, taper: 'linear',     modulatable: true,  modScale: 1, curve: 's' },
   { key: 'filter.keyTrack', min: 0,     max: 1,     default: 0,    taper: 'linear',     modulatable: true,  modScale: 1 },
   { key: 'filter.envAmount',min: -4,    max: 4,     default: 2.4,  taper: 'linear',     modulatable: false, modScale: 0 },
   { key: 'filter.type',     min: 0,     max: 2,     default: 0,    taper: 'linear',     modulatable: false, modScale: 0, kind: 'enum', enumValues: ['lp', 'bp', 'hp'] },
@@ -121,19 +126,19 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // mapping). shape is a continuous 0..4 morph (sine→tri→saw-up→saw-down→square),
   // linear/full-range like osc morph. Both modulatable so the matrix can sweep
   // them (incl. LFO→LFO). MOD_SOURCES is unchanged — lfo1/lfo2 already exist there.
-  { key: 'lfo1.rate',  min: 0.01, max: 2000, default: 5,   taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'lfo1.rate',  min: 0.01, max: 2000, default: 5,   taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
   { key: 'lfo1.shape', min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4 },
+  { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
   { key: 'lfo2.shape', min: 0,    max: 4,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1 },
   // --- I3c env3 + loop mode (append-only). env3 mirrors env1/env2 (a/d/r
   // expOctaves time taper, s linear) but is NOT hardwired to anything — it
   // exists solely as the env3 mod source (live as of I3c). The three loop rows
   // mirror the sync toggles: kind:'bool', applied at the block boundary, NOT
   // mod-matrix destinations (modulatable:false). Default off ⇒ behavior unchanged.
-  { key: 'env3.a',    min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true,  modScale: 4 },
-  { key: 'env3.d',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env3.a',    min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
+  { key: 'env3.d',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
   { key: 'env3.s',    min: 0,     max: 1,  default: 0,   taper: 'linear',     modulatable: true,  modScale: 1 },
-  { key: 'env3.r',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4 },
+  { key: 'env3.r',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
   { key: 'env1.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'env2.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'env3.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
