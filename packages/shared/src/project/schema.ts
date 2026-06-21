@@ -14,6 +14,7 @@ import { SYNTH2_DESCRIPTORS, MOD_SOURCES, MOD_DESTS } from '../engines/synth2-de
 import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 import { KICK2_DESCRIPTORS } from '../engines/kick2.js';
 import { SNARE2_DESCRIPTORS } from '../engines/snare2.js';
+import { HAT2_DESCRIPTORS } from '../engines/hat2.js';
 
 // --- Primitives -----------------------------------------------------------
 
@@ -103,6 +104,14 @@ const Snare2ParamsSchema = z.object(
   ) as Record<string, z.ZodNumber>,
 );
 
+// hat2: GENERATED from the descriptor table (single source of truth), same as
+// kick2/snare2 — one z.number().min().max() leaf per row; ranges track hat2.ts.
+const Hat2ParamsSchema = z.object(
+  Object.fromEntries(
+    HAT2_DESCRIPTORS.map((d) => [d.key, z.number().min(d.min).max(d.max)]),
+  ) as Record<string, z.ZodNumber>,
+);
+
 // --- synth2: GENERATED from the descriptor table (spec §6.4) ---------------
 // One leaf schema per descriptor: `z.number().min().max()` for continuous rows,
 // `z.boolean()` for `kind:'bool'`, `z.enum(values)` for `kind:'enum'` — grouped
@@ -176,6 +185,7 @@ const EngineTypeSchema = z.union([
   z.literal('synth2'),
   z.literal('kick2'),
   z.literal('snare2'),
+  z.literal('hat2'),
 ]);
 
 const EnginesMapSchema = z.object({
@@ -187,6 +197,7 @@ const EnginesMapSchema = z.object({
   synth2: Synth2ParamsSchema,
   kick2: Kick2ParamsSchema,
   snare2: Snare2ParamsSchema,
+  hat2: Hat2ParamsSchema,
 });
 
 const TrackSchema = z.object({
@@ -225,6 +236,7 @@ export const Schemas = {
   KickParams: KickParamsSchema,
   Kick2Params: Kick2ParamsSchema,
   Snare2Params: Snare2ParamsSchema,
+  Hat2Params: Hat2ParamsSchema,
   HatParams: HatParamsSchema,
   SnareParams: SnareParamsSchema,
   ClapParams: ClapParamsSchema,
