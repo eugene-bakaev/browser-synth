@@ -343,6 +343,11 @@ const toggleDrumTrigger = (step: Step) => {
 }
 
 .tracker-container.focused {
+  /* Wider than the compact 275px rack card: the focused view adds a VEL
+     column (see .with-vel grid-template-columns below) that needs real
+     room for the range-input track, or it collapses to a few px and the
+     slider becomes impossible to drag. */
+  width: 340px;
   border-color: var(--track-color);
   box-shadow: 0 0 10px rgba(var(--track-color), 0.15);
 }

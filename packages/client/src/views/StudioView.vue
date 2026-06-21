@@ -668,7 +668,9 @@ const onInitPatch = async () => {
 }
 .sequencer-section {
   flex-shrink: 0;
-  width: 275px;
+  /* Matches .tracker-container.focused's width (Tracker.vue) so the VEL
+     column's slider track isn't squeezed down to an undraggable sliver. */
+  width: 340px;
 }
 .engine-section {
   flex: 1;
