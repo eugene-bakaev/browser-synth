@@ -97,4 +97,33 @@ describe('Kick2Kernel', () => {
     }
     expect(peak(1)).toBeGreaterThan(peak(0.25));
   });
+
+  it('droop sags the pitch down audibly over the decay (not just in the silent tail)', () => {
+    // Count positive-going zero-crossings in the AUDIBLE window of a long-decay
+    // kick. punch=0 removes the pitch sweep so we measure droop alone; click=0
+    // and drive=0 keep the body a clean sine. More droop ⇒ flatter pitch ⇒
+    // measurably fewer crossings. The OLD curve (max effect at the −60 dB tail)
+    // moved this by <1 crossing and fails the `>= 2` margin.
+    function crossings(droop: number): number {
+      const kernel = new Kick2Kernel(SR);
+      const block = defaultParamBlock();
+      block[PARAM_INDEX['tune']] = 60;
+      block[PARAM_INDEX['punch']] = 0;
+      block[PARAM_INDEX['click']] = 0;
+      block[PARAM_INDEX['drive']] = 0;
+      block[PARAM_INDEX['decay']] = 1.2; // long decay so droop has room to develop
+      block[PARAM_INDEX['droop']] = droop;
+      kernel.applyParams(block);
+      kernel.noteOn(0, 0, 0, 1);
+      const out = renderBlocks(kernel, 0, Math.ceil((SR * 0.6) / BLOCK));
+      let n = 0;
+      for (let i = Math.floor(SR * 0.05) + 1; i < SR * 0.5; i++) {
+        if (out[i - 1] < 0 && out[i] >= 0) n++;
+      }
+      return n;
+    }
+    // Full droop must drop at least ~2 full cycles out of ~27 over this window
+    // (≈ a multi-semitone sag heard while the kick is still loud).
+    expect(crossings(0) - crossings(1)).toBeGreaterThanOrEqual(2);
+  });
 });

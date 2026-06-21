@@ -136,9 +136,13 @@ export class Kick2Kernel {
         return; // remaining samples stay 0 (out was zero-filled)
       }
 
-      // Pitch envelope + 808 droop (a small downward drift over the decay).
+      // Pitch envelope + 808-style droop. The droop sags the body pitch DOWN by
+      // up to ~3 semitones at full knob (0.18 ≈ 2^(3/12) − 1), front-loaded into
+      // the AUDIBLE part of the decay via an exponential approach (time constant
+      // 0.3·ampDecay). The earlier linear `min(1, t/ampDecay)` weighting reached
+      // its max only at the −60 dB tail, so the knob was effectively silent.
       const pEnv = Math.exp(-t / pitchDecay);
-      const droopMul = 1 - droop * 0.06 * Math.min(1, t / ampDecay);
+      const droopMul = 1 - droop * 0.18 * (1 - Math.exp(-t / (ampDecay * 0.3)));
       const pitch = tune * (1 + (startMul - 1) * pEnv) * droopMul;
       this.phase += TWO_PI * pitch * dt;
       if (this.phase >= TWO_PI) this.phase -= TWO_PI;
