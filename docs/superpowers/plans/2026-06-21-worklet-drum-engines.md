@@ -309,6 +309,20 @@ git commit -m "feat(presets): factory-preset picker in the studio preset control
 
 ## Phase 3 — snare2
 
+> ✅ **COMPLETE & MERGED** to main (branch `feat/snare2-worklet-engine`, 2026-06-21,
+> via subagent-driven development — 5 tasks + polish, commits `a8dd3ae`..`e01c25e`;
+> full gate green [882 tests], browser-verified; whole-branch review READY TO MERGE).
+>
+> 📌 **Descriptor tuning DEFERRED to a later polish pass** (see docs/BACKLOG.md). The
+> shipped descriptor is the **7-param** set from this plan's high-level "Proposed
+> synthesis & params" section (`tune, bodyDecay, noiseDecay, snappy, tone, noiseHp,
+> level`; second shell partial DERIVED at a fixed 1.83×), NOT the 8-param descriptor
+> in the line below (which adds a `ratio` knob + different ranges). Implemented
+> ranges/defaults: tune 100–340/180, bodyDecay 0.02–0.4/0.1, noiseDecay 0.02–0.5/0.18,
+> snappy 0–1/0.6, tone 800–8000/3500, noiseHp 0–1 amount/0.4, level 0–1/0.9. Since the
+> descriptor is APPEND-ONLY, a `ratio` knob can still be appended later in the polish
+> pass without breaking older sessions.
+
 **Branch:** `feat/snare2`. Two tuned shell oscillators + a noise "wires" path split into HP-filtered and unfiltered bands with independent decays; `snappy` balances shell vs noise (SOS snare / TR-909 model). Follow the kick2 file structure exactly.
 
 **Descriptor (append-only order):** `tune` (shell base Hz, 80–330, def 180), `ratio` (2nd partial multiple, 1.2–2.5, def 1.6), `bodyDecay` (s, 0.02–0.5, def 0.12), `noiseDecay` (s, 0.02–0.6, def 0.2), `snappy` (0–1, def 0.5), `tone` (noise band Hz, 800–6000, def 2200), `noiseHp` (HP cutoff Hz on the wires band, 200–4000, def 1200), `level` (0–1, def 0.9).
