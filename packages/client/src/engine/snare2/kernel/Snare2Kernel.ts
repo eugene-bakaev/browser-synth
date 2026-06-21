@@ -165,8 +165,9 @@ export class Snare2Kernel {
       const wires = (white - this.lpHp) * Math.exp(-t / noiseDecay);
       const noiseSig = bodyNoise * 0.6 + wires;
 
-      // crossfade shell vs noise; a 1 ms attack ramp avoids an onset click
+      // 1 ms attack ramp avoids an onset click
       const attack = t < 0.001 ? t / 0.001 : 1;
+      // crossfade shell vs noise
       const mix = shell * (1 - snappy) + noiseSig * snappy;
 
       out[i] += mix * attack * this.velocity * level;
