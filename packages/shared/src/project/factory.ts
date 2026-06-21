@@ -5,6 +5,7 @@ import {
   DEFAULT_SNARE_PARAMS,
   DEFAULT_CLAP_PARAMS,
   DEFAULT_SYNTH2_PARAMS,
+  DEFAULT_KICK2_PARAMS,
 } from '../engines/index.js';
 import { DEFAULT_MIXER_STATE, PROJECT_SCHEMA_VERSION } from '../index.js';
 import type { Project, ProjectTrack, Step } from './types.js';
@@ -40,6 +41,7 @@ export function freshTrack(enabled = true): ProjectTrack {
       snare:  structuredClone(DEFAULT_SNARE_PARAMS),
       clap:   structuredClone(DEFAULT_CLAP_PARAMS),
       synth2: structuredClone(DEFAULT_SYNTH2_PARAMS),
+      kick2:  structuredClone(DEFAULT_KICK2_PARAMS),
     },
     mixer: { ...DEFAULT_MIXER_STATE },
     patternLength: DEFAULT_PATTERN_LENGTH,

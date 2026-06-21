@@ -5,6 +5,7 @@ import type {
   SnareEngineParams,
   ClapEngineParams,
   Synth2EngineParams,
+  Kick2EngineParams,
 } from '../engines/index.js';
 import type { EngineType, MixerState } from '../index.js';
 
@@ -28,6 +29,7 @@ export interface EngineParamsMap {
   snare: SnareEngineParams;
   clap: ClapEngineParams;
   synth2: Synth2EngineParams;
+  kick2: Kick2EngineParams;
 }
 
 export interface ProjectTrack {
