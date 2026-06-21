@@ -425,6 +425,17 @@ out[i] += (body * (1 - snappy) + wires * snappy) * this.velocity * level;
 
 ## Phase 4 — hat2
 
+> ✅ **COMPLETE on branch `feat/hat2-worklet-engine`** (2026-06-21, via subagent-
+> driven development — 5 tasks, commits `8bb3359`..`9e56175`; full gate green
+> [894 tests], browser-verified; whole-branch review READY TO MERGE, no
+> Critical/Important). Shipped the 6-param descriptor below VERBATIM. **DSP
+> refinement vs the Step-1 sketch:** both the square cluster AND the white noise are
+> routed through the HP(`hpf`)+LP(`tone`) band-shaping before the env (the sketch
+> left noise unfiltered and didn't use `tone`, which would have made `tone` a dead
+> knob); this matches the analog HatEngine's sources→bandpass→amp topology and the
+> Phase-4 intro's "HP + band tilt → envelope" flow. NOT yet merged (awaiting the
+> user's merge decision + ear-test). Presets deferred to BACKLOG (preset pool).
+
 **Branch:** `feat/hat2`. Six enharmonic square oscillators (reuse the documented 808 cluster already in `HatEngine.ts:104` — `[205.3, 369.6, 304.4, 522.7, 370.0, 800.0]`) → 1-pole HP (`hpf`) + band tilt (`tone`) → envelope; `metallic` crossfades the osc cluster vs white noise; `ring` adds ring-mod between two cluster members; `decay` sets closed↔open length.
 
 **Descriptor (append-only):** `tone` (band Hz, 3000–14000, def 9000), `decay` (s, 0.02–0.8, def 0.08), `hpf` (HP Hz, 3000–12000, def 7000), `metallic` (0–1, def 0.7), `ring` (0–1, def 0.2), `level` (0–1, def 0.8).
