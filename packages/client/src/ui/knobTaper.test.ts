@@ -63,4 +63,11 @@ describe('knobTaper', () => {
     expect(valueToPos('exp', 1e9, 20, 20000)).toBeCloseTo(1, 6); // clamped
     expect(valueToPos('exp', -5, 20, 20000)).toBeCloseTo(0, 6);  // clamped
   });
+
+  it('non-finite min/max and extreme ratios never produce NaN', () => {
+    expect(Number.isFinite(posToValue('linear', 0.5, NaN, 100))).toBe(true);
+    expect(Number.isFinite(posToValue('exp', 0.5, NaN, 100))).toBe(true);
+    expect(Number.isFinite(posToValue('exp', 0.5, 1e-300, 1e300))).toBe(true);
+    expect(Number.isFinite(valueToPos('exp', 1, 1e-300, 1e300))).toBe(true);
+  });
 });

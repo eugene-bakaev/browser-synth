@@ -12,11 +12,12 @@ const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 /** Whether exp/invexp are mathematically valid for this range. */
 function expUsable(min: number, max: number): boolean {
-  return Number.isFinite(min) && Number.isFinite(max) && min > 0 && max > min;
+  return Number.isFinite(min) && Number.isFinite(max) && min > 0 && max > min && Number.isFinite(max / min);
 }
 
 /** Forward warp w(p): [0,1] → [0,1]. */
 function warp(curve: KnobCurve, p: number, min: number, max: number): number {
+  // Guard non-finite pos up front (clamp01 would otherwise pass NaN through).
   if (!Number.isFinite(p)) return 0;
   const t = clamp01(p);
   switch (curve) {
@@ -63,7 +64,8 @@ function unwarp(curve: KnobCurve, u: number, min: number, max: number): number {
 
 /** Dial travel pos∈[0,1] → parameter value, clamped to [min,max]. */
 export function posToValue(curve: KnobCurve, pos: number, min: number, max: number): number {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max === min) return min;
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+  if (max === min) return min;
   const value = min + (max - min) * warp(curve, pos, min, max);
   return value < min ? min : value > max ? max : value;
 }
