@@ -53,6 +53,87 @@ Delivered on branch `feat/kick2-walking-skeleton` (commit `fc2cfe7`), gate green
 
 ---
 
+## Phase 1b — kick2 droop fix (make droop audible & dramatic)
+
+**Branch:** continue on `feat/kick2-walking-skeleton` (Phase 1 is unmerged) — this lands as a follow-up commit *before* kick2 merges, so the kick ships with a working droop knob.
+
+**Why:** `droop` is wired but inaudible. In `Kick2Kernel.render`, `droopMul = 1 - droop·0.06·min(1, t/ampDecay)` reaches its max (~1 semitone) only at `t = ampDecay`, which is by construction the −60 dB point of the amp env (`ampK = 6.9/ampDecay`) — the whole effect lands where the sound is already silent. During the audible window (first ~20% of the decay) the knob bends pitch by ~1% at most, masked by the much larger pitch-envelope sweep. **Fix:** deepen it (~3 semitones at full knob) and front-load it into the audible part of the decay via an exponential approach with time constant `0.3·ampDecay`. This changes only the DSP curve — `droop`'s descriptor key/index/min/max/default are untouched, so it's ABI-safe (no append-only or saved-session impact).
+
+**Files:**
+- Modify: `packages/client/src/engine/kick2/kernel/Kick2Kernel.ts:139-142`
+- Test: `packages/client/src/engine/kick2/kernel/Kick2Kernel.test.ts` (add one `it`)
+
+**Interfaces:** none change — `Kick2Kernel`'s public API and the param block layout are unchanged.
+
+- [ ] **Step 1: Write the failing test** (append inside the existing `describe('Kick2Kernel', …)` block)
+
+```ts
+  it('droop sags the pitch down audibly over the decay (not just in the silent tail)', () => {
+    // Count positive-going zero-crossings in the AUDIBLE window of a long-decay
+    // kick. punch=0 removes the pitch sweep so we measure droop alone; click=0
+    // and drive=0 keep the body a clean sine. More droop ⇒ flatter pitch ⇒
+    // measurably fewer crossings. The OLD curve (max effect at the −60 dB tail)
+    // moved this by <1 crossing and fails the `>= 2` margin.
+    function crossings(droop: number): number {
+      const kernel = new Kick2Kernel(SR);
+      const block = defaultParamBlock();
+      block[PARAM_INDEX['tune']] = 60;
+      block[PARAM_INDEX['punch']] = 0;
+      block[PARAM_INDEX['click']] = 0;
+      block[PARAM_INDEX['drive']] = 0;
+      block[PARAM_INDEX['decay']] = 1.2; // long decay so droop has room to develop
+      block[PARAM_INDEX['droop']] = droop;
+      kernel.applyParams(block);
+      kernel.noteOn(0, 0, 0, 1);
+      const out = renderBlocks(kernel, 0, Math.ceil((SR * 0.6) / BLOCK));
+      let n = 0;
+      for (let i = Math.floor(SR * 0.05) + 1; i < SR * 0.5; i++) {
+        if (out[i - 1] < 0 && out[i] >= 0) n++;
+      }
+      return n;
+    }
+    // Full droop must drop at least ~2 full cycles out of ~27 over this window
+    // (≈ a multi-semitone sag heard while the kick is still loud).
+    expect(crossings(0) - crossings(1)).toBeGreaterThanOrEqual(2);
+  });
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npm run test:client -- Kick2Kernel`
+Expected: FAIL — with the current curve `crossings(0) - crossings(1)` is ~0 (≈26.6 vs 27), below the `>= 2` margin.
+
+- [ ] **Step 3: Apply the fix** — replace the droop lines in `Kick2Kernel.render` (currently lines 139–142):
+
+```ts
+      // Pitch envelope + 808-style droop. The droop sags the body pitch DOWN by
+      // up to ~3 semitones at full knob (0.18 ≈ 2^(3/12) − 1), front-loaded into
+      // the AUDIBLE part of the decay via an exponential approach (time constant
+      // 0.3·ampDecay). The earlier linear `min(1, t/ampDecay)` weighting reached
+      // its max only at the −60 dB tail, so the knob was effectively silent.
+      const pEnv = Math.exp(-t / pitchDecay);
+      const droopMul = 1 - droop * 0.18 * (1 - Math.exp(-t / (ampDecay * 0.3)));
+      const pitch = tune * (1 + (startMul - 1) * pEnv) * droopMul;
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npm run test:client -- Kick2Kernel`
+Expected: PASS — all kick2 kernel tests green, including the new droop test (`crossings(0) − crossings(1)` ≈ 2–3).
+
+- [ ] **Step 5: Browser-verify**
+
+Dev server on :5173. Focus a kick2 track, set a long `Decay` (e.g. ≥0.8 s), place a step, Play. Sweep `Droop` 0 → max: at full knob the kick's tail should bend clearly downward in pitch (a dramatic 808-style sag). Confirm the console is clean; close the tab.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add packages/client/src/engine/kick2/kernel/Kick2Kernel.ts packages/client/src/engine/kick2/kernel/Kick2Kernel.test.ts
+git commit -m "fix(kick2): make droop audible — deepen to ~3 semitones, front-load into the audible decay"
+```
+
+---
+
 ## Phase 2 — Factory presets (+ kick2 808/909/Modern)
 
 **Branch:** `feat/drum-presets`. Adds a reusable factory-preset library and a single preset `<select>` in StudioView's preset controls (works for any engine; populated for kick2 now, snare2/hat2 in later phases). Reuses the existing `applyPreset(track, preset)` (`packages/client/src/project/preset.ts:92`).
@@ -351,6 +432,6 @@ Same shape as Task 3.3 (`hat2`). Add hat2 808/closed+open factory presets. Gate,
 
 ## Self-Review
 
-- **Spec coverage:** kick2 ✅ (Phase 1); presets ✅ (Phase 2, both modern defaults + 808/909); snare2 ✅ (Phase 3); hat2 ✅ (Phase 4). Both-as-presets and worklet-per-engine decisions honored. SOS recipes mapped per engine.
+- **Spec coverage:** kick2 ✅ (Phase 1); kick2 droop fix ✅ (Phase 1b — droop was wired but inaudible; deepened + front-loaded into the audible decay, ABI-safe DSP-only change); presets ✅ (Phase 2, both modern defaults + 808/909); snare2 ✅ (Phase 3); hat2 ✅ (Phase 4). Both-as-presets and worklet-per-engine decisions honored. SOS recipes mapped per engine.
 - **Placeholder scan:** Phases 3–4 wiring steps point at the concrete kick2 diff (`fc2cfe7`) rather than re-printing identical boilerplate — acceptable per task right-sizing (mechanical, one-spot edits with exact files listed). Genuinely new code (kernels, presets, the StudioView picker) is shown in full.
 - **Type consistency:** every kernel uses the same `Kick2Kernel`-shaped public API; descriptor keys match each params interface (asserted by per-engine contract tests); `factoryPresetsFor`/`FactoryPreset` names are stable across Tasks 2.1/2.2/3.3/4.3.
