@@ -93,7 +93,7 @@ unhealed snapshot leaf) clamps to the range rather than throwing.
 
 ## 4. Architecture (Approach A — descriptor-declared curve, pure taper module)
 
-Five touch points. The value flowing through `v-model` → store → sync → param
+Four touch points. The value flowing through `v-model` → store → sync → param
 block → kernel is **never warped**, so there is no ABI, migration, or sync impact.
 
 ### 4.1 Shared — curve type + optional descriptor field
@@ -118,22 +118,14 @@ export function valueToPos(curve: KnobCurve, value: number, min: number, max: nu
 
 No Vue, no audio → unit-tested directly.
 
-### 4.3 Client — smart-default resolver
-Co-located with the taper module:
+Curve assignments are **explicit** on the descriptor rows (§5) — not derived from
+the kernel `taper` field. (An earlier draft derived `exp` from
+`taper: 'expOctaves'`; that was dropped because the synth2 panel is *not*
+descriptor-driven — see §4.4 — so derivation saved no edits, and the §7 contract
+test needs the assignments to live on the descriptors to be checkable.) An omitted
+`curve` means `linear`, handled by the Knob prop default — no resolver needed.
 
-```ts
-// curve omitted on a descriptor → derive it:
-//   a synth2 row with taper 'expOctaves' → 'exp';  everything else → 'linear'.
-// An explicit descriptor.curve always wins.
-export function resolveCurve(d: { curve?: KnobCurve; taper?: 'linear' | 'expOctaves' }): KnobCurve
-```
-
-This makes `filter.cutoff`, every `env*.{a,d,r}`, and both `lfo*.rate` resolve to
-`exp` with **zero descriptor edits** (they are already `taper: 'expOctaves'`). We
-only hand-write `curve` to *override* the default (the drum freq/time params, and
-the one `s` pick on resonance).
-
-### 4.4 Client — `Knob.vue` gains a `curve` prop
+### 4.3 Client — `Knob.vue` gains a `curve` prop
 - New prop `curve?: KnobCurve`, default `'linear'`. A knob that doesn't pass it
   behaves exactly as today (full back-compat).
 - Two call sites route through the module:
@@ -147,41 +139,50 @@ the one `s` pick on resonance).
 - `formattedValue` is **untouched** — the readout always shows the real value, so
   it stays honest under any curve.
 
-### 4.5 Client — panels pass the curve through
-`Synth2Panel.vue`, `Kick2Panel.vue`, `Snare2Panel.vue`, `Hat2Panel.vue` already
-`v-for` over their descriptor tables, so each gains a one-line
-`:curve="resolveCurve(d)"` on its `<Knob>`.
+### 4.4 Client — panels pass the curve through
+The two panel styles differ and are wired accordingly:
 
-### 4.6 Data flow
+- **Drum panels** (`Kick2Panel.vue`, `Snare2Panel.vue`, `Hat2Panel.vue`) **are**
+  descriptor-driven (`v-for="d in <ENGINE>_DESCRIPTORS"`), so each gains a one-line
+  `:curve="d.curve"` on its `<Knob>` (omitted ⇒ Knob default `linear`).
+- **`Synth2Panel.vue` is hand-written** — ~40 individual `<Knob>` tags with
+  hardcoded `:min`/`:max`/`:step` (it does not iterate the descriptor table). The
+  per-knob `curve` is therefore a static literal on the relevant knobs:
+  `curve="exp"` on `filter.cutoff`, the nine `env*.{a,d,r}`, and both `lfo*.rate`;
+  `curve="s"` on `filter.resonance`. This matches the file's existing style (it
+  already duplicates `min`/`max` as literals); the descriptor `curve` tags (§5)
+  remain the canonical source the §7 contract test validates.
+
+### 4.5 Data flow
 
 ```
-descriptor.curve (or resolveCurve default)
-        │  (read once, in the panel)
+descriptor.curve  (canonical; drum panels read it, synth2 mirrors it as literals)
+        │
         ▼
   <Knob :curve> ──► knobTaper.posToValue / valueToPos   (dial angle + drag only)
-        │
+        │            (omitted curve ⇒ Knob prop default 'linear')
         ▼
    v-model value  ──►  UNCHANGED: project store → sync → param block → kernel
    (real Hz / ms / fraction, never warped)
 ```
 
-Blast radius: 1 shared type + 1 optional field × 2 descriptor shapes; 1 new pure
-client module; `Knob.vue`; a one-line prop in 4 panels. No kernel, schema,
-normalize, factory, or storage changes.
+Blast radius: 1 shared type + 1 optional field × 2 descriptor shapes + the curve
+tags on the listed rows; 1 new pure client module; `Knob.vue`; `:curve="d.curve"`
+in the 3 drum panels and `curve` literals on the ~13 non-linear synth2 knobs. No
+kernel, schema, normalize, factory, or storage changes.
 
 ## 5. Per-Param Curve Assignment
 
-Auto-defaults via `resolveCurve` cover the big wins; only the rows below are
-hand-tagged.
+Every assignment is an explicit `curve` tag on the descriptor row. Rows not listed
+omit `curve` (⇒ `linear`).
 
-**synth2 — `exp` automatically (zero edits, from `taper: 'expOctaves'`):**
-`filter.cutoff` (20–20k), all nine `env{1,2,3}.{a,d,r}` (0.001–10 s),
-`lfo1.rate`, `lfo2.rate` (0.01–2000 Hz).
+**synth2 — `curve: 'exp'`:** `filter.cutoff` (20–20k), all nine
+`env{1,2,3}.{a,d,r}` (0.001–10 s), `lfo1.rate`, `lfo2.rate` (0.01–2000 Hz).
 
-**synth2 — one explicit override:** `filter.resonance` (0–1) → **`s`** (finer
-control near self-oscillation at the top and near zero). Everything else stays
-`linear`: bipolar `coarse`/`fine` are already perceptually linear (semitones /
-cents); `morph`, `level`, `noise.color`, `fm.*` are acceptable linear (YAGNI).
+**synth2 — `curve: 's'`:** `filter.resonance` (0–1) (finer control near
+self-oscillation at the top and near zero). Everything else stays `linear`:
+bipolar `coarse`/`fine` are already perceptually linear (semitones / cents);
+`morph`, `level`, `noise.color`, `fm.*` are acceptable linear (YAGNI).
 
 **drums — explicit `curve: 'exp'` (frequency + time params):**
 
