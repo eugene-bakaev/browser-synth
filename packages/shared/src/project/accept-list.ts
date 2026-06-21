@@ -23,6 +23,7 @@ import { Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
 import { SYNTH2_DESCRIPTORS } from '../engines/synth2-descriptors.js';
 import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 import { KICK2_DESCRIPTORS } from '../engines/kick2.js';
+import { SNARE2_DESCRIPTORS } from '../engines/snare2.js';
 
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -73,6 +74,8 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   // per row, nested as engines.kick2.<field> (length-5 paths, like the other
   // drums).
   ...KICK2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'kick2', d.key]),
+  // snare2 params — GENERATED from the descriptor table (same as kick2).
+  ...SNARE2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'snare2', d.key]),
   // Synth2 params — GENERATED from the descriptor table (spec §6.4): one
   // leaf pattern per descriptor, nested as engines.synth2.<module>.<field>.
   ...SYNTH2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'synth2', ...d.key.split('.')]),

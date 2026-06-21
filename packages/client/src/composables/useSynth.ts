@@ -8,6 +8,7 @@ import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine }  from '../engine/ClapEngine';
 import { Synth2Engine } from '../engine/Synth2Engine';
 import { Kick2Engine } from '../engine/Kick2Engine';
+import { Snare2Engine } from '../engine/Snare2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
@@ -24,6 +25,9 @@ const synth2WorkletUrl = '/worklets/synth2-processor.js';
 
 // kick2 worklet — same esbuild-bundled static-asset story as synth2.
 const kick2WorkletUrl = '/worklets/kick2-processor.js';
+
+// snare2 worklet — same esbuild-bundled static-asset story as kick2.
+const snare2WorkletUrl = '/worklets/snare2-processor.js';
 
 import {
   type Project,
@@ -58,7 +62,7 @@ const sequencer = reactive(new Sequencer());
 // === Engine factories — unchanged ===
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
 
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2'];
+const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2'];
 
 const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
   synth:  (ctx, dest) => new SynthEngine(ctx, dest),
@@ -68,6 +72,7 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
   clap:   (ctx, dest) => new ClapEngine(ctx, dest),
   synth2: (ctx, dest) => new Synth2Engine(ctx, dest),
   kick2:  (ctx, dest) => new Kick2Engine(ctx, dest),
+  snare2: (ctx, dest) => new Snare2Engine(ctx, dest),
 };
 
 // Mixer volume is stored as slider position 0..1 (perceptual). The actual
@@ -535,6 +540,10 @@ async function buildAudioState(): Promise<AudioState> {
   // kick2 worklet must likewise be registered before any Kick2Engine constructs
   // an AudioWorkletNode('kick2').
   await ctx.audioWorklet.addModule(kick2WorkletUrl);
+
+  // snare2 worklet must likewise be registered before any Snare2Engine constructs
+  // an AudioWorkletNode('snare2').
+  await ctx.audioWorklet.addModule(snare2WorkletUrl);
 
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-12, ctx.currentTime);

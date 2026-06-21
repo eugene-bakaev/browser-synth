@@ -7,6 +7,7 @@ import { SnareEngine } from '../engine/SnareEngine';
 import { ClapEngine }  from '../engine/ClapEngine';
 import { Synth2Engine } from '../engine/Synth2Engine';
 import { Kick2Engine } from '../engine/Kick2Engine';
+import { Snare2Engine } from '../engine/Snare2Engine';
 import type {
   EngineType,
   EngineParamsMap,
@@ -45,9 +46,10 @@ const DEFAULTS: { [K in EngineType]: EngineParamsMap[K] } = {
   clap:   ClapEngine.DEFAULT_PARAMS,
   synth2: Synth2Engine.DEFAULT_PARAMS,
   kick2:  Kick2Engine.DEFAULT_PARAMS,
+  snare2: Snare2Engine.DEFAULT_PARAMS,
 };
 
-const ALL_ENGINE_TYPES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2'];
+const ALL_ENGINE_TYPES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2'];
 
 function isEngineType(s: unknown): s is EngineType {
   return typeof s === 'string' && (ALL_ENGINE_TYPES as string[]).includes(s);

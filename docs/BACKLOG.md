@@ -84,6 +84,26 @@ preset)` at `preset.ts`). No new persistence — presets are spread over the eng
 When we build the broader "preset pool," fold these per-engine sets into it rather than
 shipping the dropdown standalone.
 
+### snare2 voicing / descriptor polish pass
+**Reported:** 2026-06-21 · **Status:** open (deferred) · **Area:** `packages/shared/src/engines/snare2.ts` (+ kernel `Snare2Kernel.ts`)
+
+snare2 shipped (merged) with a deliberately simple **7-param** descriptor — `tune,
+bodyDecay, noiseDecay, snappy, tone, noiseHp, level` — and the second shell partial
+DERIVED at a fixed `SHELL_RATIO = 1.83×`. The plan's detailed Phase-3 section had
+also sketched an **8-param** variant adding a tunable **`ratio`** knob (and slightly
+different ranges + a Hz-valued `noiseHp`). We chose the 7-param version to ship; the
+voicing/ranges were tuned by analysis + browser objective checks, not yet by ear.
+
+**Polish-pass items (all non-blocking; descriptor is APPEND-ONLY so additions are safe):**
+- Ear-test the default voicing; adjust ranges/defaults if needed (these are pre-…
+  no — snare2 is now shipped, so ranges are an ABI; range *narrowing* is unsafe,
+  range *widening* and default changes are safe).
+- Decide whether to **append** a `ratio` knob (tunable 2nd-partial multiple, e.g.
+  1.2–2.5) for more timbral range — goes at the end of the descriptor (append-only).
+- Consider per-mode shell decay or a slight shell pitch-drop for more "crack."
+
+Fold this into the broader drum-voicing polish whenever the polish stage happens.
+
 ## Resolved
 
 ### Sequencer step OCT / LEN fields are hard to edit
