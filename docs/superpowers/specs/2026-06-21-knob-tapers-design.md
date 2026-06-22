@@ -237,4 +237,5 @@ All drum `percent` params (`punch`, `click`, `drive`, `droop`, `level`,
   control near max) can adopt it without new plumbing.
 - The kernel `taper: 'expOctaves'` field is deliberately left intact and separate
   from `curve` — they encode different concerns (modulation scaling vs. UI
-  response). `resolveCurve` only *reads* `taper` to pick a sensible UI default.
+  response). The two are independent: `curve` is assigned explicitly on the
+  descriptor rows (§4.2 / §5), never derived from `taper`.

@@ -26,11 +26,19 @@ function startDrag(host: HTMLElement, clientY: number) {
 }
 
 let mounted: { app: App; host: HTMLElement } | null = null;
+// The curve tests mount Knobs with varied props (and one mounts two at once);
+// they register here so this same afterEach tears them all down.
+const curveMounts: { app: App; host: HTMLElement }[] = [];
 
 afterEach(() => {
   mounted?.app.unmount();
   mounted?.host.remove();
   mounted = null;
+  for (const { app, host } of curveMounts) {
+    app.unmount();
+    host.remove();
+  }
+  curveMounts.length = 0;
   vi.restoreAllMocks();
 });
 
@@ -101,47 +109,34 @@ function dialRotation(el: HTMLElement): number {
   return m ? parseFloat(m[1]) : NaN;
 }
 
+/** Mount a Knob with arbitrary props (the curve tests vary min/max/curve),
+ *  registered for teardown by the shared afterEach. Returns the host element. */
+function mountCurve(props: Record<string, unknown>): HTMLElement {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const app = createApp(Knob, props);
+  app.mount(host);
+  curveMounts.push({ app, host });
+  return host;
+}
+
 describe('Knob curve prop', () => {
   it('exp curve puts the geometric-mean value at the dial centre (angle ~0)', () => {
-    const { host, app } = mountKnob();
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    const testApp = createApp(Knob, {
+    const el = mountCurve({
       label: 'Cutoff', min: 20, max: 20000, step: 1,
       modelValue: Math.sqrt(20 * 20000), curve: 'exp',
     });
-    testApp.mount(el);
     expect(dialRotation(el)).toBeCloseTo(0, 0); // -135 + 0.5 * 270
-    testApp.unmount();
-    el.remove();
   });
 
   it('without a curve prop, the arithmetic midpoint sits at the dial centre', () => {
-    const { host, app } = mountKnob();
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    const testApp = createApp(Knob, { label: 'X', min: 0, max: 100, step: 1, modelValue: 50 });
-    testApp.mount(el);
+    const el = mountCurve({ label: 'X', min: 0, max: 100, step: 1, modelValue: 50 });
     expect(dialRotation(el)).toBeCloseTo(0, 0);
-    testApp.unmount();
-    el.remove();
   });
 
   it('exp curve rotates a low value well off the floor (vs linear)', () => {
-    const expEl = document.createElement('div');
-    document.body.appendChild(expEl);
-    const expApp = createApp(Knob, { label: 'C', min: 20, max: 20000, step: 1, modelValue: 200, curve: 'exp' });
-    expApp.mount(expEl);
-    const expAngle = dialRotation(expEl);
-    expApp.unmount();
-    expEl.remove();
-
-    const linEl = document.createElement('div');
-    document.body.appendChild(linEl);
-    const linApp = createApp(Knob, { label: 'C', min: 20, max: 20000, step: 1, modelValue: 200 });
-    linApp.mount(linEl);
-    expect(expAngle).toBeGreaterThan(dialRotation(linEl) + 50);
-    linApp.unmount();
-    linEl.remove();
+    const expEl = mountCurve({ label: 'C', min: 20, max: 20000, step: 1, modelValue: 200, curve: 'exp' });
+    const linEl = mountCurve({ label: 'C', min: 20, max: 20000, step: 1, modelValue: 200 });
+    expect(dialRotation(expEl)).toBeGreaterThan(dialRotation(linEl) + 50);
   });
 });
