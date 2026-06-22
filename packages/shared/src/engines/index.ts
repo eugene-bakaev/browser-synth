@@ -1,3 +1,4 @@
+export * from './knob-curve.js';
 export * from './synth.js';
 export * from './kick.js';
 export * from './hat.js';

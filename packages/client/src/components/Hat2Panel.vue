@@ -14,6 +14,7 @@
             :step="(d.max - d.min) / 100"
             :defaultValue="d.default"
             :format="d.format"
+            :curve="d.curve"
             v-model="params[d.key as keyof typeof params]"
             :syncPath="ks.pathFor(d.key)"
             @gesture-end="ks.end(d.key)"

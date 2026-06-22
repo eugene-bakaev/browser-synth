@@ -5,7 +5,7 @@ import Knob from './Knob.vue';
 
 // Mounted without test-utils: createApp + a host element is enough to drive
 // the pointer handlers, and emit listeners arrive as `onX` props.
-function mountKnob(onUpdate: (v: number) => void) {
+function mountKnob(onUpdate?: (v: number) => void) {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const app = createApp(Knob, {
@@ -14,7 +14,7 @@ function mountKnob(onUpdate: (v: number) => void) {
     max: 100,
     step: 1,
     modelValue: 50,
-    'onUpdate:modelValue': onUpdate,
+    'onUpdate:modelValue': onUpdate || (() => {}),
   });
   app.mount(host);
   return { app, host };
@@ -26,11 +26,19 @@ function startDrag(host: HTMLElement, clientY: number) {
 }
 
 let mounted: { app: App; host: HTMLElement } | null = null;
+// The curve tests mount Knobs with varied props (and one mounts two at once);
+// they register here so this same afterEach tears them all down.
+const curveMounts: { app: App; host: HTMLElement }[] = [];
 
 afterEach(() => {
   mounted?.app.unmount();
   mounted?.host.remove();
   mounted = null;
+  for (const { app, host } of curveMounts) {
+    app.unmount();
+    host.remove();
+  }
+  curveMounts.length = 0;
   vi.restoreAllMocks();
 });
 
@@ -91,5 +99,44 @@ describe('Knob missing-value guard', () => {
     expect((host.querySelector('.knob-value')?.textContent ?? '').trim()).toBe('');
     app.unmount();
     host.remove();
+  });
+});
+
+/** The inner dial <g> carries `transform="rotate(angle 25 25)"`. */
+function dialRotation(el: HTMLElement): number {
+  const g = el.querySelector('g[transform]');
+  const m = g?.getAttribute('transform')?.match(/rotate\(\s*([-\d.]+)/);
+  return m ? parseFloat(m[1]) : NaN;
+}
+
+/** Mount a Knob with arbitrary props (the curve tests vary min/max/curve),
+ *  registered for teardown by the shared afterEach. Returns the host element. */
+function mountCurve(props: Record<string, unknown>): HTMLElement {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const app = createApp(Knob, props);
+  app.mount(host);
+  curveMounts.push({ app, host });
+  return host;
+}
+
+describe('Knob curve prop', () => {
+  it('exp curve puts the geometric-mean value at the dial centre (angle ~0)', () => {
+    const el = mountCurve({
+      label: 'Cutoff', min: 20, max: 20000, step: 1,
+      modelValue: Math.sqrt(20 * 20000), curve: 'exp',
+    });
+    expect(dialRotation(el)).toBeCloseTo(0, 0); // -135 + 0.5 * 270
+  });
+
+  it('without a curve prop, the arithmetic midpoint sits at the dial centre', () => {
+    const el = mountCurve({ label: 'X', min: 0, max: 100, step: 1, modelValue: 50 });
+    expect(dialRotation(el)).toBeCloseTo(0, 0);
+  });
+
+  it('exp curve rotates a low value well off the floor (vs linear)', () => {
+    const expEl = mountCurve({ label: 'C', min: 20, max: 20000, step: 1, modelValue: 200, curve: 'exp' });
+    const linEl = mountCurve({ label: 'C', min: 20, max: 20000, step: 1, modelValue: 200 });
+    expect(dialRotation(expEl)).toBeGreaterThan(dialRotation(linEl) + 50);
   });
 });

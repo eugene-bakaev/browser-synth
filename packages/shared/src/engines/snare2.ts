@@ -15,12 +15,12 @@
 import { buildDrumDefaults, type DrumParamDescriptor } from './drum-descriptors.js';
 
 // APPEND-ONLY (block index = array position; see drum-descriptors.ts).
-export const SNARE2_DESCRIPTORS = [
-  { key: 'tune',       min: 100,  max: 340,  default: 180,  label: 'Tune',   format: 'hz' },
-  { key: 'bodyDecay',  min: 0.02, max: 0.4,  default: 0.1,  label: 'Body',   format: 'ms' },
-  { key: 'noiseDecay', min: 0.02, max: 0.5,  default: 0.18, label: 'Snares', format: 'ms' },
+export const SNARE2_DESCRIPTORS: readonly DrumParamDescriptor[] = [
+  { key: 'tune',       min: 100,  max: 340,  default: 180,  label: 'Tune',   format: 'hz', curve: 'exp' },
+  { key: 'bodyDecay',  min: 0.02, max: 0.4,  default: 0.1,  label: 'Body',   format: 'ms', curve: 'exp' },
+  { key: 'noiseDecay', min: 0.02, max: 0.5,  default: 0.18, label: 'Snares', format: 'ms', curve: 'exp' },
   { key: 'snappy',     min: 0,    max: 1,    default: 0.6,  label: 'Snappy', format: 'percent' },
-  { key: 'tone',       min: 800,  max: 8000, default: 3500, label: 'Tone',   format: 'hz' },
+  { key: 'tone',       min: 800,  max: 8000, default: 3500, label: 'Tone',   format: 'hz', curve: 'exp' },
   { key: 'noiseHp',    min: 0,    max: 1,    default: 0.4,  label: 'HP',     format: 'percent' },
   { key: 'level',      min: 0,    max: 1,    default: 0.9,  label: 'Level',  format: 'percent' },
 ] as const satisfies readonly DrumParamDescriptor[];
