@@ -64,8 +64,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue';
-import type { Path } from '@fiddle/shared';
+import type { Path, KnobCurve } from '@fiddle/shared';
 import { touchedFor } from '../sync/presence';
+import { posToValue, valueToPos } from '../ui/knobTaper';
 
 const props = withDefaults(defineProps<{
   label: string;
@@ -75,6 +76,7 @@ const props = withDefaults(defineProps<{
   modelValue: number;
   defaultValue?: number;
   format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+  curve?: KnobCurve;
   // The sync path this knob writes to, e.g. ['tracks',0,'engines','synth','filterCutoff'].
   // Optional: unsynced knobs (and, until the panels plumb it through, all knobs)
   // leave it undefined and the collaboration affordances stay dormant.
@@ -82,6 +84,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   defaultValue: undefined,
   format: undefined,
+  curve: 'linear',
   syncPath: undefined,
 });
 
@@ -150,8 +153,8 @@ const formattedValue = computed(() => {
 });
 
 const currentAngle = computed(() => {
-  const pct = (props.modelValue - props.min) / (props.max - props.min);
-  return -135 + pct * 270;
+  const pos = valueToPos(props.curve, props.modelValue, props.min, props.max);
+  return -135 + pos * 270;
 });
 
 const dialTransform = computed(() => {
@@ -187,8 +190,8 @@ const backgroundPath = computed(() => {
 });
 
 const activePath = computed(() => {
-  const pct = (props.modelValue - props.min) / (props.max - props.min);
-  const endAngle = -135 + pct * 270;
+  const pos = valueToPos(props.curve, props.modelValue, props.min, props.max);
+  const endAngle = -135 + pos * 270;
   return describeArc(25, 25, 18, -135, endAngle);
 });
 
@@ -206,27 +209,48 @@ const onPointerDown = (e: PointerEvent) => {
   e.preventDefault();
 };
 
+// Round to `sig` significant figures — used for tapered knobs, which have no
+// value-space `step` to snap to (snapping happens in position space via the drag).
+const roundSig = (x: number, sig: number): number => {
+  if (x === 0 || !Number.isFinite(x)) return x;
+  const mag = Math.pow(10, sig - Math.ceil(Math.log10(Math.abs(x))));
+  return Math.round(x * mag) / mag;
+};
+
 const onPointerMove = (e: PointerEvent) => {
   const deltaY = startY - e.clientY;
   const isFineTune = e.shiftKey;
   const dragRange = isFineTune ? 800 : 200; // Shift for fine-tuning
-  const valueRange = props.max - props.min;
-  const valueDelta = (deltaY / dragRange) * valueRange;
-  
-  let newValue = startValue + valueDelta;
-  newValue = Math.max(props.min, Math.min(props.max, newValue));
-  
-  const stepsCount = Math.round((newValue - props.min) / props.step);
-  newValue = props.min + stepsCount * props.step;
-  newValue = Math.max(props.min, Math.min(props.max, newValue));
-  
-  const getPrecision = (num: number) => {
-    const parts = num.toString().split('.');
-    return parts.length > 1 ? parts[1].length : 0;
-  };
-  const precision = getPrecision(props.step);
-  newValue = parseFloat(newValue.toFixed(precision));
-  
+
+  if (props.curve === 'linear') {
+    // Unchanged linear path: value-space delta + step snapping.
+    const valueRange = props.max - props.min;
+    const valueDelta = (deltaY / dragRange) * valueRange;
+
+    let newValue = startValue + valueDelta;
+    newValue = Math.max(props.min, Math.min(props.max, newValue));
+
+    const stepsCount = Math.round((newValue - props.min) / props.step);
+    newValue = props.min + stepsCount * props.step;
+    newValue = Math.max(props.min, Math.min(props.max, newValue));
+
+    const getPrecision = (num: number) => {
+      const parts = num.toString().split('.');
+      return parts.length > 1 ? parts[1].length : 0;
+    };
+    const precision = getPrecision(props.step);
+    newValue = parseFloat(newValue.toFixed(precision));
+
+    emit('update:modelValue', newValue);
+    return;
+  }
+
+  // Non-linear: drag in position space so the feel is uniform in perceptual
+  // space (equal ratio per pixel on exp). No value-space step; round for storage.
+  const startPos = valueToPos(props.curve, startValue, props.min, props.max);
+  const newPos = Math.max(0, Math.min(1, startPos + deltaY / dragRange));
+  const newValue = roundSig(posToValue(props.curve, newPos, props.min, props.max), 4);
+
   emit('update:modelValue', newValue);
 };
 
