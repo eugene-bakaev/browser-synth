@@ -9,6 +9,7 @@ import { Synth2Engine } from '../engine/Synth2Engine';
 import { Kick2Engine } from '../engine/Kick2Engine';
 import { Snare2Engine } from '../engine/Snare2Engine';
 import { Hat2Engine } from '../engine/Hat2Engine';
+import { Clap2Engine } from '../engine/Clap2Engine';
 import type { Step } from '../sequencer/Sequencer';
 import {
   type Project,
@@ -47,6 +48,7 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
       kick2:  deepMerge(Kick2Engine.DEFAULT_PARAMS,  loadedEngines.kick2),
       snare2: deepMerge(Snare2Engine.DEFAULT_PARAMS, loadedEngines.snare2),
       hat2:   deepMerge(Hat2Engine.DEFAULT_PARAMS,   loadedEngines.hat2),
+      clap2:  deepMerge(Clap2Engine.DEFAULT_PARAMS,  loadedEngines.clap2),
     },
     mixer: deepMerge(DEFAULT_MIXER_STATE, t.mixer),
     // Clamp on load: a corrupted/hand-edited save with patternLength 0 (or out of
@@ -146,4 +148,4 @@ export function replaceProject(target: Project, source: Project): void {
   }
 }
 
-const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2'] as const;
+const ENGINE_KEYS = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2', 'clap2'] as const;

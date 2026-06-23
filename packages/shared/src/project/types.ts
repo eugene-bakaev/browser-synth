@@ -8,6 +8,7 @@ import type {
   Kick2EngineParams,
   Snare2EngineParams,
   Hat2EngineParams,
+  Clap2EngineParams,
 } from '../engines/index.js';
 import type { EngineType, MixerState } from '../index.js';
 
@@ -34,6 +35,7 @@ export interface EngineParamsMap {
   kick2: Kick2EngineParams;
   snare2: Snare2EngineParams;
   hat2: Hat2EngineParams;
+  clap2: Clap2EngineParams;
 }
 
 export interface ProjectTrack {

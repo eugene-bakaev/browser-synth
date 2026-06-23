@@ -10,6 +10,7 @@ import { Synth2Engine } from '../engine/Synth2Engine';
 import { Kick2Engine } from '../engine/Kick2Engine';
 import { Snare2Engine } from '../engine/Snare2Engine';
 import { Hat2Engine } from '../engine/Hat2Engine';
+import { Clap2Engine } from '../engine/Clap2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
@@ -32,6 +33,9 @@ const snare2WorkletUrl = '/worklets/snare2-processor.js';
 
 // hat2 worklet — same esbuild-bundled static-asset story as snare2.
 const hat2WorkletUrl = '/worklets/hat2-processor.js';
+
+// clap2 worklet — same esbuild-bundled static-asset story as hat2.
+const clap2WorkletUrl = '/worklets/clap2-processor.js';
 
 import {
   type Project,
@@ -66,7 +70,7 @@ const sequencer = reactive(new Sequencer());
 // === Engine factories — unchanged ===
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
 
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2'];
+const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2', 'clap2'];
 
 const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
   synth:  (ctx, dest) => new SynthEngine(ctx, dest),
@@ -78,6 +82,7 @@ const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) =
   kick2:  (ctx, dest) => new Kick2Engine(ctx, dest),
   snare2: (ctx, dest) => new Snare2Engine(ctx, dest),
   hat2:   (ctx, dest) => new Hat2Engine(ctx, dest),
+  clap2:  (ctx, dest) => new Clap2Engine(ctx, dest),
 };
 
 // Mixer volume is stored as slider position 0..1 (perceptual). The actual
@@ -553,6 +558,10 @@ async function buildAudioState(): Promise<AudioState> {
   // hat2 worklet must likewise be registered before any Hat2Engine constructs an
   // AudioWorkletNode('hat2').
   await ctx.audioWorklet.addModule(hat2WorkletUrl);
+
+  // clap2 worklet must likewise be registered before any Clap2Engine constructs an
+  // AudioWorkletNode('clap2').
+  await ctx.audioWorklet.addModule(clap2WorkletUrl);
 
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-12, ctx.currentTime);
