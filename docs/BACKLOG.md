@@ -104,6 +104,41 @@ voicing/ranges were tuned by analysis + browser objective checks, not yet by ear
 
 Fold this into the broader drum-voicing polish whenever the polish stage happens.
 
+### clap2 voicing — doesn't sound like a convincing hand-clap
+**Reported:** 2026-06-23 · **Status:** open (deferred) · **Area:** `packages/client/src/engine/clap2/kernel/Clap2Kernel.ts` (+ descriptor `packages/shared/src/engines/clap2.ts`)
+
+clap2 shipped (merged) end-to-end and is technically correct — the worklet loads,
+params persist, the perceptual tapers and Bursts integer format all verified — but on
+ear-test it **does not sound close to a real hand-clap**. Merged anyway by user
+decision; the sound is the open item.
+
+The current model (the 909 "burst+room" recipe from the plan): white noise → fixed-Q
+(1.2) Chamberlin SVF bandpass at `tone`, gated by a burst train of `bursts` (2–5)
+transients spaced by `spread` (each 0.5 ms attack + `exp(body)` decay), summed with one
+longer `exp(room)` reverberant tail, balanced by `mix`. Deterministic xorshift32 noise.
+
+**Why it likely falls short (hypotheses to test by ear, not yet diagnosed):**
+- The burst transients may be too uniform — real claps have **irregular** inter-burst
+  spacing and decreasing amplitude across the 3–4 slaps, not even spacing/equal level.
+- A single fixed-Q bandpass is a thin spectral model; real claps have a broader,
+  resonant **hand-cavity formant** plus more high-frequency content on the attack.
+- The "room" tail may read as reverb rather than the diffuse final slap; its
+  shape/level relative to the bursts is suspect.
+- 0.5 ms attack on each burst may be too soft — clap transients are sharper.
+
+**Polish-pass items (descriptor is APPEND-ONLY, so additions are safe; range
+*narrowing* is unsafe post-merge, widening + default changes are safe):**
+- Add per-burst amplitude decay and slight randomized spacing (deterministic, seeded)
+  so the slaps aren't a uniform train.
+- Revisit the spectral shaping — wider/voiced bandpass or a small formant stack;
+  consider more attack brightness.
+- Re-balance burst vs. room and re-voice the room tail; ear-test against reference
+  909/human claps.
+- Consider appending a knob (e.g. `attack` sharpness or burst-decay slope) if the
+  fixed values prove too limiting — append at the end of the descriptor.
+
+Fold into the broader drum-voicing polish stage alongside snare2/kick2/hat2.
+
 ## Resolved
 
 ### Sequencer step OCT / LEN fields are hard to edit
