@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SYNTH2_DESCRIPTORS, KICK2_DESCRIPTORS, SNARE2_DESCRIPTORS, HAT2_DESCRIPTORS,
+  SYNTH2_DESCRIPTORS, KICK2_DESCRIPTORS, SNARE2_DESCRIPTORS, HAT2_DESCRIPTORS, CLAP2_DESCRIPTORS,
 } from './index.js';
 
 const ALL = [
@@ -8,6 +8,7 @@ const ALL = [
   ['kick2', KICK2_DESCRIPTORS],
   ['snare2', SNARE2_DESCRIPTORS],
   ['hat2', HAT2_DESCRIPTORS],
+  ['clap2', CLAP2_DESCRIPTORS],
 ] as const;
 
 describe('knob curve assignments', () => {
@@ -49,5 +50,9 @@ describe('knob curve assignments', () => {
     expect(has(HAT2_DESCRIPTORS, 'tone')).toBe('exp');
     expect(has(HAT2_DESCRIPTORS, 'decay')).toBe('exp');
     expect(has(HAT2_DESCRIPTORS, 'hpf')).toBe('exp');
+    expect(has(CLAP2_DESCRIPTORS, 'tone')).toBe('exp');
+    expect(has(CLAP2_DESCRIPTORS, 'spread')).toBe('exp');
+    expect(has(CLAP2_DESCRIPTORS, 'body')).toBe('exp');
+    expect(has(CLAP2_DESCRIPTORS, 'room')).toBe('exp');
   });
 });
