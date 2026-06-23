@@ -25,6 +25,7 @@ import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 import { KICK2_DESCRIPTORS } from '../engines/kick2.js';
 import { SNARE2_DESCRIPTORS } from '../engines/snare2.js';
 import { HAT2_DESCRIPTORS } from '../engines/hat2.js';
+import { CLAP2_DESCRIPTORS } from '../engines/clap2.js';
 
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
@@ -79,6 +80,8 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ...SNARE2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'snare2', d.key]),
   // hat2 params — GENERATED from the descriptor table (same as kick2/snare2).
   ...HAT2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'hat2', d.key]),
+  // clap2 params — GENERATED from the descriptor table (same as kick2/snare2/hat2).
+  ...CLAP2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'clap2', d.key]),
   // Synth2 params — GENERATED from the descriptor table (spec §6.4): one
   // leaf pattern per descriptor, nested as engines.synth2.<module>.<field>.
   ...SYNTH2_DESCRIPTORS.map(d => ['tracks', '*', 'engines', 'synth2', ...d.key.split('.')]),

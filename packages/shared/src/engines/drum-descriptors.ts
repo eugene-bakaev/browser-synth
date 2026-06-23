@@ -28,8 +28,13 @@ export interface DrumParamDescriptor {
   default: number;
   /** Panel knob label. */
   label: string;
-  /** Panel knob display format. */
-  format: DrumKnobFormat;
+  /** Panel knob display format. Omitted ⇒ raw-number readout (Knob.vue renders
+   *  val.toString()), used by integer count knobs like clap2's `bursts`. */
+  format?: DrumKnobFormat;
+  /** Optional linear drag-snap step. Omitted ⇒ the panel's default (max−min)/100.
+   *  Only meaningful for LINEAR knobs — the exp/s drag path snaps in position
+   *  space (roundSig) and ignores `step`. */
+  step?: number;
   /** Optional UI knob response curve (presentational only). Omitted ⇒ 'linear'. */
   curve?: KnobCurve;
 }

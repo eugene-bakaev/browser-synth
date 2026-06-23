@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build:worklet": "esbuild src/engine/synth2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/synth2-processor.js && esbuild src/engine/kick2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/kick2-processor.js && esbuild src/engine/snare2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/snare2-processor.js && esbuild src/engine/hat2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/hat2-processor.js",
+    "build:worklet": "esbuild src/engine/synth2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/synth2-processor.js && esbuild src/engine/kick2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/kick2-processor.js && esbuild src/engine/snare2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/snare2-processor.js && esbuild src/engine/hat2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/hat2-processor.js && esbuild src/engine/clap2/worklet-entry.ts --bundle --format=esm --outfile=public/worklets/clap2-processor.js",
     "dev": "npm run build:worklet && vite",
     "build": "npm run build:worklet && vue-tsc && vite build",
     "preview": "vite preview",
