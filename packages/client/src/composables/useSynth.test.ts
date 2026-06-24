@@ -615,6 +615,11 @@ describe('session-scoped connection', () => {
     expect(synth.roomLoading.value).toBe(false);
   });
 
+  it('exposes a passive sessionName ref defaulting to null', () => {
+    const synth = useSynth();
+    expect(synth.sessionName.value).toBeNull();
+  });
+
   it('is idempotent for the same room', async () => {
     const { mod, built } = await boot();
     mod.connectToSession('room-a');

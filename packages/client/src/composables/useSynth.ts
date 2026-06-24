@@ -170,6 +170,12 @@ const roomLoading = ref(false);
 // The room this tab is currently connected to (null in the lobby). A ref so the
 // shell/sidebar can react (e.g. show the Leave control only inside a session).
 const currentRoomId = ref<string | null>(null);
+
+// The current room's display name, loaded by the App shell from getSession()
+// whenever currentRoomId changes. null = not loaded / no room; '' = loaded but
+// untitled. Rendered (static) in the top app-bar; updated after a local rename.
+const sessionName = ref<string | null>(null);
+
 let authWatcherInstalled = false;
 let leaveFlushInstalled = false;
 function installLeaveFlushHandler(): void {
@@ -934,6 +940,7 @@ export function useSynth() {
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
     currentRoomId,
+    sessionName,
     connectToSession,
     leaveSession,
   };
