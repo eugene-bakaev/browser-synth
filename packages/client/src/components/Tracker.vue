@@ -601,6 +601,11 @@ const toggleDrumTrigger = (step: Step) => {
   padding: 2px;
   border-radius: 3px;
   transition: opacity 0.2s;
+  /* The steps list is a flex column capped at max-height. Without this, the
+     default flex-shrink:1 compresses every row when a track overflows (>16
+     steps), so a scrolling 32-step track renders shorter rows than a 16-step
+     one. Pin the height and let the container scroll instead. */
+  flex-shrink: 0;
 }
 
 .step-row.active {
