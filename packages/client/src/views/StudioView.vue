@@ -453,6 +453,9 @@ async function saveMeta(): Promise<void> {
       },
       auth.accessToken.value,
     );
+    // Reflect the rename in the app-bar immediately (the shell only refetches on
+    // room change, not on edits).
+    synth!.sessionName.value = metaName.value.trim();
     showSettings.value = false;
   } catch (e) {
     settingsErr.value = e instanceof Error ? e.message : 'save failed';

@@ -2,14 +2,17 @@
   <ErrorOverlay />
   <DialogHost />
   <header class="app-bar">
-    <button
-      class="hamburger"
-      :aria-expanded="sidebarOpen"
-      aria-label="Open navigation"
-      @click="sidebarOpen = true"
-    >
-      ☰
-    </button>
+    <div class="app-bar-left">
+      <button
+        class="hamburger"
+        :aria-expanded="sidebarOpen"
+        aria-label="Open navigation"
+        @click="sidebarOpen = true"
+      >
+        ☰
+      </button>
+      <span v-if="showRoomName" class="room-name" :title="roomLabel">{{ roomLabel }}</span>
+    </div>
     <!-- Per-page actions (e.g. StudioView's transport) teleport in here, so the
          top bar spans the full width with the hamburger left and page controls right. -->
     <div id="app-bar-actions" class="app-bar-actions"></div>
@@ -26,12 +29,13 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
 import { readRoomIdFromUrl } from './sync/roomId';
+import { getSession } from './sync/sessionsApi';
 import ErrorOverlay from './components/ErrorOverlay.vue';
 import DialogHost from './components/DialogHost.vue';
 import Sidebar from './components/Sidebar.vue';
@@ -43,12 +47,37 @@ const synth = useSynth();
 provide(SYNTH_CONTEXT, synth);
 provide(ACTIVE_TRACK_KEY, synth.activeTrackIndex);
 
+// Room name shown (static) in the app-bar left group. Visible only once loaded
+// for the current room; falls back to "Untitled session" for an empty title.
+const showRoomName = computed(
+  () => synth.currentRoomId.value !== null && synth.sessionName.value !== null,
+);
+const roomLabel = computed(() => synth.sessionName.value || 'Untitled session');
+
 // The sidebar is an off-canvas drawer, toggled by the hamburger. Closed by
 // default. Auto-close after navigating, and on Escape.
 const sidebarOpen = ref(false);
 const route = useRoute();
 const router = useRouter();
 watch(() => route.fullPath, () => { sidebarOpen.value = false; });
+
+// Load the room name whenever the connected room changes (covers deep-link,
+// lobby join, and room switch — all funnel through currentRoomId). The fetch
+// lives here in the shell, not in connectToSession, to keep the sync-critical
+// connect path free of HTTP. Race-guarded against a room switch mid-fetch.
+watch(
+  () => synth.currentRoomId.value,
+  async (id) => {
+    if (id === null) { synth.sessionName.value = null; return; }
+    synth.sessionName.value = null; // clear any stale name during load
+    try {
+      const m = await getSession(id);
+      if (synth.currentRoomId.value === id) synth.sessionName.value = m?.name ?? '';
+    } catch {
+      // Non-critical: leave null (render nothing) rather than guess a title.
+    }
+  },
+);
 
 // The lobby is not a playback context (and after a Leave the project is reset),
 // so stop the transport whenever we land there — covers Leave, session switches,
@@ -192,6 +221,22 @@ h1 {
 .app-bar-actions {
   display: flex;
   align-items: center;
+}
+.app-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0; /* allow the room name to truncate instead of pushing layout */
+}
+.room-name {
+  font-family: monospace;
+  font-size: 0.9rem;
+  letter-spacing: 0.03em;
+  color: #ccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 36ch;
 }
 
 .app-shell {
