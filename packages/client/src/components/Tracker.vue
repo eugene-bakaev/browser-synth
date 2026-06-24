@@ -836,6 +836,15 @@ input[type=number] {
 .tracker-container:not(.focused) .tracker-steps {
   scrollbar-gutter: stable;
   overflow-x: hidden;
+  /* Pin the step area to exactly 16 compact rows so every card in the rack is
+     the same height regardless of its step count. Shorter tracks leave a blank
+     gap below their last step; the LEVEL/MUTE/SOLO footer then lands at the same
+     Y on every card. Longer tracks (>16) still cap here and scroll. Replaces the
+     global `max-height`, which let short tracks shrink and float their footer up
+     out of line with their neighbours.
+     Each row is 25px tall: 23px (.step-row height) + 2px border (content-box, so
+     the 1px top/bottom borders add on top). Plus 15 × 2px row gaps. */
+  height: calc(16 * 25px + 15 * 2px); /* = 430px */
 }
 .tracker-container:not(.focused) .tracker-steps.scrolling {
   margin-right: 0;
