@@ -151,6 +151,7 @@
         <div class="preset-controls">
           <button @click="onSavePreset" title="Save the current engine + its params as a preset">SAVE PRESET</button>
           <button @click="onLoadPreset" title="Load a preset onto this track">LOAD PRESET</button>
+          <button :disabled="activeTrackIndex === null" @click="onSaveToLibrary" title="Save this engine + params to your online library">SAVE TO LIBRARY</button>
           <button @click="onInitPatch" title="Reset this track's patch to defaults">INIT PATCH</button>
         </div>
       </div>
@@ -327,6 +328,7 @@ import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi'
 import { guestClientId } from '../sync/clientId';
 import { useAuth } from '../auth/useAuth';
 import { useDialog } from '../dialogs/useDialog';
+import { createPreset } from '../sync/presetsApi';
 
 const dialog = useDialog();
 
@@ -404,6 +406,9 @@ const onRemoveTrack = async (index: number) => {
 
 const router = useRouter();
 const auth = useAuth();
+
+// Exposed for Task 8 (library modal) to scope the preset list to the logged-in user.
+const currentUserId = computed(() => auth.session.value?.user.id ?? null);
 
 const showSettings = ref(false);
 const meta = ref<SessionMeta | null>(null);
@@ -512,6 +517,27 @@ const onSavePreset = () => {
   const track = project.tracks[activeTrackIndex.value];
   const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
   savePresetToFile(preset);
+};
+
+const onSaveToLibrary = async () => {
+  if (activeTrackIndex.value === null) return;
+  // Capture token in a local const so TypeScript narrows it to `string` after
+  // the guard (reading auth.accessToken.value twice doesn't narrow).
+  const token = auth.accessToken.value;
+  if (!auth.isAuthenticated.value || !token) {
+    await dialog.alert('Sign in to save presets to the library. You can still use Save Preset to a file.');
+    return;
+  }
+  const name = await dialog.prompt({ title: 'Save to library', message: 'Preset name', placeholder: 'My patch', confirmLabel: 'Save' });
+  if (!name) return;
+  const track = project.tracks[activeTrackIndex.value];
+  const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
+  try {
+    await createPreset({ name, engineType: preset.engineType, params: preset.params, isPublic: false }, token);
+    await dialog.alert(`Saved "${name}" to your library.`);
+  } catch (e) {
+    await dialog.alert(`Could not save preset: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
 };
 
 const onLoadPreset = async () => {
