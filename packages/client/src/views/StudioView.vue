@@ -15,9 +15,19 @@
       <button @click="onSave" title="Save project to a file">SAVE</button>
       <button @click="onOpen" title="Open a project from a file">OPEN</button>
       <button @click="showSettings = true" title="Session settings">SESSION</button>
+      <button @click="presetLibraryOpen = true" title="Browse and load presets from the library">PRESETS</button>
       <button @click="onLeave" title="Leave this session and return to the lobby">LEAVE</button>
     </div>
   </Teleport>
+
+  <PresetLibraryModal
+    :open="presetLibraryOpen"
+    :current-user-id="currentUserId"
+    :token="auth.accessToken.value"
+    :can-load="activeTrackIndex !== null"
+    :on-load="onLoadPresetFromLibrary"
+    @close="presetLibraryOpen = false"
+  />
 
   <div class="synth-container">
     <!-- Catch-up loader: covers the (blank, just-reset) studio until this
@@ -294,7 +304,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
-import { TRACK_POOL_SIZE } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -310,6 +320,8 @@ import {
   openPresetFromFile,
   applyPreset,
   resetEnginePatch,
+  PRESET_SCHEMA_VERSION,
+  type EngineParamsMap,
   type ProjectTrack,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
@@ -323,6 +335,7 @@ import Kick2Panel from '../components/Kick2Panel.vue';
 import Snare2Panel from '../components/Snare2Panel.vue';
 import Hat2Panel from '../components/Hat2Panel.vue';
 import Clap2Panel from '../components/Clap2Panel.vue';
+import PresetLibraryModal from '../components/PresetLibraryModal.vue';
 import { useRouter } from 'vue-router';
 import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
 import { guestClientId } from '../sync/clientId';
@@ -411,6 +424,17 @@ const auth = useAuth();
 const currentUserId = computed(() => auth.session.value?.user.id ?? null);
 
 const showSettings = ref(false);
+const presetLibraryOpen = ref(false);
+
+const onLoadPresetFromLibrary = (rec: PresetRecord) => {
+  if (activeTrackIndex.value === null) return;
+  applyPreset(project.tracks[activeTrackIndex.value], {
+    schemaVersion: PRESET_SCHEMA_VERSION,
+    engineType: rec.engineType,
+    params: rec.params as EngineParamsMap[EngineType],
+  });
+};
+
 const meta = ref<SessionMeta | null>(null);
 const metaName = ref('');
 const metaDesc = ref('');
