@@ -20,6 +20,10 @@ import type { SessionStore } from './session/SessionStore.js';
 import { SessionSync } from './session/SessionSync.js';
 import { sessionsRoute } from './routes/sessions.js';
 import { instrumentSessionStore, instrumentProfileStore } from './otel/db.js';
+import { InMemoryPresetStore } from './preset/InMemoryPresetStore.js';
+import { PostgresPresetStore } from './preset/PostgresPresetStore.js';
+import type { PresetStore } from './preset/PresetStore.js';
+import { presetsRoute } from './routes/presets.js';
 import { makeLog } from './otel/log.js';
 
 export function buildServer(): FastifyInstance {
@@ -55,6 +59,9 @@ export function buildServer(): FastifyInstance {
     sql ? new PostgresSessionStore(sql) : new InMemorySessionStore(),
   );
 
+  // TODO(presets): add OTel store instrumentation for parity with sessions
+  const presets: PresetStore = sql ? new PostgresPresetStore(sql) : new InMemoryPresetStore();
+
   const sessionSync = new SessionSync(store, sessions, log);
 
   // Production session loader: a room exists iff it has a session row. Seed its
@@ -75,6 +82,7 @@ export function buildServer(): FastifyInstance {
   app.register(async (a) =>
     sessionsRoute(a, { sessions, verify, liveCounts: () => store.roomMemberCounts() }),
   );
+  app.register(async (a) => presetsRoute(a, { presets, verify }));
   app.register(async (a) =>
     wsRoute(a, {
       store,
