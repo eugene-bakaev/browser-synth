@@ -111,6 +111,30 @@ describe('MorphOscillator', () => {
     expect(crossings).toBeLessThanOrEqual(468);
   });
 
+  it('pulse (morph 3) is DC-free at every duty cycle', () => {
+    // A ±1 comparator pulse of duty d carries a DC offset of 2d−1. When an LFO
+    // sweeps pulseWidth, that offset slides at the mod rate and is heard as a
+    // warble/pitch-like wobble instead of clean PWM. The pulse must be balanced
+    // (zero-mean) so modulating duty moves only the harmonics, never the DC.
+    function makeOscWithPw(pw: number) {
+      return new MorphOscillator(
+        slot('osc1.morph', 0, 3, 3),
+        slot('osc1.pulseWidth', 0.05, 0.95, pw),
+        slot('osc1.coarse', -36, 36, 0),
+        slot('osc1.fine', -100, 100, 0),
+        SR,
+      );
+    }
+    const freq = 480; // 100 samples/period at 48k → whole periods, no partial-cycle bias
+    for (const pw of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      const buf = render(makeOscWithPw(pw), freq, 4800); // 48 complete periods
+      let mean = 0;
+      for (let i = 0; i < buf.length; i++) mean += buf[i];
+      mean /= buf.length;
+      expect(Math.abs(mean), `pw ${pw} DC`).toBeLessThan(0.01);
+    }
+  });
+
   it('pulse width changes duty cycle', () => {
     // morph 3 = pure pulse; pw=0.5 → ~50% of samples positive; pw=0.2 → ~20%.
     function makeOscWithPw(pw: number) {

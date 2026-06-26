@@ -131,7 +131,13 @@ export class MorphOscillator {
         // Wrap positions the falling-edge discontinuity at the BLEP window origin.
         if (tFall < 0) tFall += 1;
         p -= polyBLEP(tFall, dt);
-        return p;
+        // Remove the duty-dependent DC: a ±1 pulse of duty `pw` has mean 2·pw−1,
+        // so an LFO sweeping pw would slide the whole waveform up/down at the mod
+        // rate (heard as a warble, not PWM). Subtracting it yields a balanced,
+        // zero-mean pulse — harmonics (n≥1) are untouched, only the DC term goes.
+        // At pw=0.5 this is −0; saw (DC-free) is unchanged, so the morph
+        // crossfade stays DC-free throughout.
+        return p - (2 * pw - 1);
       }
     }
   }
