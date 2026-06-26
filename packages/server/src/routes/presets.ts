@@ -64,12 +64,13 @@ export async function presetsRoute(app: FastifyInstance, deps: Deps) {
   // Patch name / public flag: owner only.
   app.patch('/api/presets/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const claims = await claimsFrom(req, deps.verify);
+    if (!claims) return reply.code(401).send({ error: 'login required' });
     const parsed = PatchPresetBodySchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid body', details: parsed.error.flatten() });
     const record = await deps.presets.get(id);
     if (!record) return reply.code(404).send({ error: 'not found' });
-    const claims = await claimsFrom(req, deps.verify);
-    if (!claims || claims.userId !== record.ownerUserId) return reply.code(403).send({ error: 'not the owner' });
+    if (claims.userId !== record.ownerUserId) return reply.code(403).send({ error: 'not the owner' });
     await deps.presets.updateMeta(id, { name: parsed.data.name, isPublic: parsed.data.isPublic });
     return reply.code(204).send();
   });
@@ -77,10 +78,11 @@ export async function presetsRoute(app: FastifyInstance, deps: Deps) {
   // Delete: owner only.
   app.delete('/api/presets/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const claims = await claimsFrom(req, deps.verify);
+    if (!claims) return reply.code(401).send({ error: 'login required' });
     const record = await deps.presets.get(id);
     if (!record) return reply.code(404).send({ error: 'not found' });
-    const claims = await claimsFrom(req, deps.verify);
-    if (!claims || claims.userId !== record.ownerUserId) return reply.code(403).send({ error: 'not the owner' });
+    if (claims.userId !== record.ownerUserId) return reply.code(403).send({ error: 'not the owner' });
     await deps.presets.delete(id);
     return reply.code(204).send();
   });

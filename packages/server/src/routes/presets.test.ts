@@ -93,4 +93,27 @@ describe('presets HTTP API', () => {
     expect(patch.statusCode).toBe(404);
     await app.close();
   });
+
+  it('unauthenticated PATCH → 401', async () => {
+    const { app, presets } = build();
+    await presets.create({ id: 'p', name: 'x', engineType: 'kick2', params: {}, ownerUserId: 'user-1', isPublic: false });
+    const res = await app.inject({ method: 'PATCH', url: '/api/presets/p', payload: { isPublic: true } });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('unauthenticated DELETE → 401', async () => {
+    const { app, presets } = build();
+    await presets.create({ id: 'p', name: 'x', engineType: 'kick2', params: {}, ownerUserId: 'user-1', isPublic: false });
+    const res = await app.inject({ method: 'DELETE', url: '/api/presets/p' });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('DELETE on a missing preset (authenticated) → 404', async () => {
+    const { app } = build();
+    const res = await app.inject({ method: 'DELETE', url: '/api/presets/nope', headers: auth('tok-1') });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
 });

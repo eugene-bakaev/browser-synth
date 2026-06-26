@@ -65,4 +65,37 @@ maybe('PostgresPresetStore (integration)', () => {
     await store.delete('p1');
     expect(await store.get('p1')).toBeNull();
   });
+
+  it('list: owner sees own (public+private) and engineType filter', async () => {
+    await sql`insert into profiles (id, username) values (${owner}, 'alice')`;
+
+    // Create a public kick2 preset owned by owner
+    await store.create({
+      id: 'p1', name: 'Boom', engineType: 'kick2', params: {},
+      ownerUserId: owner, isPublic: true,
+    });
+
+    // Owner sees own public preset
+    const ownerView = await store.list({ viewerUserId: owner });
+    expect(ownerView.map((r) => r.id)).toEqual(['p1']);
+
+    // Make it private — owner still sees it (owner_user_id branch), guest does not
+    await store.updateMeta('p1', { isPublic: false });
+    const ownerViewPrivate = await store.list({ viewerUserId: owner });
+    expect(ownerViewPrivate.map((r) => r.id)).toEqual(['p1']);
+    const guestViewPrivate = await store.list({ viewerUserId: null });
+    expect(guestViewPrivate.length).toBe(0);
+
+    // Add a public hat2 preset; engineType filter returns only the matching engine
+    await store.create({
+      id: 'h1', name: 'Tick', engineType: 'hat2', params: {},
+      ownerUserId: owner, isPublic: true,
+    });
+    const kick2Only = await store.list({ viewerUserId: null, engineType: 'kick2' });
+    expect(kick2Only.length).toBe(0); // p1 is private
+    const hat2Only = await store.list({ viewerUserId: null, engineType: 'hat2' });
+    expect(hat2Only.map((r) => r.id)).toEqual(['h1']);
+    const allGuest = await store.list({ viewerUserId: null });
+    expect(allGuest.map((r) => r.id)).toEqual(['h1']); // p1 private, h1 public
+  });
 });
