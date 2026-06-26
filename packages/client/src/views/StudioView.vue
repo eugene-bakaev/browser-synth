@@ -15,9 +15,19 @@
       <button @click="onSave" title="Save project to a file">SAVE</button>
       <button @click="onOpen" title="Open a project from a file">OPEN</button>
       <button @click="showSettings = true" title="Session settings">SESSION</button>
+      <button @click="presetLibraryOpen = true" title="Browse and load presets from the library">PRESETS</button>
       <button @click="onLeave" title="Leave this session and return to the lobby">LEAVE</button>
     </div>
   </Teleport>
+
+  <PresetLibraryModal
+    :open="presetLibraryOpen"
+    :current-user-id="currentUserId"
+    :token="auth.accessToken.value"
+    :can-load="activeTrackIndex !== null"
+    :on-load="onLoadPresetFromLibrary"
+    @close="presetLibraryOpen = false"
+  />
 
   <div class="synth-container">
     <!-- Catch-up loader: covers the (blank, just-reset) studio until this
@@ -151,6 +161,7 @@
         <div class="preset-controls">
           <button @click="onSavePreset" title="Save the current engine + its params as a preset">SAVE PRESET</button>
           <button @click="onLoadPreset" title="Load a preset onto this track">LOAD PRESET</button>
+          <button :disabled="activeTrackIndex === null" @click="onSaveToLibrary" title="Save this engine + params to your online library">SAVE TO LIBRARY</button>
           <button @click="onInitPatch" title="Reset this track's patch to defaults">INIT PATCH</button>
         </div>
       </div>
@@ -293,7 +304,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
-import { TRACK_POOL_SIZE } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -309,6 +320,8 @@ import {
   openPresetFromFile,
   applyPreset,
   resetEnginePatch,
+  PRESET_SCHEMA_VERSION,
+  type EngineParamsMap,
   type ProjectTrack,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
@@ -322,11 +335,13 @@ import Kick2Panel from '../components/Kick2Panel.vue';
 import Snare2Panel from '../components/Snare2Panel.vue';
 import Hat2Panel from '../components/Hat2Panel.vue';
 import Clap2Panel from '../components/Clap2Panel.vue';
+import PresetLibraryModal from '../components/PresetLibraryModal.vue';
 import { useRouter } from 'vue-router';
 import { getSession, patchSession, type SessionMeta } from '../sync/sessionsApi';
 import { guestClientId } from '../sync/clientId';
 import { useAuth } from '../auth/useAuth';
 import { useDialog } from '../dialogs/useDialog';
+import { createPreset } from '../sync/presetsApi';
 
 const dialog = useDialog();
 
@@ -405,7 +420,21 @@ const onRemoveTrack = async (index: number) => {
 const router = useRouter();
 const auth = useAuth();
 
+// Exposed for Task 8 (library modal) to scope the preset list to the logged-in user.
+const currentUserId = computed(() => auth.session.value?.user.id ?? null);
+
 const showSettings = ref(false);
+const presetLibraryOpen = ref(false);
+
+const onLoadPresetFromLibrary = (rec: PresetRecord) => {
+  if (activeTrackIndex.value === null) return;
+  applyPreset(project.tracks[activeTrackIndex.value], {
+    schemaVersion: PRESET_SCHEMA_VERSION,
+    engineType: rec.engineType,
+    params: rec.params as EngineParamsMap[EngineType],
+  });
+};
+
 const meta = ref<SessionMeta | null>(null);
 const metaName = ref('');
 const metaDesc = ref('');
@@ -512,6 +541,27 @@ const onSavePreset = () => {
   const track = project.tracks[activeTrackIndex.value];
   const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
   savePresetToFile(preset);
+};
+
+const onSaveToLibrary = async () => {
+  if (activeTrackIndex.value === null) return;
+  // Capture token in a local const so TypeScript narrows it to `string` after
+  // the guard (reading auth.accessToken.value twice doesn't narrow).
+  const token = auth.accessToken.value;
+  if (!auth.isAuthenticated.value || !token) {
+    await dialog.alert('Sign in to save presets to the library. You can still use Save Preset to a file.');
+    return;
+  }
+  const name = await dialog.prompt({ title: 'Save to library', message: 'Preset name', placeholder: 'My patch', confirmLabel: 'Save' });
+  if (!name) return;
+  const track = project.tracks[activeTrackIndex.value];
+  const preset = makePreset(track.engineType, track.engines[track.engineType] as any);
+  try {
+    await createPreset({ name, engineType: preset.engineType, params: preset.params, isPublic: false }, token);
+    await dialog.alert(`Saved "${name}" to your library.`);
+  } catch (e) {
+    await dialog.alert(`Could not save preset: ${e instanceof Error ? e.message : 'unknown error'}`);
+  }
 };
 
 const onLoadPreset = async () => {

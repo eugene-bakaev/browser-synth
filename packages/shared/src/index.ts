@@ -35,6 +35,9 @@ export * from './project/index.js';
 // HANDLES), message type definitions, and Zod schemas for inbound messages.
 export * from './protocol/index.js';
 
+// Preset library wire contract (CreatePresetBodySchema, PresetRecord, …).
+export * from './preset/index.js';
+
 // Wire-path helpers (setDeep, pathKey) shared by client + server.
 export * from './path.js';
 

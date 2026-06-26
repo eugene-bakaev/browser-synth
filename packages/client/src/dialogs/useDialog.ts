@@ -5,7 +5,7 @@ import { computed, ref } from 'vue';
 // root) renders the active request. Multiple requests queue and show in turn,
 // so two near-simultaneous prompts don't clobber each other.
 
-export type DialogVariant = 'confirm' | 'alert';
+export type DialogVariant = 'confirm' | 'alert' | 'prompt';
 
 export interface DialogOptions {
   message: string;
@@ -14,6 +14,9 @@ export interface DialogOptions {
   cancelLabel?: string;
   // Render the confirm button in a destructive (red) style.
   danger?: boolean;
+  // Only used by the 'prompt' variant.
+  placeholder?: string;
+  defaultValue?: string;
 }
 
 interface DialogRequest extends DialogOptions {
@@ -22,6 +25,12 @@ interface DialogRequest extends DialogOptions {
 }
 
 const queue = ref<DialogRequest[]>([]);
+
+// DialogHost binds this to the text <input> in the prompt variant.
+// Using a separate ref keeps the boolean resolver in resolveActiveDialog
+// untouched — the text value is read by the prompt() method after the
+// boolean resolves.
+export const promptDraft = ref('');
 
 // The request currently shown (front of the queue), or null when idle.
 export const activeDialog = computed<DialogRequest | null>(() => queue.value[0] ?? null);
@@ -52,6 +61,13 @@ export function useDialog() {
     alert(input: string | DialogOptions): Promise<void> {
       const opts = typeof input === 'string' ? { message: input } : input;
       return enqueue(opts, 'alert').then(() => undefined);
+    },
+    // Resolves to the entered text (trimmed, non-empty) if confirmed; null if
+    // cancelled/dismissed or left blank.
+    prompt(input: string | DialogOptions): Promise<string | null> {
+      const opts = typeof input === 'string' ? { message: input } : input;
+      promptDraft.value = opts.defaultValue ?? '';
+      return enqueue(opts, 'prompt').then((ok) => (ok ? (promptDraft.value.trim() || null) : null));
     },
   };
 }
