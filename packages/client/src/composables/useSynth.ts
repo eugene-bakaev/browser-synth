@@ -501,10 +501,19 @@ function teardownConnection(): void {
 // Enter a session: bring up the room connection for `roomId` and reflect it in
 // the URL. Idempotent for the same room; switches cleanly between rooms. Does
 // NOT touch audio — the AudioContext still boots lazily on first PLAY.
-export function connectToSession(roomId: string): void {
-  setRoomInUrl(roomId);
+//
+// `history` controls how the URL change is recorded: 'replace' (default) keeps a
+// single entry; the lobby passes 'push' so Back returns to the lobby. `force`
+// rebuilds the connection even when it is already the current room — used after a
+// bfcache restore, whose frozen socket is dead, where the idempotent same-room
+// short-circuit would otherwise leave the page disconnected.
+export function connectToSession(
+  roomId: string,
+  opts?: { history?: 'push' | 'replace'; force?: boolean },
+): void {
+  setRoomInUrl(roomId, opts?.history ?? 'replace');
   if (!syncEnabled) { currentRoomId.value = roomId; return; }
-  if (wsClient && currentRoomId.value === roomId) return;
+  if (!opts?.force && wsClient && currentRoomId.value === roomId) return;
   if (wsClient) teardownConnection();
   // Drop the previous session's (or localStorage's) content before connecting so
   // it can't play, or be synced up into this room, before this room's snapshot

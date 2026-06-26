@@ -22,10 +22,16 @@ export function resolveInitialView(loc: Location = window.location): 'studio' | 
   return readRoomIdFromUrl(loc) ? 'studio' : 'lobby';
 }
 
-// Rewrite the address bar to `/r/<id>` without a navigation (memory-history
+// Rewrite the address bar to `/r/<id>` without a real navigation (memory-history
 // router handles view switching; the URL is just the shareable session token).
-export function setRoomInUrl(roomId: string): void {
-  window.history.replaceState(null, '', `/r/${roomId}`);
+// Default 'replace' keeps a single entry (deep-link boot, reconciling the URL we
+// already sit on). 'push' adds a history entry, used when the user enters a
+// session from the lobby so the browser Back button returns to the lobby instead
+// of stepping out of the app entirely.
+export function setRoomInUrl(roomId: string, mode: 'push' | 'replace' = 'replace'): void {
+  const url = `/r/${roomId}`;
+  if (mode === 'push') window.history.pushState(null, '', url);
+  else window.history.replaceState(null, '', url);
 }
 
 // Drop the room from the address bar when returning to the lobby.

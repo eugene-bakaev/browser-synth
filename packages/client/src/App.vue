@@ -34,7 +34,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSynth } from './composables/useSynth';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
 import { SYNTH_CONTEXT } from './sync/synthContext';
-import { readRoomIdFromUrl } from './sync/roomId';
+import { reconcileSessionToUrl } from './sync/reconcileSession';
 import { getSession } from './sync/sessionsApi';
 import ErrorOverlay from './components/ErrorOverlay.vue';
 import DialogHost from './components/DialogHost.vue';
@@ -88,20 +88,44 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') sidebarOpen.value = false;
 }
 
-// Decide the landing view from the URL: a `/r/<id>` deep-link opens the studio
-// and connects to that session; anything else opens the lobby. Connection is
-// independent of audio (which still boots lazily on first PLAY).
+// Bring the connected session + in-app view into agreement with the room named
+// in the address bar. This is the single source of "URL → session" truth, run at
+// boot AND on every browser history navigation. The router uses memory history
+// (it never reacts to the URL) and the room lives in the URL via raw
+// replaceState, so without this the app would only ever read the URL once, at
+// load — back/forward would leave the studio showing a stale/empty project that
+// no longer matches the address bar. Connection is independent of audio (which
+// still boots lazily on first PLAY).
+function reconcile(bfcacheRestore = false): void {
+  reconcileSessionToUrl({
+    currentRoomId: synth.currentRoomId.value,
+    connect: (roomId, opts) => synth.connectToSession(roomId, opts),
+    leave: () => synth.leaveSession(),
+    showStudio: () => { if (route.name !== 'studio') router.replace({ name: 'studio' }); },
+    showLobby: () => { if (route.name !== 'lobby') router.replace({ name: 'lobby' }); },
+    bfcacheRestore,
+  });
+}
+
+// Browser back/forward fires popstate for in-document traversals; pageshow with
+// `persisted` fires when the page is restored from the bfcache (its live socket
+// was closed while frozen, so that restore must force a reconnect). A normal full
+// reload re-runs onMounted instead and fires neither of these (pageshow.persisted
+// is false), so there is no double-connect.
+function onPopState(): void { reconcile(false); }
+function onPageShow(e: PageTransitionEvent): void { if (e.persisted) reconcile(true); }
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
-  const roomId = readRoomIdFromUrl();
-  if (roomId) {
-    synth.connectToSession(roomId);
-    router.replace({ name: 'studio' });
-  } else {
-    router.replace({ name: 'lobby' });
-  }
+  window.addEventListener('popstate', onPopState);
+  window.addEventListener('pageshow', onPageShow);
+  reconcile(false);
 });
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('popstate', onPopState);
+  window.removeEventListener('pageshow', onPageShow);
+});
 
 // A fatal session.not_found (unknown / pruned session) bounces to the lobby.
 watch(

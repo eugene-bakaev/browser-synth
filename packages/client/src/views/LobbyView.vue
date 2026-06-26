@@ -48,7 +48,9 @@ onMounted(() => startPolling()); // default interval; pauses while tab hidden
 onBeforeUnmount(() => stopPolling());
 
 function join(id: string): void {
-  synth.connectToSession(id);
+  // 'push' adds a browser history entry for the session, so the user's Back
+  // button returns here to the lobby instead of stepping out of the app.
+  synth.connectToSession(id, { history: 'push' });
   router.push({ name: 'studio' });
 }
 
