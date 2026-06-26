@@ -16,3 +16,10 @@ create table public.presets (
 
 create index presets_owner_idx  on public.presets (owner_user_id);
 create index presets_public_idx on public.presets (is_public) where is_public;
+
+-- Enable RLS with no policies (same rationale as 0003_sessions_rls): the browser
+-- never touches this table — all access is via the server's privileged
+-- DATABASE_URL connection, which owns the table and is unaffected by RLS.
+-- This closes the PostgREST/anon exposure the Supabase linter flags
+-- (rls_disabled_in_public) without changing any app behavior.
+alter table public.presets enable row level security;
