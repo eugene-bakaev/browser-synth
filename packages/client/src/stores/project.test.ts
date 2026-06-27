@@ -75,8 +75,8 @@ describe('useProjectStore', () => {
   it('applySet writes a deep engine-param path in place', () => {
     const store = useProjectStore();
     const before = store.project;
-    store.applySet(['tracks', 0, 'engines', 'synth', 'cutoff'], 1234);
-    expect(store.project.tracks[0].engines.synth.cutoff).toBe(1234);
+    store.applySet(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1234);
+    expect(store.project.tracks[0].engines.synth.filterCutoff).toBe(1234);
     expect(store.project).toBe(before); // mutates in place, identity stable
   });
 
