@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { reactive, computed } from 'vue';
 import { freshProject, replaceProject, type Project, type ProjectTrack, type EngineType } from '../project';
+import { setDeep, type Path } from '@fiddle/shared';
 
 // THE single canonical project instance for the whole app. Lifted to module
 // scope (Phase 1) so the Pinia store and the legacy `useSynth` module share ONE
@@ -27,13 +28,21 @@ export const useProjectStore = defineStore('project', () => {
     return project.tracks[index].engineType;
   }
 
+  // The single low-level state-write primitive. Phase 2's CommandBus routes
+  // every write — local dispatch and applied remote op — through here, so this
+  // is the one place project state is mutated by a path/value. Pure state: no
+  // suppression, no opId logic, no sync (the store never knows about the socket).
+  function applySet(path: Path, value: unknown): void {
+    setDeep(project as unknown as Record<string, unknown>, path, value);
+  }
+
   // Replace the project's contents in place (snapshot load / future reconnect),
   // preserving the `project` object identity so reactive bindings survive.
   function loadProject(next: Project): void {
     replaceProject(project, next);
   }
 
-  return { project, enabledTrackCount, getTrack, getTrackEngineType, bpm, loadProject };
+  return { project, enabledTrackCount, getTrack, getTrackEngineType, bpm, applySet, loadProject };
 });
 
 // Raw access to the canonical instance for the legacy useSynth module (and the
