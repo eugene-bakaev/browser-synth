@@ -79,10 +79,18 @@ watch(
   },
 );
 
-// The lobby is not a playback context (and after a Leave the project is reset),
-// so stop the transport whenever we land there — covers Leave, session switches,
-// and the plain Lobby nav link, since every one of those routes through /lobby.
-watch(() => route.name, (name) => { if (name === 'lobby') synth.stopPlayback(); });
+// Landing on the lobby means leaving your room (Model A): the lobby is not a
+// playback context, and browsing the session list vacates your seat so a room's
+// live member count is the same however you arrive — the sidebar Lobby link
+// (a memory-router view switch that does NOT itself disconnect), browser Back to
+// the roomless URL, or a fatal not_found bounce. Stop the transport and drop any
+// active connection. The Back/reconcile and not_found paths disconnect first, so
+// the guard skips a redundant leave (and leaveSession resets the project + URL).
+watch(() => route.name, (name) => {
+  if (name !== 'lobby') return;
+  synth.stopPlayback();
+  if (synth.currentRoomId.value !== null) synth.leaveSession();
+});
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') sidebarOpen.value = false;

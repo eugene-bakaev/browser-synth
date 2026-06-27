@@ -511,9 +511,14 @@ export function connectToSession(
   roomId: string,
   opts?: { history?: 'push' | 'replace'; force?: boolean },
 ): void {
-  setRoomInUrl(roomId, opts?.history ?? 'replace');
+  // A no-op re-connect to the room we're already in (e.g. clicking the same
+  // session card again) must never PUSH a second /r/<id> entry — a duplicate
+  // makes browser Back land back on the studio instead of the previous page.
+  // Force 'replace' in that case, whatever mode the caller asked for.
+  const alreadyHere = !opts?.force && !!wsClient && currentRoomId.value === roomId;
+  setRoomInUrl(roomId, alreadyHere ? 'replace' : (opts?.history ?? 'replace'));
   if (!syncEnabled) { currentRoomId.value = roomId; return; }
-  if (!opts?.force && wsClient && currentRoomId.value === roomId) return;
+  if (alreadyHere) return;
   if (wsClient) teardownConnection();
   // Drop the previous session's (or localStorage's) content before connecting so
   // it can't play, or be synced up into this room, before this room's snapshot
