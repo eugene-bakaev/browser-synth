@@ -342,11 +342,15 @@ import { guestClientId } from '../sync/clientId';
 import { useAuth } from '../auth/useAuth';
 import { useDialog } from '../dialogs/useDialog';
 import { createPreset } from '../sync/presetsApi';
+import { useProjectStore } from '../stores/project';
 
 const dialog = useDialog();
 
 const synth = inject(SYNTH_CONTEXT);
 if (!synth) throw new Error('SYNTH_CONTEXT not provided');
+
+const projectStore = useProjectStore();
+
 const {
   project,
   trackAnalysers,
@@ -359,12 +363,15 @@ const {
   shortestActiveNoteDuration,
   togglePlay,
   selectTrack,
-  getTrackEngineType,
   roomLoading,
   addTrack,
   removeTrack,
-  enabledTrackCount,
 } = synth;
+
+// Read-only project selectors now come from the canonical ProjectStore
+// (Phase 1). Writes and write-entangled reads still use `synth` (Phase 2).
+const enabledTrackCount = computed(() => projectStore.enabledTrackCount);
+const getTrackEngineType = (index: number) => projectStore.getTrackEngineType(index);
 
 // Enabled slots paired with their true pool index (used for color, sync paths,
 // and the focused view). Disabled slots are filtered out; order is slot order.
