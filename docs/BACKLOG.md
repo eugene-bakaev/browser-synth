@@ -5,8 +5,30 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
+### Lost durable project data on several recently-edited prod sessions — mechanism unproven
+**Reported:** 2026-06-26 · **Status:** open / investigation PAUSED · **Area:** sync durable-write path + client reconnect churn — `packages/client/src/composables/useSynth.ts` (connectToSession / leaveSession / resetLocalProject / teardownConnection), `packages/client/src/sync/reconcileSession.ts`, server flush (`SessionSync` / `packProject`)
+
+**Symptom:** Several recently-touched prod sessions show blank/default content — all 4 tracks reset to default `synth`, steps gone. Confirmed: `e873e07as` ("test_new_engines"); also reported `c25x88ba5`, `637egh9tp`. Older sessions (Jun 6–20) are intact.
+
+**Confirmed facts:**
+- `e873e07as` durable content changed from CLAP2 + steps → 4×`synth`, written ~13:37–13:46 UTC on 2026-06-25 — DURING controller testing of the back/forward nav fix.
+- **Key clue: bpm SURVIVED** (130, not reset to `DEFAULT_BPM` 120). This RULES OUT a wholesale `replaceProject(freshProject())` leak (that would reset bpm too). So either 4 isolated `engineType→synth` ops leaked with no bpm op, or a partial replace kept bpm.
+- DIFFERENT root cause from the engine-revert bug (stale Render server — now fixed; see memory `stale-prod-server-render`). The stale server can't even WRITE a worklet engine, so it authored neither e873e07as's earlier clap2 state nor its reset.
+
+**Process footgun (the actual trigger):** the loss happened because local testing ran `npm run dev`, which points the local server at the REAL prod Supabase DB. Local testing MUST use `npm run dev:obs` (local Docker DB). Separate followup: harden `npm run dev` so it cannot silently target prod.
+
+**Recovery — likely NOT possible:**
+- Client `localStorage` is NOT a source: the old localStorage load/autosave path was removed (`useSynth.ts:62–64`); the room snapshot always replaces the project; offline persistence is file save/open only (`file-io.ts`).
+- Server op log / ring buffer: in-memory, lost on spin-down. Gone.
+- OpenObserve OTel logs: corruption ran under `npm run dev` (prod DB, OTel OFF) → likely not captured.
+- Supabase free tier: no PITR / daily backups by default. **Only remaining hope: check Supabase dashboard → Database → Backups** in case a paid plan / PITR is enabled.
+
+**To prove the mechanism (next step):** reproduce on the SAFE local Docker DB (`dev:obs`). Check out `fix/history-nav-session-sync` (branch tip `0173b37`, now merged via `cc9c069`), create a local session with worklet engines + steps + non-default bpm, snapshot the durable row, then replay the nav churn the fix introduced (back/forward popstate; pageshow bfcache-restore force-reconnect; leave/rejoin) with op-logging on. Watch for `engineType→synth` ops reaching the durable store while bpm stays put. Determine whether the bug is in the FIX branch only or also latent on the pre-merge `main` (the fix is now ON `main`, so if it leaks it is affecting prod users NOW — urgent).
+
+**⚠️ Merged anyway:** `fix/history-nav-session-sync` was merged (`cc9c069`) + pushed to prod on 2026-06-26 at explicit user direction, accepting the data-loss risk. It is now LIVE — so proving the mechanism is **urgent**: if sessions blank again post-deploy, this is the prime suspect and it is already shipped.
+
 ### A single client appears multiple times in the room presence roster
-**Reported:** 2026-06-20 · **Status:** open · **Area:** sync / presence — `packages/server/src/sync/ConnectionHandler.ts`, `packages/server/src/sync/Heartbeat.ts`, `packages/server/src/room/identity.ts`
+**Reported:** 2026-06-20 · **Status:** open · **Last confirmed:** 2026-06-27 (live, OpenObserve) · **Area:** sync / presence — `packages/server/src/sync/ConnectionHandler.ts`, `packages/server/src/sync/Heartbeat.ts`, `packages/server/src/room/identity.ts`, `packages/server/src/room/InMemoryRoomStore.ts`, `packages/server/src/otel/log.ts`
 
 One browser (one signed-in user) can show up as **3–4 identical roster entries**
 ("Eugene B" ×4). It self-heals after ~a minute. It is **not** a display problem and
@@ -52,6 +74,45 @@ Test-first; extend `ConnectionHandler.test.ts` (resume + duplicate-client covera
 already exists). Separate, smaller follow-up: collapse multiple *legitimate*
 connections of the same `userId` into one roster row (cosmetic — `Identity.userId`
 already carries the account id).
+
+**Confirmed live — 2026-06-27 (OpenObserve, local `dev:obs`).** Reproduced the count
+directly: lobby session "123" = roomId `nw4a52rfd` showed `● 3`. Querying the
+`client live` log stream for that room over 48h returned **6 distinct `clientId`s,
+all the same authenticated user** ("Євген Бакаєв"), each joining exactly once — the
+empirical signature of root cause #1 (auth reconnect mints a fresh `clientId`). Joins
+~30 min apart were still counted, i.e. genuinely-live background tabs, not
+stale-draining ones (heartbeat reaps a dead socket within ~60s). Presence is
+`connected: Set<clientId>` (`InMemoryRoomStore.ts:222` → lobby badge =
+`connected.size`), so N tabs of one account = N "members". Cross-checked: guests DO get
+distinct identities (Playwright joined *other* rooms as guest "Owl"), but presence is
+per-room, so they never inflated "123".
+
+**Logging gap (worth fixing alongside).** OpenObserve only carries `client live`
+(joins), `room pruned after grace`, `guest session pruned after grace` — **no
+disconnect event**. The `ws close` line is written via pino (`app.log`,
+`routes/ws.ts:94`) directly, bypassing the OTel `log()` callback that `client live`
+uses (`otel/log.ts` ← `ConnectionHandler.ts:411`). Net: you can see who *joined* but
+never who *left*, so the live presence set can't be reconstructed and staleness can't
+be proven from logs alone. Small fix: emit `client disconnected` (and/or route
+`ws close`) through the same `log()` callback.
+
+**userId-dedup follow-up — design (display-only; safe for multi-user testing).**
+Transport and presence are separate layers: ops + `presence.update` fan out
+per-**socket** via `ConnectionPool` (`pool.others`, `ConnectionHandler.ts:248,405`),
+never via `connected`. So deduping presence by `userId` is purely a **display** change
+— every open tab keeps its socket and still receives every update; only `listConnected`
+(roster) and the lobby `connected.size` count collapse same-`userId` rows. It must NOT
+touch the grace/GC decision, which correctly keys off `pool.size` (sockets) — closing 2
+of 3 tabs leaves `pool.size === 2`, no premature prune. Multi-user testing is preserved:
+dedup merges only the *same* `userId`, so two guests (`userId: null`), guest + user, and
+two different accounts all stay distinct — you just can't fake N members by opening one
+account in N tabs (use guests / incognito / a second account, as before). **Recommend
+dedup by `userId` only** (guests stay per-connection); deduping a single guest browser's
+tabs would need the stable localStorage `g_` id threaded into the WS `Identity` (not
+there today) — skip. Apply at `listConnected` + the count at `InMemoryRoomStore.ts:222`,
+consistently so roster and badge agree. Note this is complementary to fix #1 above (which
+removes the *source* of the duplicate auth rows); dedup collapses whatever multiplicity
+remains.
 
 ### Factory preset pool for the worklet drum engines (kick2 / snare2 / hat2)
 **Reported:** 2026-06-21 · **Status:** open (deferred) · **Area:** `packages/client/src/project/preset.ts`, `packages/client/src/views/StudioView.vue`, + a new `factory-presets.ts`
