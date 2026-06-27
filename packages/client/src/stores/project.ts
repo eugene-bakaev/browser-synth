@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { reactive, computed } from 'vue';
-import { freshProject, replaceProject, type Project, type ProjectTrack } from '../project';
+import { freshProject, replaceProject, type Project, type ProjectTrack, type EngineType } from '../project';
 
 // THE single canonical project instance for the whole app. Lifted to module
 // scope (Phase 1) so the Pinia store and the legacy `useSynth` module share ONE
@@ -19,13 +19,21 @@ export const useProjectStore = defineStore('project', () => {
     return project.tracks[index];
   }
 
+  const bpm = computed(() => project.bpm);
+
+  // Mirrors useSynth.getTrackEngineType — the canonical read API components
+  // migrate to. (Convenience over getTrack(index).engineType.)
+  function getTrackEngineType(index: number): EngineType {
+    return project.tracks[index].engineType;
+  }
+
   // Replace the project's contents in place (snapshot load / future reconnect),
   // preserving the `project` object identity so reactive bindings survive.
   function loadProject(next: Project): void {
     replaceProject(project, next);
   }
 
-  return { project, enabledTrackCount, getTrack, loadProject };
+  return { project, enabledTrackCount, getTrack, getTrackEngineType, bpm, loadProject };
 });
 
 // Raw access to the canonical instance for the legacy useSynth module (and the

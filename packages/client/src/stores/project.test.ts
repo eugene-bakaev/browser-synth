@@ -53,4 +53,16 @@ describe('useProjectStore', () => {
     expect(store.project.bpm).toBe(freshProject().bpm);
     expect(store.project.tracks.length).toBe(TRACK_POOL_SIZE);
   });
+
+  it('bpm selector reflects project.bpm and updates after a mutation', () => {
+    const store = useProjectStore();
+    expect(store.bpm).toBe(store.project.bpm);
+    store.project.bpm = 99;
+    expect(store.bpm).toBe(99);
+  });
+
+  it('getTrackEngineType returns the engineType of the slot at index', () => {
+    const store = useProjectStore();
+    expect(store.getTrackEngineType(0)).toBe(store.project.tracks[0].engineType);
+  });
 });
