@@ -3,11 +3,19 @@ import { reconcileSessionToUrl, type ReconcileDeps } from './reconcileSession';
 
 // Build a deps object whose connect/leave/showStudio/showLobby are spies, with
 // the URL room and the app's current room injected directly.
-function makeDeps(over: Partial<ReconcileDeps> & { urlRoom: string | null; currentRoomId: string | null }): ReconcileDeps & {
+function makeDeps(
+  over: Partial<ReconcileDeps> & {
+    urlRoom: string | null;
+    currentRoomId: string | null;
+    urlTrack?: number | null;
+  },
+): ReconcileDeps & {
   connect: ReturnType<typeof vi.fn>;
   leave: ReturnType<typeof vi.fn>;
   showStudio: ReturnType<typeof vi.fn>;
   showLobby: ReturnType<typeof vi.fn>;
+  applyView: ReturnType<typeof vi.fn>;
+  readTrack: ReturnType<typeof vi.fn>;
 } {
   return {
     currentRoomId: over.currentRoomId,
@@ -15,8 +23,10 @@ function makeDeps(over: Partial<ReconcileDeps> & { urlRoom: string | null; curre
     leave: vi.fn(),
     showStudio: vi.fn(),
     showLobby: vi.fn(),
+    applyView: vi.fn(),
     bfcacheRestore: over.bfcacheRestore,
     readRoom: () => over.urlRoom,
+    readTrack: vi.fn(() => over.urlTrack ?? null),
   } as never;
 }
 
@@ -66,5 +76,36 @@ describe('reconcileSessionToUrl', () => {
     reconcileSessionToUrl(deps);
     expect(deps.leave).not.toHaveBeenCalled();
     expect(deps.showLobby).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Focused-track view reconciliation (?t in the URL) ---
+
+  it('applies the focused track from the URL when a room is present (same-room Back/Forward derive)', () => {
+    const deps = makeDeps({ urlRoom: 'rooma1', currentRoomId: 'rooma1', urlTrack: 3 });
+    reconcileSessionToUrl(deps);
+    expect(deps.applyView).toHaveBeenCalledWith(3);
+  });
+
+  it('applies the overview (null track) when the room URL has no ?t', () => {
+    const deps = makeDeps({ urlRoom: 'rooma1', currentRoomId: 'rooma1', urlTrack: null });
+    reconcileSessionToUrl(deps);
+    expect(deps.applyView).toHaveBeenCalledWith(null);
+  });
+
+  it('reads the focused track BEFORE connect (which rewrites the URL and would drop a deep-linked ?t)', () => {
+    const deps = makeDeps({ urlRoom: 'roomb1', currentRoomId: 'rooma1', urlTrack: 2 });
+    reconcileSessionToUrl(deps);
+    // Deep-link / room-switch: connect rebuilds /r/<id> and strips ?t, so the
+    // track must be captured first and re-applied after.
+    expect(deps.readTrack.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.connect.mock.invocationCallOrder[0],
+    );
+    expect(deps.applyView).toHaveBeenCalledWith(2);
+  });
+
+  it('does not touch the focused-track view in the lobby branch (no room)', () => {
+    const deps = makeDeps({ urlRoom: null, currentRoomId: 'rooma1' });
+    reconcileSessionToUrl(deps);
+    expect(deps.applyView).not.toHaveBeenCalled();
   });
 });

@@ -50,7 +50,7 @@ import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
 import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
 import { setDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
-import { setRoomInUrl, clearRoomFromUrl } from '../sync/roomId';
+import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
@@ -893,9 +893,26 @@ export function useSynth() {
     }
   };
 
-  const selectTrack = (index: number | null) => {
+  // The focused-track view (overview vs. single-track editor) is URL-driven: the
+  // address bar's `?t=<index>` is the source of truth, so every history nav
+  // re-derives the view and a stale editor can't bleed across sessions. This
+  // writes both the URL and the local ref in lockstep.
+  const applyFocusedTrack = (index: number | null, mode: 'push' | 'replace') => {
+    const room = currentRoomId.value;
+    if (room) setFocusedTrackInUrl(room, index, mode);
     activeTrackIndex.value = index;
   };
+
+  // User action (overview cell → editor, or BACK TO OVERVIEW). Opening the editor
+  // PUSHES a history entry so browser Back returns to the overview (then to the
+  // lobby); leaving it REPLACES, dropping `?t` without growing history.
+  const selectTrack = (index: number | null) =>
+    applyFocusedTrack(index, index === null ? 'replace' : 'push');
+
+  // Reconcile the view from the URL on a history navigation (popstate / bfcache /
+  // deep-link). Always REPLACE — a Back/Forward must not mint new entries — and
+  // re-assert `?t` because connect() may have stripped it rebuilding the room URL.
+  const setFocusedTrack = (index: number | null) => applyFocusedTrack(index, 'replace');
 
   const getTrackEngineType = (index: number): EngineType => {
     return project.tracks[index].engineType;
@@ -936,6 +953,7 @@ export function useSynth() {
     togglePlay,
     stopPlayback,
     selectTrack,
+    setFocusedTrack,
     getTrackEngineType,
     enabledTrackCount,
     addTrack,
@@ -950,7 +968,18 @@ export function useSynth() {
     selfClientId,     // ref<string|null> — which roster entry is us
     currentRoomId,
     sessionName,
-    connectToSession,
-    leaveSession,
+    // Entering or leaving a session always opens the overview: the new room's URL
+    // carries no `?t`, so resetting the focused-track ref here keeps the view in
+    // step with the URL and stops a stale editor from the previous session
+    // bleeding into the next one. (Deep-links re-apply `?t` via setFocusedTrack
+    // in the URL-reconcile path.)
+    connectToSession: (roomId: string, opts?: { history?: 'push' | 'replace'; force?: boolean }) => {
+      connectToSession(roomId, opts);
+      activeTrackIndex.value = null;
+    },
+    leaveSession: () => {
+      leaveSession();
+      activeTrackIndex.value = null;
+    },
   };
 }

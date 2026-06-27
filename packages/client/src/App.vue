@@ -103,6 +103,9 @@ function reconcile(bfcacheRestore = false): void {
     leave: () => synth.leaveSession(),
     showStudio: () => { if (route.name !== 'studio') router.replace({ name: 'studio' }); },
     showLobby: () => { if (route.name !== 'lobby') router.replace({ name: 'lobby' }); },
+    // Reconcile the focused-track editor with the URL's ?t (same-room Back/Forward
+    // between overview and editor; deep-link restore after connect strips ?t).
+    applyView: (track) => synth.setFocusedTrack(track),
     bfcacheRestore,
   });
 }
