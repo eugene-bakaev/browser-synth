@@ -44,6 +44,7 @@ import {
   freshProject,
   replaceProject,
 } from '../project';
+import { project } from '../stores/project';
 
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
@@ -62,8 +63,6 @@ import type { Path } from '@fiddle/shared';
 // room snapshot replaces it, so nothing ever rendered a locally-persisted
 // project. The old localStorage load/autosave path was removed (review S1) —
 // file save/open (file-io.ts) is the offline persistence story.
-
-const project: Project = reactive(freshProject());
 
 const sequencer = reactive(new Sequencer());
 
