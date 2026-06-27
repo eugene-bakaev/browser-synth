@@ -566,8 +566,13 @@ describe('session-scoped connection', () => {
     };
   }
 
+  let pushState: ReturnType<typeof vi.fn>;
+  let replaceState: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn() });
+    pushState = vi.fn();
+    replaceState = vi.fn();
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
 
@@ -625,6 +630,18 @@ describe('session-scoped connection', () => {
     mod.connectToSession('room-a');
     mod.connectToSession('room-a');
     expect(built).toHaveLength(1);
+  });
+
+  it('re-opening the room you are already in does not push a duplicate history entry', async () => {
+    const { mod } = await boot();
+    mod.connectToSession('room-a', { history: 'push' });
+    expect(pushState).toHaveBeenCalledTimes(1);
+    expect(pushState).toHaveBeenCalledWith(null, '', '/r/room-a');
+    // A no-op re-connect to the same room (e.g. clicking its lobby card again)
+    // must not grow history with a second /r/room-a entry — otherwise browser
+    // Back lands back on the studio instead of the previous page.
+    mod.connectToSession('room-a', { history: 'push' });
+    expect(pushState).toHaveBeenCalledTimes(1);
   });
 
   it('switching rooms disconnects the old socket and builds a new one', async () => {
