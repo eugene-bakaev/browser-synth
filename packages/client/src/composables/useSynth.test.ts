@@ -887,3 +887,89 @@ describe('Project boot (S1: no localStorage path)', () => {
     expect(lsImpl.setItem).not.toHaveBeenCalled();
   });
 });
+
+describe('focused-track URL view-state', () => {
+  let pushState: ReturnType<typeof vi.fn>;
+  let replaceState: ReturnType<typeof vi.fn>;
+
+  function makeFakeWsClient(opts: any) {
+    let seq = 0;
+    return {
+      _opts: opts, sent: [] as any[],
+      connect: vi.fn(), disconnect: vi.fn(), reconnect: vi.fn(),
+      send: vi.fn(), isLive: () => true, nextClientSeq: () => ++seq,
+      recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn(),
+      getPersisted: () => null,
+    };
+  }
+
+  beforeEach(() => {
+    pushState = vi.fn();
+    replaceState = vi.fn();
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn() });
+    vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function boot() {
+    try { localStorage.removeItem('fiddle:project'); } catch {}
+    vi.resetModules();
+    const mod = await import('./useSynth');
+    mod.setWsClientFactory((o: any) => makeFakeWsClient(o) as any);
+    mod.setSyncEnabled(true);
+    mod.disposeSynth();
+    const synth = mod.useSynth();
+    return { mod, synth };
+  }
+
+  it('selectTrack(n) opens the editor: pushes ?t=<n> (Back returns to overview) and focuses the track', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a'); // module fn: sets currentRoomId without touching the view
+    synth.selectTrack(2);
+    expect(pushState).toHaveBeenCalledWith(null, '', '/r/room-a?t=2');
+    expect(synth.activeTrackIndex.value).toBe(2);
+  });
+
+  it('selectTrack(null) leaves the editor: replaces with the bare room URL and shows the overview', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a');
+    synth.selectTrack(2);
+    synth.selectTrack(null);
+    expect(replaceState).toHaveBeenLastCalledWith(null, '', '/r/room-a');
+    expect(synth.activeTrackIndex.value).toBeNull();
+  });
+
+  it('setFocusedTrack(n) syncs the view from the URL without a new history entry (popstate path)', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a');
+    synth.setFocusedTrack(3);
+    expect(replaceState).toHaveBeenLastCalledWith(null, '', '/r/room-a?t=3');
+    expect(pushState).not.toHaveBeenCalled();
+    expect(synth.activeTrackIndex.value).toBe(3);
+  });
+
+  it('entering a session resets a stale editor view to the overview (kills cross-session bleed-through)', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a');
+    synth.selectTrack(2);
+    expect(synth.activeTrackIndex.value).toBe(2);
+    synth.connectToSession('room-b'); // wrapped composable fn → resets the view
+    expect(synth.activeTrackIndex.value).toBeNull();
+  });
+
+  it('leaving a session resets the editor view to the overview', async () => {
+    const { mod, synth } = await boot();
+    mod.connectToSession('room-a');
+    synth.selectTrack(2);
+    synth.leaveSession(); // wrapped composable fn → resets the view
+    expect(synth.activeTrackIndex.value).toBeNull();
+  });
+
+  it('selectTrack with no active room only sets the view (no URL write)', async () => {
+    const { synth } = await boot();
+    synth.selectTrack(1);
+    expect(synth.activeTrackIndex.value).toBe(1);
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
+  });
+});
