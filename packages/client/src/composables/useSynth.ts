@@ -401,16 +401,6 @@ function installSyncWatchers(): void {
     // fire (async flush would clear it first and remote ops would echo back
     // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
     // nothing leaks before the room is live or while applying a remote op.
-    watch(
-      () => project.bpm,
-      (newVal, oldVal) => {
-        if (outbox && syncReady && !isApplyingFromNetwork()) {
-          outbox.enqueue(['bpm'], newVal, oldVal, gestureEndForLeaf('bpm'));
-        }
-      },
-      { flush: 'sync' },
-    );
-
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {
       watch(
         () => project.tracks[i].engineType,
@@ -829,7 +819,7 @@ export function useSynth() {
 
   const bpm = computed({
     get: () => project.bpm,
-    set: (v: number) => { project.bpm = v; },
+    set: (v: number) => { dispatchLocal(['bpm'], v); },
   });
 
   // The currently-focused track, or null on the track overview. Panels read

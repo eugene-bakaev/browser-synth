@@ -551,6 +551,21 @@ describe('sync integration', () => {
       JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']) && o.value === 0.42,
     )).toBe(true);
   });
+
+  it('emits a bpm op via the bpm computed setter (dispatch path)', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    synth.bpm.value = 132; // writable computed → dispatchLocal(['bpm'], 132)
+    vi.advanceTimersByTime(50); // bpm rides the 50ms throttle
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['bpm']));
+    expect(op?.value).toBe(132);
+  });
+
+  it('a direct project.bpm mutation no longer emits (watcher removed)', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    synth.project.bpm = 99; // direct mutation — no outbound watcher should catch it
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['bpm']))).toBeUndefined();
+  });
 });
 
 describe('session-scoped connection', () => {
