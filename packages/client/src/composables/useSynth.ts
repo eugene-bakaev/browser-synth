@@ -49,7 +49,7 @@ import { project } from '../stores/project';
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
-import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
+import { isApplyingFromNetwork, enterSuppress, exitSuppress } from '../sync/applyOp';
 import { createCommandBus, type CommandBus } from '../sync/CommandBus';
 import { setDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
@@ -559,7 +559,6 @@ export function connectToSession(
 // sync watchers would enqueue the reset as local edits).
 function resetLocalProject(): void {
   replaceProject(project, freshProject());
-  resetApplyOpState();
 }
 
 // Leave the current session: drop the connection, reset local state to a neutral
@@ -796,7 +795,6 @@ export function disposeSynth() {
 
   // Tear down the sync layer too so a re-init (or a test) starts clean.
   teardownConnection();
-  resetApplyOpState();
 }
 
 export function useSynth() {

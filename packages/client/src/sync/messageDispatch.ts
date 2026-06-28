@@ -64,7 +64,7 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
     case 'set': {
       // Peer-drift detection: a broadcast opId that skips ahead means we missed
       // an op. Ask the server to replay from our last applied opId; per-path
-      // opId guards in applyOp keep the (newer) gapped op from being clobbered by
+      // opId watermark in the CommandBus keeps the (newer) gapped op from being clobbered by
       // the (older) replayed ones.
       const lastSeen = deps.wsClient.opIdLastSeen();
       if (msg.opId > lastSeen + 1) {
