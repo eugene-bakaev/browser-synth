@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { dispatchServerMessage, type DispatchDeps } from './messageDispatch.js';
-import { resetApplyOpState } from './applyOp.js';
-import { freshProject, TRACK_POOL_SIZE, type Project, type ServerMessage } from '@fiddle/shared';
+import { createCommandBus } from './CommandBus.js';
+import { freshProject, setDeep, TRACK_POOL_SIZE, type Project, type ServerMessage } from '@fiddle/shared';
 
 function deps(project: Project): DispatchDeps {
   return {
@@ -12,6 +12,10 @@ function deps(project: Project): DispatchDeps {
       hasPendingForPath: vi.fn(() => false),
     } as unknown as DispatchDeps['outbox'],
     onFatalError: vi.fn(),
+    commandBus: createCommandBus({
+      applySet: (path, value) => setDeep(project as unknown as Record<string, unknown>, path, value),
+      enqueue: vi.fn(),
+    }),
   };
 }
 
@@ -39,10 +43,6 @@ describe('snapshot reconcile', () => {
 });
 
 describe('self-echo skip (M2)', () => {
-  // The per-path opId watermark in applyOp is module state — reset it so the
-  // small opIds these cases use aren't rejected as stale by a previous test.
-  beforeEach(() => { resetApplyOpState(); });
-
   it('does not write a self-echo when a newer local edit is pending for the path', () => {
     const project = freshProject();
     project.bpm = 150; // local state has advanced past the echoed value

@@ -6,17 +6,19 @@
 // machine and hands fully-typed messages here; this layer owns the
 // application semantics.
 //
-// Suppression: `snapshot` (replaceProject) and `set` (applyOp) both mutate the
-// reactive `project` programmatically. Those writes are wrapped in the
-// applyingFromNetwork suppression so the sync watchers in useSynth don't
-// re-enqueue them back out as local edits. applyOp does its own wrapping; the
-// snapshot path wraps replaceProject explicitly here.
+// Suppression: `snapshot` (replaceProject) and `set` (commandBus.applyRemote)
+// both mutate the reactive `project` programmatically. Those writes are wrapped
+// in the applyingFromNetwork suppression so the sync watchers in useSynth don't
+// re-enqueue them back out as local edits. applyRemote is suppress-wrapped here
+// at the dispatch site (transitional: removed in 2b-iii once the watchers are
+// gone); the snapshot path wraps replaceProject explicitly here.
 
 import type { ServerMessage, Project } from '@fiddle/shared';
 import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
-import { applyOp, advanceOpIdForPath, resetApplyOpState, enterSuppress, exitSuppress } from './applyOp.js';
+import { enterSuppress, exitSuppress } from './applyOp.js';
+import type { CommandBus } from './CommandBus.js';
 import { roster, selfClientId, noteRemoteTouch } from './presence.js';
 import { replaceProject } from '../project/storage.js';
 
@@ -24,6 +26,7 @@ export interface DispatchDeps {
   project: Project;
   wsClient: WsClient;
   outbox: Outbox;
+  commandBus: CommandBus;
   onFatalError: (code: string, message: string) => void;
   // Called when the room reaches the live / caught-up state (sync.complete).
   // Opens the outbound-sync gate in useSynth so local edits can't leak into the
@@ -51,7 +54,7 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       } finally {
         exitSuppress();
       }
-      resetApplyOpState();
+      deps.commandBus.resetWatermark();
       // Non-destructive reconcile: the snapshot just overwrote local state. Re-apply
       // any un-acked local edits on top and re-queue them for delivery so a server
       // repair (mid-session resync or reconnect eviction) can never erase a pending
@@ -80,9 +83,18 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
         skipWrite = deps.outbox.hasPendingForPath(msg.path);
       }
       if (skipWrite) {
-        advanceOpIdForPath(msg.path, msg.opId);
+        deps.commandBus.advanceWatermark(msg.path, msg.opId);
       } else {
-        applyOp(deps.project, msg);
+        // Transitional suppression (2b-i): the outbound watchers still observe
+        // this write, so suppress while applyRemote runs to stop the applied
+        // remote op echoing straight back out. Removed in 2b-iii once the
+        // watchers are gone. applyRemote itself stays sync-agnostic.
+        enterSuppress();
+        try {
+          deps.commandBus.applyRemote(msg);
+        } finally {
+          exitSuppress();
+        }
       }
       if (msg.clientId !== selfClientId.value) {
         noteRemoteTouch(msg.path, msg.clientId);
