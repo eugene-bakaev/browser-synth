@@ -81,4 +81,32 @@ describe('CommandBus', () => {
     expect(bus.applyRemote(broadcast(['tracks', 999, 'nope'], 1, 1))).toBe(false);
     expect(writes).toEqual([]);
   });
+
+  it('advanceWatermark advances without writing and rejects stale opIds', () => {
+    const bus = createCommandBus(f.deps);
+    expect(bus.advanceWatermark(['bpm'], 5)).toBe(true);
+    expect(bus.advanceWatermark(['bpm'], 3)).toBe(false); // older
+    expect(bus.advanceWatermark(['bpm'], 5)).toBe(false); // equal
+    expect(f.writes).toEqual([]); // never writes
+    expect(f.enqueues).toEqual([]); // never enqueues
+  });
+
+  it('advanceWatermark shares the watermark with applyRemote (skipped echo blocks an older replay)', () => {
+    const bus = createCommandBus(f.deps);
+    // Self-echo skipped at opId 5 (advance only)...
+    expect(bus.advanceWatermark(['bpm'], 5)).toBe(true);
+    // ...so an older replayed op for the same path is now stale and does not write.
+    expect(bus.applyRemote(broadcast(['bpm'], 99, 3))).toBe(false);
+    expect(f.writes).toEqual([]);
+    // ...and a newer op still applies.
+    expect(bus.applyRemote(broadcast(['bpm'], 128, 6))).toBe(true);
+    expect(f.writes).toEqual([{ path: ['bpm'], value: 128 }]);
+  });
+
+  it('resetWatermark also clears advanceWatermark state', () => {
+    const bus = createCommandBus(f.deps);
+    bus.advanceWatermark(['bpm'], 9);
+    bus.resetWatermark();
+    expect(bus.advanceWatermark(['bpm'], 1)).toBe(true); // fresh again
+  });
 });

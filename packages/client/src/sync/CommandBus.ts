@@ -62,5 +62,20 @@ export function createCommandBus(deps: CommandBusDeps) {
     lastAppliedOpIdForPath.clear();
   }
 
-  return { dispatchLocal, applyRemote, resetWatermark };
+  // Advance the per-path watermark WITHOUT writing. Used by the self-echo skip:
+  // when a newer local edit is still pending for a path, the echoed (older)
+  // value must not be written (it would snap a dragging knob backward), but the
+  // watermark must still advance so older replayed ops stay rejected. Shares the
+  // same Map as applyRemote, so the two agree on what is stale.
+  function advanceWatermark(path: Path, opId: number): boolean {
+    const key = pathKey(path);
+    const prev = lastAppliedOpIdForPath.get(key) ?? -1;
+    if (opId <= prev) return false;
+    lastAppliedOpIdForPath.set(key, opId);
+    return true;
+  }
+
+  return { dispatchLocal, applyRemote, advanceWatermark, resetWatermark };
 }
+
+export type CommandBus = ReturnType<typeof createCommandBus>;
