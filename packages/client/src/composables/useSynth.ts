@@ -51,7 +51,7 @@ import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
 import { isApplyingFromNetwork, enterSuppress, exitSuppress } from '../sync/applyOp';
 import { createCommandBus, type CommandBus } from '../sync/CommandBus';
-import { setDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
+import { setDeep, getDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
 import { roster, selfClientId, resetPresence } from '../sync/presence';
@@ -198,6 +198,26 @@ export function endGesture(path: Path): void {
   outbox?.flushPath(path);
 }
 
+// The single outbound entry point for a LOCAL edit. Writes state through the
+// command bus (which also enqueues the op for delivery) when a room connection
+// exists; before one does (pre-connect / tests) it mutates the local project
+// directly so the edit still drives audio + UI without trying to sync. The
+// discrete-vs-throttled policy (flush-now vs ride the 50ms throttle) is derived
+// from the leaf field — the same policy the removed sync watchers applied.
+export function dispatchLocal(path: Path, value: unknown): void {
+  const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
+  if (commandBus) {
+    commandBus.dispatchLocal({
+      path,
+      value,
+      priorValue: getDeep(project as unknown as Record<string, unknown>, path),
+      gestureEnd,
+    });
+  } else {
+    setDeep(project as unknown as Record<string, unknown>, path, value);
+  }
+}
+
 // Tests flip this off so ensureAudio() doesn't open a real socket; production
 // leaves it on. Kept here (not a build-time const) so a test can toggle it on
 // the freshly-imported module instance.
@@ -332,8 +352,12 @@ function buildSyncState(roomId: string): void {
     applySet: (path: Path, value: unknown) => {
       setDeep(project as unknown as Record<string, unknown>, path, value);
     },
-    enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) =>
-      outbox!.enqueue(path, value, priorValue, gestureEnd),
+    enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => {
+      // Outbound is gated on the room being live — mirrors the (removed) sync
+      // watchers' `outbox && syncReady` guard, so a local edit made during the
+      // initial catch-up writes state but is not leaked up before the room loads.
+      if (syncReady) outbox!.enqueue(path, value, priorValue, gestureEnd);
+    },
   });
   installLeaveFlushHandler();
 }
@@ -373,7 +397,7 @@ function installSyncWatchers(): void {
   syncWatcherScope = effectScope(true);
   syncWatcherScope.run(() => {
     // Every watcher below uses flush:'sync' so the applyingFromNetwork guard —
-    // held synchronously during applyOp/replaceProject — actually covers the
+    // held synchronously during applyRemote/replaceProject — actually covers the
     // fire (async flush would clear it first and remote ops would echo back
     // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
     // nothing leaks before the room is live or while applying a remote op.
@@ -700,7 +724,7 @@ async function buildAudioState(): Promise<AudioState> {
   // double-emit once both sets are live. bpm/steps/patternLength have no engine
   // reaction (the sequencer reads them live each tick), so they aren't watched
   // here at all. flush:'sync' keeps each reaction in step with the synchronous
-  // applyOp write, and the bodies are guard-free so remote ops drive audio too.
+  // applyRemote write, and the bodies are guard-free so remote ops drive audio too.
   const scope = effectScope(true);
   scope.run(() => {
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {

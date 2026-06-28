@@ -1,6 +1,6 @@
 // WsClient — owns the client-side WebSocket lifecycle for a single room.
 //
-// Responsibilities (the higher layers — Outbox, applyOp, presence store — sit
+// Responsibilities (the higher layers — Outbox, CommandBus, presence store — sit
 // on top and never touch the raw socket):
 //
 //   - Open the WebSocket, send `hello` (fresh OR resume based on what's in
@@ -303,7 +303,7 @@ export class WsClient {
     this.opts.onStateChange?.(s);
   }
 
-  // === Persistence (public so the Outbox + applyOp layers can read/advance them) ===
+  // === Persistence (public so the Outbox + CommandBus layers can read/advance them) ===
 
   getPersisted(): PersistedSyncState | null {
     if (this.persisted === undefined) {

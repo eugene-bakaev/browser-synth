@@ -29,3 +29,18 @@ export function setDeep(obj: Record<string, unknown>, path: Path, value: unknown
   }
   cursor[path[path.length - 1]!] = value;
 }
+
+// Read the leaf at a wire path, or `undefined` if any intermediate is missing.
+// The read-only dual of setDeep: walks existing intermediates only and never
+// throws (a broken path yields undefined), so a caller can use it to capture a
+// pre-edit value for nack rollback without guarding the path first.
+export function getDeep(obj: Record<string, unknown>, path: Path): unknown {
+  if (path.length === 0) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cursor: any = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    cursor = cursor?.[path[i]!];
+    if (cursor == null) return undefined;
+  }
+  return cursor?.[path[path.length - 1]!];
+}
