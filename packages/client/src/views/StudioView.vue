@@ -88,70 +88,70 @@
         <div class="engine-selector">
           <button
             :class="{ active: focusedTrack!.engineType === 'synth' }"
-            @click="focusedTrack!.engineType = 'synth'"
+            @click="setEngineType('synth')"
             :style="focusedTrack!.engineType === 'synth' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SYNTH
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'kick' }"
-            @click="focusedTrack!.engineType = 'kick'"
+            @click="setEngineType('kick')"
             :style="focusedTrack!.engineType === 'kick' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             KICK
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'hat' }"
-            @click="focusedTrack!.engineType = 'hat'"
+            @click="setEngineType('hat')"
             :style="focusedTrack!.engineType === 'hat' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             HAT
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'snare' }"
-            @click="focusedTrack!.engineType = 'snare'"
+            @click="setEngineType('snare')"
             :style="focusedTrack!.engineType === 'snare' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SNARE
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'clap' }"
-            @click="focusedTrack!.engineType = 'clap'"
+            @click="setEngineType('clap')"
             :style="focusedTrack!.engineType === 'clap' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             CLAP
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'synth2' }"
-            @click="focusedTrack!.engineType = 'synth2'"
+            @click="setEngineType('synth2')"
             :style="focusedTrack!.engineType === 'synth2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SYNTH2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'kick2' }"
-            @click="focusedTrack!.engineType = 'kick2'"
+            @click="setEngineType('kick2')"
             :style="focusedTrack!.engineType === 'kick2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             KICK2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'snare2' }"
-            @click="focusedTrack!.engineType = 'snare2'"
+            @click="setEngineType('snare2')"
             :style="focusedTrack!.engineType === 'snare2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SNARE2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'hat2' }"
-            @click="focusedTrack!.engineType = 'hat2'"
+            @click="setEngineType('hat2')"
             :style="focusedTrack!.engineType === 'hat2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             HAT2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'clap2' }"
-            @click="focusedTrack!.engineType = 'clap2'"
+            @click="setEngineType('clap2')"
             :style="focusedTrack!.engineType === 'clap2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             CLAP2
@@ -305,6 +305,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
+import { dispatchLocal } from '../composables/useSynth';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -413,6 +414,11 @@ function trackMode(t: ProjectTrack): 'mono' | 'poly' {
   return 'mono';
 }
 
+function setEngineType(t: EngineType) {
+  if (activeTrackIndex.value === null) return;
+  dispatchLocal(['tracks', activeTrackIndex.value, 'engineType'], t);
+}
+
 // Confirm before removing a track — deletion drops the slot's pattern and patch.
 const onRemoveTrack = async (index: number) => {
   const ok = await dialog.confirm({
@@ -516,7 +522,7 @@ const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
   fillProjectTrack(project.tracks[trackId], interval, project.tracks[trackId].patternLength);
 const onSetLength = ({ trackId, length }: { trackId: number; length: number }) => {
-  project.tracks[trackId].patternLength = Math.max(1, Math.min(64, length));
+  dispatchLocal(['tracks', trackId, 'patternLength'], length);
 };
 
 const onNew = async () => {

@@ -402,16 +402,6 @@ function installSyncWatchers(): void {
     // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
     // nothing leaks before the room is live or while applying a remote op.
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-      watch(
-        () => project.tracks[i].engineType,
-        (newType, oldType) => {
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'engineType'], newType, oldType, gestureEndForLeaf('engineType'));
-          }
-        },
-        { flush: 'sync' },
-      );
-
       for (const slice of ENGINE_SLICES) {
         watch(
           () => snapshot(project.tracks[i].engines[slice]),
@@ -474,26 +464,6 @@ function installSyncWatchers(): void {
               if (a === b) continue;
               outbox.enqueue(['tracks', i, 'engines', 'synth2', 'matrix', s, field], a, b, gestureEndForLeaf(field));
             }
-          }
-        },
-        { flush: 'sync' },
-      );
-
-      watch(
-        () => project.tracks[i].patternLength,
-        (newVal, oldVal) => {
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'patternLength'], newVal, oldVal, gestureEndForLeaf('patternLength'));
-          }
-        },
-        { flush: 'sync' },
-      );
-
-      watch(
-        () => project.tracks[i].enabled,
-        (newVal, oldVal) => {
-          if (outbox && syncReady && !isApplyingFromNetwork()) {
-            outbox.enqueue(['tracks', i, 'enabled'], newVal, oldVal, gestureEndForLeaf('enabled'));
           }
         },
         { flush: 'sync' },
@@ -955,11 +925,10 @@ export function useSynth() {
   const enabledTrackCount = computed(() => project.tracks.filter(t => t.enabled).length);
 
   // Add a track = enable the lowest-index disabled slot (fills a freed hole if
-  // any). No-op when the pool is full. The enabled watcher emits the sync op
-  // and re-gates audio.
+  // any). No-op when the pool is full.
   const addTrack = (): void => {
     const idx = project.tracks.findIndex(t => !t.enabled);
-    if (idx !== -1) project.tracks[idx].enabled = true;
+    if (idx !== -1) dispatchLocal(['tracks', idx, 'enabled'], true);
   };
 
   // Remove a track = disable that slot (non-destructive; step/param data stays
@@ -968,7 +937,7 @@ export function useSynth() {
     if (index < 0 || index >= TRACK_POOL_SIZE) return;
     if (!project.tracks[index].enabled) return;
     if (enabledTrackCount.value <= 1) return;
-    project.tracks[index].enabled = false;
+    dispatchLocal(['tracks', index, 'enabled'], false);
   };
 
   return {

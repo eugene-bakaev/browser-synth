@@ -314,13 +314,26 @@ describe('sync integration', () => {
     expect(synth.project.tracks[0].engines.synth.filterCutoff).toBe(2000); // default restored
   });
 
-  it('emits engineType swaps immediately (discrete)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engineType = 'kick';
-    // No timer advance: discrete selection flushes immediately (gestureEnd).
+  it('emits an engineType swap via dispatch (discrete)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    mod.dispatchLocal(['tracks', 0, 'engineType'], 'kick');
     const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engineType']));
-    expect(op).toBeDefined();
-    expect(op.value).toBe('kick');
+    expect(op?.value).toBe('kick');
+  });
+
+  it('a direct engineType mutation no longer emits (watcher removed)', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    synth.project.tracks[0].engineType = 'hat';
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engineType']))).toBeUndefined();
+  });
+
+  it('addTrack emits an enabled op via dispatch', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    const firstDisabled = synth.project.tracks.findIndex((t: any) => !t.enabled);
+    synth.addTrack();
+    const onOp = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', firstDisabled, 'enabled']));
+    expect(onOp?.value).toBe(true);
   });
 
   it('emits mixer volume (throttled) and muted (immediate) as leaf ops', async () => {
@@ -447,13 +460,11 @@ describe('sync integration', () => {
     expect(fake.sent.length).toBe(0);
   });
 
-  it('emits a patternLength op immediately (discrete — no timer needed)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].patternLength = 8;
-    // No timer advance: patternLength is in DISCRETE_LEAF_FIELDS → flushes immediately.
-    expect(fake.sent.length).toBe(1);
-    expect(fake.sent[0].path).toEqual(['tracks', 0, 'patternLength']);
-    expect(fake.sent[0].value).toBe(8);
+  it('emits a patternLength op via dispatch', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 32);
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength']));
+    expect(op?.value).toBe(32);
   });
 
   it('applies a remote patternLength op without echoing it back out', async () => {
@@ -705,12 +716,12 @@ describe('session-scoped connection', () => {
     // Edit BEFORE catch-up completes — must not leak to the room (gate closed),
     // even after the snapshot has been applied.
     built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
-    synth.project.tracks[0].patternLength = 8;
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 8);
     expect(built[0].sent.length).toBe(0);
 
     // sync.complete → gate opens.
     built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
-    synth.project.tracks[0].patternLength = 5; // discrete → flushes immediately
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 5); // discrete → flushes immediately
     expect(
       built[0].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
     ).toBe(true);
@@ -723,7 +734,7 @@ describe('session-scoped connection', () => {
   // or persisted, so a second client (or a reload) saw the un-edited server state.
   // Outbound sync must be live as soon as the room is, independent of audio.
   it('emits edits made before the first Play (sync does not require ensureAudio/audio)', async () => {
-    const { mod, synth, built } = await boot();
+    const { mod, built } = await boot();
     // NOTE: deliberately NO ensureAudio() — simulates editing before pressing Play.
     mod.connectToSession('room-a');
     built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
@@ -732,7 +743,7 @@ describe('session-scoped connection', () => {
 
     // The exact repro: swap an engine before any AudioContext exists. engineType is
     // discrete (gestureEnd) so it flushes immediately — no timer advance needed.
-    synth.project.tracks[0].engineType = 'kick';
+    mod.dispatchLocal(['tracks', 0, 'engineType'], 'kick');
 
     expect(
       built[0].sent.some(
@@ -757,7 +768,7 @@ describe('session-scoped connection', () => {
     });
     built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 1 });
 
-    synth.project.tracks[0].patternLength = 6; // discrete → flushes immediately
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 6); // discrete → flushes immediately
     expect(
       built[0].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
     ).toBe(true);
@@ -769,20 +780,20 @@ describe('session-scoped connection', () => {
     mod.connectToSession('room-a');
     built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
     built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
-    synth.project.tracks[0].patternLength = 7; // legit edit to room-a
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 7); // legit edit to room-a
     expect(built[0].sent.length).toBeGreaterThan(0);
 
     mod.connectToSession('room-b');
     // Gate closed + project reset: no ops to room-b before it syncs, even if
     // a reactive change fires.
     expect(built[1].sent.length).toBe(0);
-    synth.project.tracks[0].patternLength = 3;
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 3);
     expect(built[1].sent.length).toBe(0);
 
     // After room-b syncs, edits flow to room-b again.
     built[1]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
     built[1]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
-    synth.project.tracks[0].patternLength = 9;
+    mod.dispatchLocal(['tracks', 0, 'patternLength'], 9);
     expect(
       built[1].sent.some((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength'])),
     ).toBe(true);
