@@ -65,4 +65,24 @@ describe('useProjectStore', () => {
     const store = useProjectStore();
     expect(store.getTrackEngineType(0)).toBe(store.project.tracks[0].engineType);
   });
+
+  it('applySet writes a top-level leaf (bpm)', () => {
+    const store = useProjectStore();
+    store.applySet(['bpm'], 140);
+    expect(store.project.bpm).toBe(140);
+  });
+
+  it('applySet writes a deep engine-param path in place', () => {
+    const store = useProjectStore();
+    const before = store.project;
+    store.applySet(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1234);
+    expect(store.project.tracks[0].engines.synth.filterCutoff).toBe(1234);
+    expect(store.project).toBe(before); // mutates in place, identity stable
+  });
+
+  it('applySet writes an engineType change', () => {
+    const store = useProjectStore();
+    store.applySet(['tracks', 2, 'engineType'], 'kick2');
+    expect(store.project.tracks[2].engineType).toBe('kick2');
+  });
 });
