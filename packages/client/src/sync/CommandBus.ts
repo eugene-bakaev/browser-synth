@@ -6,9 +6,11 @@
 // for the legacy `applyingFromNetwork` suppression flag — that disappears in
 // Phase 2b when the outbound watchers it guarded are deleted.
 //
-// Phase 2a: this unit is DORMANT — only the unit tests construct it. Phase 2b
-// wires `applySet` to ProjectStore.applySet and `enqueue` to the Outbox, routes
-// the inbound message path through `applyRemote`, and deletes `applyOp`.
+// Phase 2b-i: the INBOUND path is now live through `applyRemote` (the legacy
+// `applyOp` is deleted). `applySet` is still an inline `setDeep` on the canonical
+// `project` (mirroring Outbox.applyLocal); folding it onto ProjectStore.applySet
+// and routing local edits through `dispatchLocal` is Phase 2b-ii/iii — until then
+// `dispatchLocal` stays dormant (constructed but not called live).
 
 import { pathKey, type Path, type SetOpBroadcast } from '@fiddle/shared';
 
@@ -31,8 +33,9 @@ export interface LocalCommand {
 export function createCommandBus(deps: CommandBusDeps) {
   // Per-path opId watermark: a late echo of an older op for a path we've
   // advanced past is dropped rather than allowed to clobber the newer value.
-  // Private to this bus instance (the future home of the watermark that
-  // currently lives in applyOp.ts).
+  // Private to this bus instance — created fresh per connection in
+  // buildSyncState, so a new room starts with an empty watermark (this replaced
+  // the former module-scope watermark in applyOp.ts).
   const lastAppliedOpIdForPath = new Map<string, number>();
 
   function dispatchLocal(cmd: LocalCommand): void {
@@ -62,5 +65,20 @@ export function createCommandBus(deps: CommandBusDeps) {
     lastAppliedOpIdForPath.clear();
   }
 
-  return { dispatchLocal, applyRemote, resetWatermark };
+  // Advance the per-path watermark WITHOUT writing. Used by the self-echo skip:
+  // when a newer local edit is still pending for a path, the echoed (older)
+  // value must not be written (it would snap a dragging knob backward), but the
+  // watermark must still advance so older replayed ops stay rejected. Shares the
+  // same Map as applyRemote, so the two agree on what is stale.
+  function advanceWatermark(path: Path, opId: number): boolean {
+    const key = pathKey(path);
+    const prev = lastAppliedOpIdForPath.get(key) ?? -1;
+    if (opId <= prev) return false;
+    lastAppliedOpIdForPath.set(key, opId);
+    return true;
+  }
+
+  return { dispatchLocal, applyRemote, advanceWatermark, resetWatermark };
 }
+
+export type CommandBus = ReturnType<typeof createCommandBus>;

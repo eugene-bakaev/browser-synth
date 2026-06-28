@@ -1,73 +1,18 @@
-// applyOp — the inbound counterpart to the Outbox.
+// Suppression flag (transitional) — slated for deletion in Phase 2b-iii.
 //
-// When a broadcast `set` op arrives from the server it has to be written into
-// the same Vue reactive `project` the local UI edits. That write trips the
-// per-slice watcher in useSynth.ts, which would normally hand the change to
-// the Outbox and echo it straight back out — an infinite round trip. The
-// module-scope `applyingFromNetwork` flag is the suppression switch: it is true
-// for the duration of the write, and the watcher checks `isApplyingFromNetwork`
-// before enqueuing, so remote ops land silently.
-//
-// Broadcasts can arrive out of order (reconnect replay, server fan-out racing
-// a fresh edit), so we also keep `lastAppliedOpIdForPath`: a stale echo of an
-// older op for a path we've already advanced past is dropped rather than
-// allowed to clobber the newer value.
-
-import type { Project, SetOpBroadcast } from '@fiddle/shared';
-import { setDeep, pathKey } from '@fiddle/shared';
-
-// Module-scope flag: set true while a programmatic (network-origin) write runs;
-// the sync-participating watchers in useSynth.ts check this and skip calling
-// Outbox.enqueue so an applied remote op doesn't echo straight back out.
+// While the OUTBOUND sync watchers in useSynth.ts still observe the reactive
+// `project`, any programmatic (network-origin) write — the inbound
+// CommandBus.applyRemote, the snapshot replaceProject, the Outbox rollback —
+// must be wrapped so those watchers don't echo it straight back out. This flag
+// is that switch: it is true for the duration of such a write, and each
+// sync-participating watcher checks `isApplyingFromNetwork` before enqueuing.
 //
 // This only works because those watchers run with `flush: 'sync'` — they fire
 // synchronously inside the suppressed write, while the flag is still held.
-// `enterSuppress`/`exitSuppress` are exported so the Outbox rollback and the
-// snapshot-replace path (which also mutate `project` programmatically) can wrap
-// their writes in the same suppression without going through `applyOp`.
+//
+// Phase 2b-iii deletes this once every outbound write goes through the
+// CommandBus (dispatchLocal) and no watcher remains to suppress.
 let applyingFromNetwork = false;
 export function isApplyingFromNetwork(): boolean { return applyingFromNetwork; }
 export function enterSuppress(): void { applyingFromNetwork = true; }
 export function exitSuppress(): void { applyingFromNetwork = false; }
-
-// Track the most recent opId applied to each path so a late echo of an
-// older op cannot overwrite a newer one.
-const lastAppliedOpIdForPath = new Map<string, number>();
-
-// Advance the per-path opId watermark without writing the value. Returns false
-// if `opId` is stale (already at or behind the watermark). Used directly by the
-// self-echo skip in messageDispatch: when a newer local edit is still pending
-// for the path, the echoed value must NOT be written (it would snap the knob
-// backward), but the watermark must still advance so older replayed ops stay
-// rejected.
-export function advanceOpIdForPath(path: SetOpBroadcast['path'], opId: number): boolean {
-  const key = pathKey(path);
-  const prev = lastAppliedOpIdForPath.get(key) ?? -1;
-  if (opId <= prev) return false;  // stale; ignore
-  lastAppliedOpIdForPath.set(key, opId);
-  return true;
-}
-
-export function applyOp(project: Project, op: SetOpBroadcast): boolean {
-  if (!advanceOpIdForPath(op.path, op.opId)) return false;
-
-  enterSuppress();
-  try {
-    setDeep(project as unknown as Record<string, unknown>, op.path, op.value);
-  } catch (err) {
-    // A malformed / out-of-range path should never reach us — the server
-    // bounds-checks (accept-list indicesInRange) before broadcasting. But if
-    // one ever does, drop it here rather than let the throw escape and break
-    // the whole inbound message handler for this frame.
-    console.warn('applyOp: dropped op with unresolvable path', op.path, err);
-    return false;
-  } finally {
-    exitSuppress();
-  }
-  return true;
-}
-
-export function resetApplyOpState(): void {
-  // For tests + reconnect.
-  lastAppliedOpIdForPath.clear();
-}

@@ -49,7 +49,8 @@ import { project } from '../stores/project';
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
-import { isApplyingFromNetwork, enterSuppress, exitSuppress, resetApplyOpState } from '../sync/applyOp';
+import { isApplyingFromNetwork, enterSuppress, exitSuppress } from '../sync/applyOp';
+import { createCommandBus, type CommandBus } from '../sync/CommandBus';
 import { setDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
 import { dispatchServerMessage } from '../sync/messageDispatch';
@@ -157,6 +158,7 @@ const audioState = shallowRef<AudioState | null>(null);
 // per tab, shared by every useSynth() consumer.
 let wsClient: WsClient | null = null;
 let outbox: Outbox | null = null;
+let commandBus: CommandBus | null = null;
 const fatalError = ref<{ code: string; message: string } | null>(null);
 
 // True while the current room's initial catch-up is in flight — from
@@ -289,6 +291,7 @@ function buildSyncState(roomId: string): void {
       project,
       wsClient: wsClient!,
       outbox: outbox!,
+      commandBus: commandBus!,
       onFatalError: (code, message) => {
         fatalError.value = { code, message };
         // The error overlay takes over; stop showing the loader behind it.
@@ -319,6 +322,18 @@ function buildSyncState(roomId: string): void {
       }
     },
     isLive: () => !!wsClient?.isLive(),
+  });
+  commandBus = createCommandBus({
+    // 2b-i wires only the INBOUND path (applyRemote) through the bus; the
+    // transitional suppress wrap lives at the messageDispatch call site, so this
+    // writer stays pure. Mirrors Outbox.applyLocal's writer on the same
+    // module-scope `project`. 2b-ii routes local edits through dispatchLocal;
+    // 2b-iii folds every writer onto the store's applySet.
+    applySet: (path: Path, value: unknown) => {
+      setDeep(project as unknown as Record<string, unknown>, path, value);
+    },
+    enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) =>
+      outbox!.enqueue(path, value, priorValue, gestureEnd),
   });
   installLeaveFlushHandler();
 }
@@ -487,6 +502,7 @@ function teardownConnection(): void {
     wsClient = null;
   }
   outbox = null;
+  commandBus = null;
   // Drop the outbound-sync watchers with the connection. Done before
   // resetLocalProject runs (in connectToSession / leaveSession) so the reset to
   // a fresh project can't be observed and enqueued as local edits.
@@ -543,7 +559,6 @@ export function connectToSession(
 // sync watchers would enqueue the reset as local edits).
 function resetLocalProject(): void {
   replaceProject(project, freshProject());
-  resetApplyOpState();
 }
 
 // Leave the current session: drop the connection, reset local state to a neutral
@@ -780,7 +795,6 @@ export function disposeSynth() {
 
   // Tear down the sync layer too so a re-init (or a test) starts clean.
   teardownConnection();
-  resetApplyOpState();
 }
 
 export function useSynth() {
