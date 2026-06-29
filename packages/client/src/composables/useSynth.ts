@@ -420,19 +420,6 @@ function installSyncWatchers(): void {
       }
 
       watch(
-        () => snapshot(project.tracks[i].mixer),
-        (newVal, oldVal) => {
-          if (!outbox || !syncReady || isApplyingFromNetwork()) return;
-          const changed = diffParams(
-            newVal as unknown as Record<string, unknown>,
-            oldVal as unknown as Record<string, unknown>,
-          );
-          if (changed) emitLeafDiff(['tracks', i, 'mixer'], changed, oldVal as unknown as Record<string, unknown>);
-        },
-        { flush: 'sync' },
-      );
-
-      watch(
         () => snapshot(project.tracks[i].steps),
         (newSteps, oldSteps) => {
           if (!outbox || !syncReady || isApplyingFromNetwork() || !oldSteps) return;

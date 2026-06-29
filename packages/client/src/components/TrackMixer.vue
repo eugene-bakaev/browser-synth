@@ -47,7 +47,8 @@
             :step="0.01"
             :defaultValue="DEFAULT_MIXER_STATE.volume"
             format="db"
-            v-model="chan.track.mixer.volume"
+            :modelValue="trackVolumeModels[chan.index].value"
+            @update:modelValue="trackVolumeModels[chan.index].value = $event"
             :syncPath="['tracks', chan.index, 'mixer', 'volume']"
             @gesture-end="endGesture(['tracks', chan.index, 'mixer', 'volume'])"
           />
@@ -58,7 +59,7 @@
           <button
             class="btn-mute"
             :class="{ active: chan.track.mixer.muted }"
-            @click="chan.track.mixer.muted = !chan.track.mixer.muted"
+            @click="dispatchLocal(['tracks', chan.index, 'mixer', 'muted'], !chan.track.mixer.muted)"
             title="Mute"
           >
             M
@@ -66,7 +67,7 @@
           <button
             class="btn-solo"
             :class="{ active: chan.track.mixer.soloed }"
-            @click="chan.track.mixer.soloed = !chan.track.mixer.soloed"
+            @click="dispatchLocal(['tracks', chan.index, 'mixer', 'soloed'], !chan.track.mixer.soloed)"
             title="Solo"
           >
             S
@@ -81,8 +82,10 @@
 import { computed } from 'vue';
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
-import { endGesture } from '../composables/useSynth';
+import { dispatchLocal, endGesture } from '../composables/useSynth';
+import { useCommandModel } from '../sync/commandModel';
 import { trackColor } from '../ui/trackColors';
+import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 const props = defineProps<{
   trackStates: ProjectTrack[];
@@ -96,6 +99,13 @@ const enabledChannels = computed(() =>
   props.trackStates
     .map((track, index) => ({ track, index }))
     .filter(c => c.track.enabled),
+);
+
+// Pre-create one WritableComputedRef per track slot so the v-for Knob can
+// bind v-model without calling useCommandModel (which wraps computed()) inside
+// a loop or a computed getter.
+const trackVolumeModels = Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
+  useCommandModel<number>(() => ['tracks', i, 'mixer', 'volume']),
 );
 
 // Detect note trigger on current step for active visualization pulse.

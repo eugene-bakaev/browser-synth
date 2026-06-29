@@ -195,7 +195,7 @@
         :step="0.01"
         :defaultValue="DEFAULT_MIXER_STATE.volume"
         format="db"
-        v-model="mixer.volume"
+        v-model="volumeModel"
         :syncPath="['tracks', trackId, 'mixer', 'volume']"
         @gesture-end="endGesture(['tracks', trackId, 'mixer', 'volume'])"
       />
@@ -203,13 +203,13 @@
         <button
           class="mix-btn mute"
           :class="{ active: mixer.muted }"
-          @click="mixer.muted = !mixer.muted"
+          @click="dispatchLocal(['tracks', trackId, 'mixer', 'muted'], !mixer.muted)"
           title="Mute"
         >MUTE</button>
         <button
           class="mix-btn solo"
           :class="{ active: mixer.soloed }"
-          @click="mixer.soloed = !mixer.soloed"
+          @click="dispatchLocal(['tracks', trackId, 'mixer', 'soloed'], !mixer.soloed)"
           title="Solo"
         >SOLO</button>
       </div>
@@ -227,7 +227,8 @@ import { engineLabel } from '../ui/engineLabel';
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE } from '../project';
 import type { MixerState } from '../project';
-import { endGesture } from '../composables/useSynth';
+import { dispatchLocal, endGesture } from '../composables/useSynth';
+import { useCommandModel } from '../sync/commandModel';
 
 const props = withDefaults(defineProps<{
   steps: Step[];
@@ -276,6 +277,9 @@ const isPoly = computed(() => isMelodic.value && props.mode === 'poly');
 // prop when it changes externally (remote sync op, or our own clamp).
 const lengthDraft = ref(props.patternLength);
 watch(() => props.patternLength, (v) => { lengthDraft.value = v; });
+
+// Volume rides the throttle; the endGesture flush on mouseup is unchanged.
+const volumeModel = useCommandModel<number>(() => ['tracks', props.trackId, 'mixer', 'volume']);
 
 const commitLength = () => {
   const n = Math.round(Number(lengthDraft.value));

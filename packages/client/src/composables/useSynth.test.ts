@@ -336,17 +336,22 @@ describe('sync integration', () => {
     expect(onOp?.value).toBe(true);
   });
 
-  it('emits mixer volume (throttled) and muted (immediate) as leaf ops', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[1].mixer.muted = true; // toggle → immediate
-    const mutedOp = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'muted']));
-    expect(mutedOp?.value).toBe(true);
+  it('emits mixer muted (immediate) and volume (throttled) as leaf ops via dispatch', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    mod.dispatchLocal(['tracks', 1, 'mixer', 'muted'], true); // discrete → immediate
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'muted']))?.value).toBe(true);
 
-    synth.project.tracks[1].mixer.volume = 0.5; // slider → throttled
+    mod.dispatchLocal(['tracks', 1, 'mixer', 'volume'], 0.5); // continuous → throttled
     expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']))).toBeUndefined();
     vi.advanceTimersByTime(50);
-    const volOp = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']));
-    expect(volOp?.value).toBe(0.5);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']))?.value).toBe(0.5);
+  });
+
+  it('a direct mixer mutation no longer emits (watcher removed)', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    synth.project.tracks[1].mixer.muted = false;
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'muted']))).toBeUndefined();
   });
 
   it('emits a synth2 osc.sync toggle immediately (discrete leaf)', async () => {
@@ -553,9 +558,9 @@ describe('sync integration', () => {
   });
 
   it('leaveSession flushes throttled pending edits before the socket closes', async () => {
-    const { fake, synth, mod } = await bootWithFakeSocket();
+    const { fake, mod } = await bootWithFakeSocket();
     // volume is a continuous field — gestureEndForLeaf('volume') === false → throttled (pending).
-    synth.project.tracks[1].mixer.volume = 0.42;
+    mod.dispatchLocal(['tracks', 1, 'mixer', 'volume'], 0.42);
     fake.sent.length = 0; // clear any previous ops
     mod.leaveSession();
     expect(fake.sent.some((o: any) =>
