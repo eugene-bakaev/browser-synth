@@ -99,7 +99,7 @@
           <button 
             class="mute-btn" 
             :class="{ active: step.muted }" 
-            @click="step.muted = !step.muted" 
+            @click="dispatchLocal(['tracks', trackId, 'steps', i, 'muted'], !step.muted)"
             title="Mute Step"
           >
             ∅
@@ -112,41 +112,42 @@
         <template v-if="isMelodic">
           <template v-if="isPoly">
             <div class="col-note">
-              <select v-model="step.note" title="Root Note">
+              <select :value="step.note" @change="e => dispatchLocal(['tracks', trackId, 'steps', i, 'note'], (e.target as HTMLSelectElement).value || null)" title="Root Note">
                 <option :value="null">---</option>
                 <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
             <div class="col-chord-type">
-              <select v-model="step.chordType" :disabled="step.note === null" title="Chord Type">
+              <select :value="step.chordType" @change="e => dispatchLocal(['tracks', trackId, 'steps', i, 'chordType'], (e.target as HTMLSelectElement).value)" :disabled="step.note === null" title="Chord Type">
                 <option v-for="(_, type) in CHORD_FORMULAS" :key="type" :value="type">{{ type }}</option>
               </select>
             </div>
             <div class="col-oct">
-              <StepNumberInput v-model="step.octave" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
+              <StepNumberInput :model-value="step.octave" @update:model-value="v => dispatchLocal(['tracks', trackId, 'steps', i, 'octave'], v)" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
             </div>
             <div class="col-len">
-              <StepNumberInput v-model="step.length" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
+              <StepNumberInput :model-value="step.length" @update:model-value="v => dispatchLocal(['tracks', trackId, 'steps', i, 'length'], v)" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
             </div>
           </template>
           <template v-else>
             <div class="col-note">
-              <select v-model="step.note" title="Note">
+              <select :value="step.note" @change="e => dispatchLocal(['tracks', trackId, 'steps', i, 'note'], (e.target as HTMLSelectElement).value || null)" title="Note">
                 <option :value="null">---</option>
                 <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
             <div class="col-oct">
-              <StepNumberInput v-model="step.octave" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
+              <StepNumberInput :model-value="step.octave" @update:model-value="v => dispatchLocal(['tracks', trackId, 'steps', i, 'octave'], v)" :disabled="step.note === null" :min="0" :max="8" title="Octave" />
             </div>
             <div class="col-len">
-              <StepNumberInput v-model="step.length" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
+              <StepNumberInput :model-value="step.length" @update:model-value="v => dispatchLocal(['tracks', trackId, 'steps', i, 'length'], v)" :disabled="step.note === null" :min="1" :max="16" title="Length (ticks)" />
             </div>
           </template>
           <div v-if="isFocused" class="col-vel">
             <input
               type="range"
-              v-model.number="step.velocity"
+              :value="step.velocity"
+              @input="e => dispatchLocal(['tracks', trackId, 'steps', i, 'velocity'], Number((e.target as HTMLInputElement).value))"
               min="0"
               max="1"
               step="0.05"
@@ -161,20 +162,21 @@
         <!-- Drum Layout -->
         <template v-else>
           <div class="col-trig">
-            <button 
-              class="trig-btn" 
-              :class="{ active: step.note !== null }" 
-              @click="toggleDrumTrigger(step)"
+            <button
+              class="trig-btn"
+              :class="{ active: step.note !== null }"
+              @click="toggleDrumTrigger(step, i)"
               title="Toggle Step Trigger"
             ></button>
           </div>
           <div class="col-vel">
-            <input 
-              type="range" 
-              v-model.number="step.velocity" 
-              min="0" 
-              max="1" 
-              step="0.05" 
+            <input
+              type="range"
+              :value="step.velocity"
+              @input="e => dispatchLocal(['tracks', trackId, 'steps', i, 'velocity'], Number((e.target as HTMLInputElement).value))"
+              min="0"
+              max="1"
+              step="0.05"
               :disabled="step.note === null"
               title="Velocity"
               class="vel-slider"
@@ -323,12 +325,8 @@ const onFillChange = (event: Event) => {
   select.value = "";
 };
 
-const toggleDrumTrigger = (step: Step) => {
-  if (step.note !== null) {
-    step.note = null;
-  } else {
-    step.note = 'C';
-  }
+const toggleDrumTrigger = (step: Step, i: number) => {
+  dispatchLocal(['tracks', props.trackId, 'steps', i, 'note'], step.note !== null ? null : 'C');
 };
 </script>
 

@@ -446,12 +446,24 @@ describe('sync integration', () => {
     }
   });
 
-  it('emits a step edit as a leaf op', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].steps[3].note = 'C'; // discrete → immediate
-    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 3, 'note']));
-    expect(op).toBeDefined();
-    expect(op.value).toBe('C');
+  it('emits a step note op via dispatch (discrete leaf)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    mod.dispatchLocal(['tracks', 0, 'steps', 0, 'note'], 'C');
+    const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
+    expect(op?.value).toBe('C');
+  });
+
+  it('emits a step octave op via dispatch (discrete leaf)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    mod.dispatchLocal(['tracks', 0, 'steps', 2, 'octave'], 5);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 2, 'octave']))?.value).toBe(5);
+  });
+
+  it('a direct step mutation no longer emits (watcher removed)', async () => {
+    const { synth, fake } = await bootWithFakeSocket();
+    synth.project.tracks[0].steps[0].octave = 7;
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'octave']))).toBeUndefined();
   });
 
   it('applies a remote mixer op without echoing it back out', async () => {

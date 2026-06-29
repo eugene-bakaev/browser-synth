@@ -419,21 +419,6 @@ function installSyncWatchers(): void {
         );
       }
 
-      watch(
-        () => snapshot(project.tracks[i].steps),
-        (newSteps, oldSteps) => {
-          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldSteps) return;
-          for (let j = 0; j < newSteps.length; j++) {
-            const changed = diffParams(
-              newSteps[j] as unknown as Record<string, unknown>,
-              oldSteps[j] as unknown as Record<string, unknown>,
-            );
-            if (changed) emitLeafDiff(['tracks', i, 'steps', j], changed, oldSteps[j] as unknown as Record<string, unknown>);
-          }
-        },
-        { flush: 'sync' },
-      );
-
       // synth2 mod matrix: an array of {source,dest,amount} slots. The
       // engine-slice watcher's emitLeafDiff skips arrays (a one-level drill would
       // emit a forbidden whole-slot object write), so the matrix is synced here —
