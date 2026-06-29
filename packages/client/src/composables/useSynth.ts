@@ -290,6 +290,72 @@ function emitLeafDiff(
   }
 }
 
+// Sync an already-applied BULK local edit by diffing a pre-edit snapshot against
+// the now-mutated live project and enqueuing the changed leaves — exactly what the
+// removed steps/mixer/scalar watchers did, but invoked on demand for the bulk
+// operations (Clear/Shift/Fill, Open/New) whose multi-leaf writes don't flow
+// through per-control dispatchLocal. Gated on the room being live, mirroring the
+// removed watchers' `outbox && syncReady && !isApplyingFromNetwork()` guard.
+export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, unknown>[]): void {
+  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  const steps = project.tracks[trackId].steps;
+  for (let j = 0; j < beforeSteps.length; j++) {
+    const changed = diffParams(
+      steps[j] as unknown as Record<string, unknown>,
+      beforeSteps[j],
+    );
+    if (changed) emitLeafDiff(['tracks', trackId, 'steps', j], changed, beforeSteps[j]);
+  }
+}
+
+// Snapshot the sync-relevant fields of the current project before a bulk replace
+// (Open file / New project). Only captures what the removed watchers covered —
+// bpm + per-track engineType/patternLength/enabled/mixer/steps. Engine params and
+// synth2 matrix are intentionally omitted: the RETAINED slice/matrix watchers
+// (flush:'sync') pick them up when replaceProject Object.assigns the slices.
+export interface ProjectSyncSnapshot {
+  bpm: number;
+  tracks: { engineType: string; patternLength: number; enabled: boolean; mixer: Record<string, unknown>; steps: Record<string, unknown>[] }[];
+}
+export function snapshotProjectForSync(): ProjectSyncSnapshot {
+  return {
+    bpm: project.bpm,
+    tracks: project.tracks.map(t => ({
+      engineType: t.engineType,
+      patternLength: t.patternLength,
+      enabled: t.enabled,
+      mixer: { ...t.mixer } as unknown as Record<string, unknown>,
+      steps: t.steps.map(s => ({ ...s }) as unknown as Record<string, unknown>),
+    })),
+  };
+}
+
+// Sync a whole-project replace (Open file / New project). Emits ONLY the leaves the
+// removed watchers covered — bpm + per-track engineType/patternLength/enabled/mixer
+// /steps. Engine params + synth2 matrix are emitted by the RETAINED slice/matrix
+// watchers (which fire on replaceProject's Object.assign), so they are intentionally
+// NOT emitted here. `before` is a pre-replace snapshot from snapshotProjectForSync().
+export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
+  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  if (project.bpm !== before.bpm) outbox.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
+  for (let i = 0; i < TRACK_POOL_SIZE; i++) {
+    const t = project.tracks[i]; const b = before.tracks[i];
+    // engineType / patternLength / enabled scalars
+    const headNew = { engineType: t.engineType, patternLength: t.patternLength, enabled: t.enabled } as Record<string, unknown>;
+    const headOld = { engineType: b.engineType, patternLength: b.patternLength, enabled: b.enabled } as Record<string, unknown>;
+    const headChanged = diffParams(headNew, headOld);
+    if (headChanged) emitLeafDiff(['tracks', i], headChanged, headOld);
+    // mixer leaves
+    const mixChanged = diffParams(t.mixer as unknown as Record<string, unknown>, b.mixer);
+    if (mixChanged) emitLeafDiff(['tracks', i, 'mixer'], mixChanged, b.mixer);
+    // step leaves
+    for (let j = 0; j < t.steps.length; j++) {
+      const sc = diffParams(t.steps[j] as unknown as Record<string, unknown>, b.steps[j]);
+      if (sc) emitLeafDiff(['tracks', i, 'steps', j], sc, b.steps[j]);
+    }
+  }
+}
+
 // Build the room connection + outbox. Does NOT call wsClient.connect() —
 // that is the caller's responsibility (connectToSession). Idempotent: if a
 // socket is already live, returns immediately.

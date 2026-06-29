@@ -594,6 +594,62 @@ describe('sync integration', () => {
     vi.advanceTimersByTime(50);
     expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['bpm']))).toBeUndefined();
   });
+
+  // C1: syncStepWindowDiff — bulk step writes (Clear/Shift/Fill)
+  it('syncStepWindowDiff emits changed step fields as leaf ops (C1)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const before = synth.project.tracks[0].steps.slice(0, 4).map((s: any) => ({ ...s }));
+    synth.project.tracks[0].steps[0].note = 'C';
+    synth.project.tracks[0].steps[2].note = 'D';
+    mod.syncStepWindowDiff(0, before);
+    // 'note' is discrete → no timer advance needed
+    const noteOp0 = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
+    expect(noteOp0?.value).toBe('C');
+    const noteOp2 = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 2, 'note']));
+    expect(noteOp2?.value).toBe('D');
+  });
+
+  it('syncStepWindowDiff emits nothing when the window is unchanged (C1 regression)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const before = synth.project.tracks[0].steps.slice(0, 4).map((s: any) => ({ ...s }));
+    fake.sent.length = 0;
+    mod.syncStepWindowDiff(0, before);
+    expect(fake.sent.length).toBe(0);
+  });
+
+  // M3: snapshotProjectForSync + syncWholeProjectDiff — Open file / New project
+  it('syncWholeProjectDiff emits bpm, patternLength, mixer.volume, and step note (M3)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const before = mod.snapshotProjectForSync();
+    synth.project.bpm = 150;
+    synth.project.tracks[0].patternLength = 32;
+    synth.project.tracks[1].mixer.volume = 0.3;
+    synth.project.tracks[0].steps[0].note = 'C';
+    mod.syncWholeProjectDiff(before);
+    vi.advanceTimersByTime(50); // bpm and mixer.volume are throttled
+    const bpmOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['bpm']));
+    expect(bpmOp?.value).toBe(150);
+    const plOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength']));
+    expect(plOp?.value).toBe(32);
+    const volOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']));
+    expect(volOp?.value).toBeCloseTo(0.3);
+    const noteOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
+    expect(noteOp?.value).toBe('C');
+    // Must NOT emit anything under 'engines' or 'matrix' (retained watchers' job)
+    for (const o of fake.sent) {
+      expect((o.path as string[]).includes('engines')).toBe(false);
+      expect((o.path as string[]).includes('matrix')).toBe(false);
+    }
+  });
+
+  it('syncWholeProjectDiff emits nothing when snapshot matches live (M3 regression)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    const before = mod.snapshotProjectForSync();
+    fake.sent.length = 0;
+    mod.syncWholeProjectDiff(before);
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.length).toBe(0);
+  });
 });
 
 describe('session-scoped connection', () => {
