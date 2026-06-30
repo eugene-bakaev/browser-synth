@@ -14,9 +14,11 @@
 // focused one) and writes the `mixer` slice, so it builds paths inline and
 // calls endGesture() directly rather than using this composable.
 
-import { inject, ref, type InjectionKey, type Ref } from 'vue';
+import { computed, inject, ref, type InjectionKey, type Ref, type WritableComputedRef } from 'vue';
 import type { EngineType, Path } from '@fiddle/shared';
-import { endGesture } from '../composables/useSynth';
+import { getDeep } from '@fiddle/shared';
+import { dispatchLocal, endGesture } from '../composables/useSynth';
+import { project } from '../stores/project';
 
 /** App.vue provides its `activeTrackIndex` ref under this key. */
 export const ACTIVE_TRACK_KEY: InjectionKey<Ref<number | null>> = Symbol('activeTrackIndex');
@@ -37,5 +39,32 @@ export function useKnobSync(engine: EngineType) {
     endGesture(pathFor(field));
   }
 
-  return { pathFor, end };
+  type Field = string | ReadonlyArray<string | number>;
+
+  // Writable v-model for a knob/select: reads the live reactive value at the
+  // field's wire path, writes through the command bus. Mirrors useCommandModel
+  // but sources the (activeTrack-dependent) path from pathFor.
+  function model(field: Field): WritableComputedRef<unknown> {
+    return computed<unknown>({
+      get: () => {
+        const p = pathFor(field);
+        if (p.length === 0) return undefined; // no active track → dormant
+        return getDeep(project as unknown as Record<string, unknown>, p);
+      },
+      set: (v) => {
+        const p = pathFor(field);
+        if (p.length === 0) return;
+        dispatchLocal(p, v);
+      },
+    });
+  }
+
+  // Imperative write for @click toggles/buttons that have no v-model.
+  function set(field: Field, value: unknown): void {
+    const p = pathFor(field);
+    if (p.length === 0) return;
+    dispatchLocal(p, value);
+  }
+
+  return { pathFor, end, model, set };
 }
