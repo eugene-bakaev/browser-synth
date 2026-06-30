@@ -88,70 +88,70 @@
         <div class="engine-selector">
           <button
             :class="{ active: focusedTrack!.engineType === 'synth' }"
-            @click="focusedTrack!.engineType = 'synth'"
+            @click="setEngineType('synth')"
             :style="focusedTrack!.engineType === 'synth' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SYNTH
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'kick' }"
-            @click="focusedTrack!.engineType = 'kick'"
+            @click="setEngineType('kick')"
             :style="focusedTrack!.engineType === 'kick' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             KICK
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'hat' }"
-            @click="focusedTrack!.engineType = 'hat'"
+            @click="setEngineType('hat')"
             :style="focusedTrack!.engineType === 'hat' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             HAT
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'snare' }"
-            @click="focusedTrack!.engineType = 'snare'"
+            @click="setEngineType('snare')"
             :style="focusedTrack!.engineType === 'snare' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SNARE
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'clap' }"
-            @click="focusedTrack!.engineType = 'clap'"
+            @click="setEngineType('clap')"
             :style="focusedTrack!.engineType === 'clap' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             CLAP
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'synth2' }"
-            @click="focusedTrack!.engineType = 'synth2'"
+            @click="setEngineType('synth2')"
             :style="focusedTrack!.engineType === 'synth2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SYNTH2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'kick2' }"
-            @click="focusedTrack!.engineType = 'kick2'"
+            @click="setEngineType('kick2')"
             :style="focusedTrack!.engineType === 'kick2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             KICK2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'snare2' }"
-            @click="focusedTrack!.engineType = 'snare2'"
+            @click="setEngineType('snare2')"
             :style="focusedTrack!.engineType === 'snare2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             SNARE2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'hat2' }"
-            @click="focusedTrack!.engineType = 'hat2'"
+            @click="setEngineType('hat2')"
             :style="focusedTrack!.engineType === 'hat2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             HAT2
           </button>
           <button
             :class="{ active: focusedTrack!.engineType === 'clap2' }"
-            @click="focusedTrack!.engineType = 'clap2'"
+            @click="setEngineType('clap2')"
             :style="focusedTrack!.engineType === 'clap2' ? { borderColor: trackColor(activeTrackIndex), color: trackColor(activeTrackIndex) } : {}"
           >
             CLAP2
@@ -305,6 +305,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
+import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff } from '../composables/useSynth';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -323,6 +324,7 @@ import {
   PRESET_SCHEMA_VERSION,
   type EngineParamsMap,
   type ProjectTrack,
+  type Preset,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
 import SynthPanel from '../components/SynthPanel.vue';
@@ -413,6 +415,11 @@ function trackMode(t: ProjectTrack): 'mono' | 'poly' {
   return 'mono';
 }
 
+function setEngineType(t: EngineType) {
+  if (activeTrackIndex.value === null) return;
+  dispatchLocal(['tracks', activeTrackIndex.value, 'engineType'], t);
+}
+
 // Confirm before removing a track — deletion drops the slot's pattern and patch.
 const onRemoveTrack = async (index: number) => {
   const ok = await dialog.confirm({
@@ -433,9 +440,17 @@ const currentUserId = computed(() => auth.session.value?.user.id ?? null);
 const showSettings = ref(false);
 const presetLibraryOpen = ref(false);
 
+// Dispatch engineType BEFORE applyPreset so the swap syncs with the correct prior
+// (the OLD engine), then let applyPreset re-set engineType (idempotent) and apply
+// params — the retained engine-slice watcher syncs the param Object.assign.
+function applyPresetSynced(trackIdx: number, preset: Preset): void {
+  dispatchLocal(['tracks', trackIdx, 'engineType'], preset.engineType); // engineType has no watcher in 2b-ii
+  applyPreset(project.tracks[trackIdx], preset);                        // re-sets engineType (no-op) + params (slice watcher syncs)
+}
+
 const onLoadPresetFromLibrary = (rec: PresetRecord) => {
   if (activeTrackIndex.value === null) return;
-  applyPreset(project.tracks[activeTrackIndex.value], {
+  applyPresetSynced(activeTrackIndex.value, {
     schemaVersion: PRESET_SCHEMA_VERSION,
     engineType: rec.engineType,
     params: rec.params as EngineParamsMap[EngineType],
@@ -509,14 +524,26 @@ const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
 );
 
-const onClear = (trackId: number) =>
-  clearProjectTrack(project.tracks[trackId], project.tracks[trackId].patternLength);
-const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) =>
-  shiftProjectTrack(project.tracks[trackId], direction, project.tracks[trackId].patternLength);
-const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
-  fillProjectTrack(project.tracks[trackId], interval, project.tracks[trackId].patternLength);
+const onClear = (trackId: number) => {
+  const len = project.tracks[trackId].patternLength;
+  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
+  clearProjectTrack(project.tracks[trackId], len);
+  syncStepWindowDiff(trackId, before);
+};
+const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) => {
+  const len = project.tracks[trackId].patternLength;
+  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
+  shiftProjectTrack(project.tracks[trackId], direction, len);
+  syncStepWindowDiff(trackId, before);
+};
+const onFill = ({ trackId, interval }: { trackId: number; interval: number }) => {
+  const len = project.tracks[trackId].patternLength;
+  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
+  fillProjectTrack(project.tracks[trackId], interval, len);
+  syncStepWindowDiff(trackId, before);
+};
 const onSetLength = ({ trackId, length }: { trackId: number; length: number }) => {
-  project.tracks[trackId].patternLength = Math.max(1, Math.min(64, length));
+  dispatchLocal(['tracks', trackId, 'patternLength'], length);
 };
 
 const onNew = async () => {
@@ -526,7 +553,10 @@ const onNew = async () => {
     confirmLabel: 'Discard',
     danger: true,
   });
-  if (ok) replaceProject(project, freshProject());
+  if (!ok) return;
+  const before = snapshotProjectForSync();
+  replaceProject(project, freshProject());
+  syncWholeProjectDiff(before);
 };
 
 const onSave = () => {
@@ -536,7 +566,10 @@ const onSave = () => {
 const onOpen = async () => {
   try {
     const loaded = await openProjectFromFile();
-    if (loaded) replaceProject(project, loaded);
+    if (!loaded) return;
+    const before = snapshotProjectForSync();
+    replaceProject(project, loaded);
+    syncWholeProjectDiff(before);
   } catch (e) {
     console.warn('Open failed:', e);
     await dialog.alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
@@ -575,7 +608,7 @@ const onLoadPreset = async () => {
   if (activeTrackIndex.value === null) return;
   try {
     const preset = await openPresetFromFile();
-    if (preset) applyPreset(project.tracks[activeTrackIndex.value], preset);
+    if (preset) applyPresetSynced(activeTrackIndex.value, preset);
   } catch (e) {
     console.warn('Load preset failed:', e);
     await dialog.alert(`Could not load preset: ${e instanceof Error ? e.message : 'unknown error'}`);
