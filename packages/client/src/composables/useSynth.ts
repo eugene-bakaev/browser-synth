@@ -49,7 +49,6 @@ import { project } from '../stores/project';
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
 import { Outbox } from '../sync/Outbox';
-import { isApplyingFromNetwork, enterSuppress, exitSuppress } from '../sync/applyOp';
 import { createCommandBus, type CommandBus } from '../sync/CommandBus';
 import { setDeep, getDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
@@ -322,7 +321,7 @@ export function syncEngineParamsDiff(
   engineType: EngineType,
   beforeSlice: Record<string, unknown>,
 ): void {
-  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  if (!outbox || !syncReady) return;
   const after = project.tracks[trackIdx].engines[engineType] as unknown as Record<string, unknown>;
   const changed = diffParams(after, beforeSlice);
   if (changed) emitLeafDiff(['tracks', trackIdx, 'engines', engineType], changed, beforeSlice);
@@ -336,9 +335,10 @@ export function syncEngineParamsDiff(
 // removed steps/mixer/scalar watchers did, but invoked on demand for the bulk
 // operations (Clear/Shift/Fill, Open/New) whose multi-leaf writes don't flow
 // through per-control dispatchLocal. Gated on the room being live, mirroring the
-// removed watchers' `outbox && syncReady && !isApplyingFromNetwork()` guard.
+// removed watchers' `outbox && syncReady` guard (the network-apply suppression
+// they also checked is gone — no outbound watcher remains to echo these writes).
 export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, unknown>[]): void {
-  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  if (!outbox || !syncReady) return;
   const steps = project.tracks[trackId].steps;
   for (let j = 0; j < beforeSteps.length; j++) {
     const changed = diffParams(
@@ -403,7 +403,7 @@ export function snapshotProjectForSync(): ProjectSyncSnapshot {
 // watchers used to cover is emitted here by diffing the live project against a
 // pre-replace snapshot from snapshotProjectForSync().
 export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
-  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  if (!outbox || !syncReady) return;
   if (project.bpm !== before.bpm) outbox.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
   for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     const t = project.tracks[i]; const b = before.tracks[i];
@@ -476,23 +476,18 @@ function buildSyncState(roomId: string): void {
     nextClientSeq: () => wsClient!.nextClientSeq(),
     send: (op) => wsClient!.send(op),
     applyLocal: (path: Path, value: unknown) => {
-      // Rollback write: suppress so the sync watcher reverts the engine without
-      // re-enqueuing the reverted value back to the server.
-      enterSuppress();
-      try {
-        setDeep(project as unknown as Record<string, unknown>, path, value);
-      } finally {
-        exitSuppress();
-      }
+      // Rollback write (nack): revert the local project in place. No suppression
+      // needed — no outbound watcher observes this write, so it can't re-enqueue
+      // the reverted value back to the server.
+      setDeep(project as unknown as Record<string, unknown>, path, value);
     },
     isLive: () => !!wsClient?.isLive(),
   });
   commandBus = createCommandBus({
-    // 2b-i wires only the INBOUND path (applyRemote) through the bus; the
-    // transitional suppress wrap lives at the messageDispatch call site, so this
-    // writer stays pure. Mirrors Outbox.applyLocal's writer on the same
-    // module-scope `project`. 2b-ii routes local edits through dispatchLocal;
-    // 2b-iii folds every writer onto the store's applySet.
+    // Both the inbound applyRemote path and outbound dispatchLocal funnel through
+    // the bus onto this one writer, which mutates the module-scope `project` in
+    // place (mirrors Outbox.applyLocal). No suppression wrap: no outbound watcher
+    // observes these writes, so a remote apply can't echo straight back out.
     applySet: (path: Path, value: unknown) => {
       setDeep(project as unknown as Record<string, unknown>, path, value);
     },
