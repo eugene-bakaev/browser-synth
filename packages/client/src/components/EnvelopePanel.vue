@@ -9,10 +9,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.a" format="ms" v-model="params.filterEnv.a" :syncPath="ks.pathFor(['filterEnv','a'])" @gesture-end="ks.end(['filterEnv','a'])" />
-      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.d" format="ms" v-model="params.filterEnv.d" :syncPath="ks.pathFor(['filterEnv','d'])" @gesture-end="ks.end(['filterEnv','d'])" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.filterEnv.s" format="percent" v-model="params.filterEnv.s" :syncPath="ks.pathFor(['filterEnv','s'])" @gesture-end="ks.end(['filterEnv','s'])" />
-      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.filterEnv.r" format="ms" v-model="params.filterEnv.r" :syncPath="ks.pathFor(['filterEnv','r'])" @gesture-end="ks.end(['filterEnv','r'])" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.a" format="ms" :modelValue="params.filterEnv.a" @update:modelValue="ks.set(['filterEnv','a'], $event)" :syncPath="ks.pathFor(['filterEnv','a'])" @gesture-end="ks.end(['filterEnv','a'])" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.filterEnv.d" format="ms" :modelValue="params.filterEnv.d" @update:modelValue="ks.set(['filterEnv','d'], $event)" :syncPath="ks.pathFor(['filterEnv','d'])" @gesture-end="ks.end(['filterEnv','d'])" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.filterEnv.s" format="percent" :modelValue="params.filterEnv.s" @update:modelValue="ks.set(['filterEnv','s'], $event)" :syncPath="ks.pathFor(['filterEnv','s'])" @gesture-end="ks.end(['filterEnv','s'])" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.filterEnv.r" format="ms" :modelValue="params.filterEnv.r" @update:modelValue="ks.set(['filterEnv','r'], $event)" :syncPath="ks.pathFor(['filterEnv','r'])" @gesture-end="ks.end(['filterEnv','r'])" />
     </div>
   </div>
 
@@ -26,10 +26,10 @@
       >⚠</span>
     </h3>
     <div class="knob-row">
-      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.a" format="ms" v-model="params.ampEnv.a" :syncPath="ks.pathFor(['ampEnv','a'])" @gesture-end="ks.end(['ampEnv','a'])" />
-      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.d" format="ms" v-model="params.ampEnv.d" :syncPath="ks.pathFor(['ampEnv','d'])" @gesture-end="ks.end(['ampEnv','d'])" />
-      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.ampEnv.s" format="percent" v-model="params.ampEnv.s" :syncPath="ks.pathFor(['ampEnv','s'])" @gesture-end="ks.end(['ampEnv','s'])" />
-      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.ampEnv.r" format="ms" v-model="params.ampEnv.r" :syncPath="ks.pathFor(['ampEnv','r'])" @gesture-end="ks.end(['ampEnv','r'])" />
+      <Knob label="A" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.a" format="ms" :modelValue="params.ampEnv.a" @update:modelValue="ks.set(['ampEnv','a'], $event)" :syncPath="ks.pathFor(['ampEnv','a'])" @gesture-end="ks.end(['ampEnv','a'])" />
+      <Knob label="D" :min="0.001" :max="2" :step="0.001" :defaultValue="DEFAULTS.ampEnv.d" format="ms" :modelValue="params.ampEnv.d" @update:modelValue="ks.set(['ampEnv','d'], $event)" :syncPath="ks.pathFor(['ampEnv','d'])" @gesture-end="ks.end(['ampEnv','d'])" />
+      <Knob label="S" :min="0" :max="1" :step="0.01" :defaultValue="DEFAULTS.ampEnv.s" format="percent" :modelValue="params.ampEnv.s" @update:modelValue="ks.set(['ampEnv','s'], $event)" :syncPath="ks.pathFor(['ampEnv','s'])" @gesture-end="ks.end(['ampEnv','s'])" />
+      <Knob label="R" :min="0.001" :max="5" :step="0.001" :defaultValue="DEFAULTS.ampEnv.r" format="ms" :modelValue="params.ampEnv.r" @update:modelValue="ks.set(['ampEnv','r'], $event)" :syncPath="ks.pathFor(['ampEnv','r'])" @gesture-end="ks.end(['ampEnv','r'])" />
     </div>
   </div>
 </template>

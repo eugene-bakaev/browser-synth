@@ -28,7 +28,7 @@ function withActiveTrack<T>(idx: number | null, run: () => T): T {
   try { return run(); } finally { (vue.inject as Mock).mockReset(); }
 }
 
-describe('useKnobSync model/set', () => {
+describe('useKnobSync set', () => {
   beforeEach(() => { (dispatchLocal as unknown as ReturnType<typeof vi.fn>).mockClear(); });
 
   it('set() dispatches to the full wire path for the active track', () => {
@@ -37,22 +37,15 @@ describe('useKnobSync model/set', () => {
     expect(dispatchLocal).toHaveBeenCalledWith(['tracks', 2, 'engines', 'synth2', 'env1', 'loop'], true);
   });
 
-  it('set() is a no-op when there is no active track', () => {
-    const ks = withActiveTrack(null, () => useKnobSync('synth2'));
-    ks.set('mode', 'poly');
-    expect(dispatchLocal).not.toHaveBeenCalled();
-  });
-
-  it('model().value writes dispatch to the field path', () => {
+  it('set() dispatches a scalar field for the active track', () => {
     const ks = withActiveTrack(0, () => useKnobSync('kick2'));
-    const m = ks.model('tune');
-    m.value = 88;
+    ks.set('tune', 88);
     expect(dispatchLocal).toHaveBeenCalledWith(['tracks', 0, 'engines', 'kick2', 'tune'], 88);
   });
 
-  it('model() setter is a no-op when there is no active track', () => {
-    const ks = withActiveTrack(null, () => useKnobSync('kick2'));
-    ks.model('tune').value = 88;
+  it('set() is a no-op when there is no active track', () => {
+    const ks = withActiveTrack(null, () => useKnobSync('synth2'));
+    ks.set('mode', 'poly');
     expect(dispatchLocal).not.toHaveBeenCalled();
   });
 });

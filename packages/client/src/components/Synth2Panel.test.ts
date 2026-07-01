@@ -1,11 +1,27 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
-import { createApp, type App } from 'vue';
+import { describe, it, expect, afterEach, beforeEach, vi, type Mock } from 'vitest';
+import { createApp, ref, type App } from 'vue';
 import Synth2Panel from './Synth2Panel.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
+import { ACTIVE_TRACK_KEY } from '../sync/knobSync';
+
+// Panel controls now route writes through the command bus (dispatchLocal), not
+// direct params mutation. Partial-mock useSynth so we can assert the dispatched
+// op; every other export (endGesture, touchedFor read by Knob, …) stays real so
+// the panel and its child Knobs still mount and render normally.
+vi.mock('../composables/useSynth', async (orig) => {
+  const actual = await orig<typeof import('../composables/useSynth')>();
+  return { ...actual, dispatchLocal: vi.fn() };
+});
+import { dispatchLocal } from '../composables/useSynth';
+
+// Wire path for the focused synth2 track (mountPanel provides active track 0).
+const SYN2 = (...tail: (string | number)[]) => ['tracks', 0, 'engines', 'synth2', ...tail];
 
 let app: App | null = null;
 let host: HTMLElement | null = null;
+
+beforeEach(() => { (dispatchLocal as unknown as Mock).mockClear(); });
 
 afterEach(() => {
   app?.unmount();
@@ -18,6 +34,7 @@ function mountPanel(params: object): HTMLElement {
   host = document.createElement('div');
   document.body.appendChild(host);
   app = createApp(Synth2Panel, { params, analyser: null, color: '#fff' });
+  app.provide(ACTIVE_TRACK_KEY, ref(0));
   app.mount(host);
   return host;
 }
@@ -32,21 +49,21 @@ describe('Synth2Panel mode toggle', () => {
     expect(btns[1].textContent?.trim()).toBe('POLY');
   });
 
-  it('toggles mode to poly on POLY click', () => {
+  it('dispatches mode poly on POLY click', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const btns = el.querySelectorAll<HTMLButtonElement>('.mode-btn');
     btns[1].click(); // POLY
-    expect(params.mode).toBe('poly');
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('mode'), 'poly');
   });
 
-  it('toggles mode back to mono on MONO click', () => {
+  it('dispatches mode mono on MONO click', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     params.mode = 'poly';
     const el = mountPanel(params);
     const btns = el.querySelectorAll<HTMLButtonElement>('.mode-btn');
     btns[0].click(); // MONO
-    expect(params.mode).toBe('mono');
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('mode'), 'mono');
   });
 });
 
@@ -70,23 +87,21 @@ describe('Synth2Panel hard-sync toggles', () => {
     expect(syncBtns.length).toBe(2); // osc2 + osc3 only
   });
 
-  it('toggles osc2.sync on click', () => {
+  it('dispatches osc2.sync toggled on click', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const syncBtns = el.querySelectorAll<HTMLButtonElement>('.sync-btn');
     expect(params.osc2.sync).toBe(false);
     syncBtns[0].click();
-    expect(params.osc2.sync).toBe(true);
-    syncBtns[0].click();
-    expect(params.osc2.sync).toBe(false);
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('osc2', 'sync'), true);
   });
 
-  it('toggles osc3.sync on click', () => {
+  it('dispatches osc3.sync toggled on click', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const syncBtns = el.querySelectorAll<HTMLButtonElement>('.sync-btn');
     syncBtns[1].click();
-    expect(params.osc3.sync).toBe(true);
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('osc3', 'sync'), true);
   });
 });
 
@@ -99,15 +114,15 @@ describe('Synth2Panel filter section', () => {
     expect([...typeBtns].map(b => b.textContent?.trim())).toEqual(['LP', 'BP', 'HP']);
   });
 
-  it('clicking HP sets params.filter.type', () => {
+  it('clicking HP/BP dispatches params.filter.type', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const typeBtns = el.querySelectorAll<HTMLButtonElement>('.filter-type-btn');
     expect(params.filter.type).toBe('lp');
     typeBtns[2].click();
-    expect(params.filter.type).toBe('hp');
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('filter', 'type'), 'hp');
     typeBtns[1].click();
-    expect(params.filter.type).toBe('bp');
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('filter', 'type'), 'bp');
   });
 
   it('renders a Drive knob in the filter column', () => {
@@ -146,16 +161,22 @@ describe('Synth2Panel filter model toggle (I3d)', () => {
     expect(labels).toContain('Morph');
   });
 
-  it('the CLASSIC|MORPH toggle updates params.filter.model', () => {
-    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
-    const el = mountPanel(params);
-    expect(params.filter.model).toBe('classic');
-    const toMorph = el.querySelector<HTMLButtonElement>('.filter-model-btn.to-morph')!;
-    toMorph.click();
-    expect(params.filter.model).toBe('morph');
-    const toClassic = el.querySelector<HTMLButtonElement>('.filter-model-btn.to-classic')!;
-    toClassic.click();
-    expect(params.filter.model).toBe('classic');
+  it('the CLASSIC|MORPH toggle dispatches params.filter.model', () => {
+    // dispatch is mocked so params.filter.model never flips locally (the toggle
+    // button therefore keeps its target); mount each direction separately.
+    const classic = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    expect(classic.filter.model).toBe('classic');
+    const el1 = mountPanel(classic);
+    el1.querySelector<HTMLButtonElement>('.filter-model-btn.to-morph')!.click();
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('filter', 'model'), 'morph');
+
+    (dispatchLocal as unknown as Mock).mockClear();
+    app?.unmount(); host?.remove();
+    const morph = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    morph.filter.model = 'morph';
+    const el2 = mountPanel(morph);
+    el2.querySelector<HTMLButtonElement>('.filter-model-btn.to-classic')!.click();
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('filter', 'model'), 'classic');
   });
 
   it('an un-healed old snapshot (filter.model/morph missing) renders the classic selector without crashing', () => {
@@ -238,16 +259,16 @@ describe('Synth2Panel envelope loop + ENV 3 (I3c)', () => {
     expect(loopBtns.length).toBe(3);
   });
 
-  it('toggles env1.loop and env3.loop via the LOOP buttons', () => {
+  it('dispatches env1.loop and env3.loop via the LOOP buttons', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     // DOM order follows column order: [0] AMP ENV (env1), [1] FILTER ENV (env2), [2] ENV 3 (env3).
     const loopBtns = el.querySelectorAll<HTMLButtonElement>('.loop-btn');
     expect(params.env1.loop).toBe(false);
     loopBtns[0].click();
-    expect(params.env1.loop).toBe(true);
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('env1', 'loop'), true);
     loopBtns[2].click();
-    expect(params.env3.loop).toBe(true);
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('env3', 'loop'), true);
   });
 });
 

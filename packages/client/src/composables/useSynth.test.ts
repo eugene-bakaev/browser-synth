@@ -248,9 +248,10 @@ describe('sync integration', () => {
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('emits a leaf op to the socket when a synth param changes', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth.filterCutoff = 1234;
+  it('emits a leaf op via dispatchLocal for engine params', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1234);
     vi.advanceTimersByTime(50); // clear the 50ms throttle window
     expect(fake.sent.length).toBe(1);
     expect(fake.sent[0].path).toEqual(['tracks', 0, 'engines', 'synth', 'filterCutoff']);
@@ -258,8 +259,9 @@ describe('sync integration', () => {
   });
 
   it('drills nested ADSR edits to leaf paths (no whole-object writes)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth.filterEnv.a = 0.123;
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterEnv', 'a'], 0.123);
     vi.advanceTimersByTime(50);
     expect(fake.sent.length).toBe(1);
     expect(fake.sent[0].path).toEqual(['tracks', 0, 'engines', 'synth', 'filterEnv', 'a']);
@@ -278,15 +280,16 @@ describe('sync integration', () => {
   });
 
   it('a self-echo does not snap a knob back mid-drag (M2)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    // Drag starts: first value flushes after the throttle window → in flight.
-    synth.project.tracks[0].engines.synth.filterCutoff = 1000;
+    const { mod, fake, synth } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    // Drag starts: dispatch first value; flushes after the throttle window → in flight.
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1000);
     vi.advanceTimersByTime(50);
     expect(fake.sent.length).toBe(1);
     const seq = fake.sent[0].clientSeq;
 
-    // Drag continues: a newer local value is sitting throttled.
-    synth.project.tracks[0].engines.synth.filterCutoff = 1100;
+    // Drag continues: dispatch a newer local value (still throttled).
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1100);
 
     // The echo of the OLDER flushed value arrives (~RTT later). It must not
     // overwrite the newer local value.
@@ -303,8 +306,9 @@ describe('sync integration', () => {
   });
 
   it('rolls back the local value on nack', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth.filterCutoff = 1500;
+    const { mod, fake, synth } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1500);
     vi.advanceTimersByTime(50);
     expect(fake.sent.length).toBe(1);
     const clientSeq = fake.sent[0].clientSeq;
@@ -355,8 +359,9 @@ describe('sync integration', () => {
   });
 
   it('emits a synth2 osc.sync toggle immediately (discrete leaf)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.osc2.sync = true;
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'osc2', 'sync'], true);
     // No timer advance: sync is in DISCRETE_LEAF_FIELDS → flushes immediately.
     const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'osc2', 'sync']));
     expect(op).toBeDefined();
@@ -364,8 +369,9 @@ describe('sync integration', () => {
   });
 
   it('emits a synth2 env1.loop toggle immediately (discrete leaf) (I3c)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.env1.loop = true;
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'env1', 'loop'], true);
     // No timer advance: 'loop' is in DISCRETE_LEAF_FIELDS → flushes immediately.
     const op = fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'env1', 'loop']));
     expect(op).toBeDefined();
@@ -373,8 +379,9 @@ describe('sync integration', () => {
   });
 
   it('emits a synth2 filter.type change immediately (discrete enum leaf)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.filter.type = 'hp';
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'filter', 'type'], 'hp');
     // No timer advance: 'type' is in DISCRETE_LEAF_FIELDS → flushes immediately.
     const op = fake.sent.find(
       (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'type']),
@@ -384,10 +391,11 @@ describe('sync integration', () => {
   });
 
   it('filter.morph change and filter.model flip converge to a remote client (no echo) (I3d)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
+    const { mod, fake, synth } = await bootWithFakeSocket();
+    fake.sent.length = 0;
 
     // filter.model is a discrete enum flip — flushes immediately, no timer needed.
-    synth.project.tracks[0].engines.synth2.filter.model = 'morph';
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'filter', 'model'], 'morph');
     const modelOp = fake.sent.find(
       (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'model']),
     );
@@ -395,7 +403,7 @@ describe('sync integration', () => {
     expect(modelOp.value).toBe('morph');
 
     // filter.morph is continuous — rides the 50ms throttle.
-    synth.project.tracks[0].engines.synth2.filter.morph = 1.5;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'filter', 'morph'], 1.5);
     vi.advanceTimersByTime(50);
     const morphOp = fake.sent.find(
       (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'filter', 'morph']),
@@ -511,8 +519,9 @@ describe('sync integration', () => {
   });
 
   it('emits a synth2 lfo1.rate change to a leaf path (throttled continuous) (I3b)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.lfo1.rate = 12;
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate'], 12);
     vi.advanceTimersByTime(50); // clear the throttle window
     const op = fake.sent.find(
       (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate']),
@@ -635,7 +644,8 @@ describe('sync integration', () => {
     expect(volOp?.value).toBeCloseTo(0.3);
     const noteOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
     expect(noteOp?.value).toBe('C');
-    // Must NOT emit anything under 'engines' or 'matrix' (retained watchers' job)
+    // No engine params changed in this test, so nothing under 'engines' should be
+    // emitted. The synth2 matrix array is still deferred to Task 3's watcher.
     for (const o of fake.sent) {
       expect((o.path as string[]).includes('engines')).toBe(false);
       expect((o.path as string[]).includes('matrix')).toBe(false);
@@ -649,6 +659,39 @@ describe('sync integration', () => {
     mod.syncWholeProjectDiff(before);
     vi.advanceTimersByTime(50);
     expect(fake.sent.length).toBe(0);
+  });
+
+  // --- Phase 2b-iii new tests ---
+
+  it('engine param edit via dispatch emits exactly one op (no double-emit)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'filter', 'cutoff'], 3000);
+    vi.advanceTimersByTime(50);
+    const ops = fake.sent.filter((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.filter.cutoff');
+    expect(ops).toHaveLength(1);
+    expect(ops[0].value).toBe(3000);
+  });
+
+  it('applyPreset emits the changed engine-slice params', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const before = { ...(synth.project.tracks[0].engines.kick as Record<string, unknown>) };
+    // simulate the StudioView flow: mutate the slice then call the diff emitter
+    (synth.project.tracks[0].engines.kick as any).tune = 99;
+    fake.sent.length = 0;
+    mod.syncEngineParamsDiff(0, 'kick', before);
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.kick.tune' && o.value === 99)).toBe(true);
+  });
+
+  it('whole-project diff emits engine-slice param changes (Open/New)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const snap = mod.snapshotProjectForSync();
+    (synth.project.tracks[0].engines.synth2 as any).osc1.morph = 2.5;
+    fake.sent.length = 0;
+    mod.syncWholeProjectDiff(snap);
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.osc1.morph' && o.value === 2.5)).toBe(true);
   });
 });
 

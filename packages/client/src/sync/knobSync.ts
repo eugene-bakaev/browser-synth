@@ -14,11 +14,9 @@
 // focused one) and writes the `mixer` slice, so it builds paths inline and
 // calls endGesture() directly rather than using this composable.
 
-import { computed, inject, ref, type InjectionKey, type Ref, type WritableComputedRef } from 'vue';
+import { inject, ref, type InjectionKey, type Ref } from 'vue';
 import type { EngineType, Path } from '@fiddle/shared';
-import { getDeep } from '@fiddle/shared';
 import { dispatchLocal, endGesture } from '../composables/useSynth';
-import { project } from '../stores/project';
 
 /** App.vue provides its `activeTrackIndex` ref under this key. */
 export const ACTIVE_TRACK_KEY: InjectionKey<Ref<number | null>> = Symbol('activeTrackIndex');
@@ -41,30 +39,16 @@ export function useKnobSync(engine: EngineType) {
 
   type Field = string | ReadonlyArray<string | number>;
 
-  // Writable v-model for a knob/select: reads the live reactive value at the
-  // field's wire path, writes through the command bus. Mirrors useCommandModel
-  // but sources the (activeTrack-dependent) path from pathFor.
-  function model(field: Field): WritableComputedRef<unknown> {
-    return computed<unknown>({
-      get: () => {
-        const p = pathFor(field);
-        if (p.length === 0) return undefined; // no active track → dormant
-        return getDeep(project as unknown as Record<string, unknown>, p);
-      },
-      set: (v) => {
-        const p = pathFor(field);
-        if (p.length === 0) return;
-        dispatchLocal(p, v);
-      },
-    });
-  }
-
-  // Imperative write for @click toggles/buttons that have no v-model.
+  // The single write primitive for every focused-track panel control: knobs
+  // (via `@update:modelValue`), selects (`@change`), and toggles (`@click`) all
+  // route their writes here, which dispatches through the command bus. Reads
+  // stay one-way off the panel's `params` prop (the live reactive engine slice),
+  // so a control never mutates `project` directly. No-op with no active track.
   function set(field: Field, value: unknown): void {
     const p = pathFor(field);
     if (p.length === 0) return;
     dispatchLocal(p, value);
   }
 
-  return { pathFor, end, model, set };
+  return { pathFor, end, set };
 }

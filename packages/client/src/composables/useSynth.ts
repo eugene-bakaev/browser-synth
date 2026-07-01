@@ -290,6 +290,21 @@ function emitLeafDiff(
   }
 }
 
+// Sync an already-applied engine-slice param write (preset load) by diffing the
+// pre-write slice snapshot against the now-mutated live slice. Mirrors
+// syncStepWindowDiff: the engine-slice watcher used to cover this for free; with
+// it deleted, the bulk writer (applyPreset) must emit explicitly.
+export function syncEngineParamsDiff(
+  trackIdx: number,
+  engineType: EngineType,
+  beforeSlice: Record<string, unknown>,
+): void {
+  if (!outbox || !syncReady || isApplyingFromNetwork()) return;
+  const after = project.tracks[trackIdx].engines[engineType] as unknown as Record<string, unknown>;
+  const changed = diffParams(after, beforeSlice);
+  if (changed) emitLeafDiff(['tracks', trackIdx, 'engines', engineType], changed, beforeSlice);
+}
+
 // Sync an already-applied BULK local edit by diffing a pre-edit snapshot against
 // the now-mutated live project and enqueuing the changed leaves — exactly what the
 // removed steps/mixer/scalar watchers did, but invoked on demand for the bulk
@@ -309,13 +324,17 @@ export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, 
 }
 
 // Snapshot the sync-relevant fields of the current project before a bulk replace
-// (Open file / New project). Only captures what the removed watchers covered —
-// bpm + per-track engineType/patternLength/enabled/mixer/steps. Engine params and
-// synth2 matrix are intentionally omitted: the RETAINED slice/matrix watchers
-// (flush:'sync') pick them up when replaceProject Object.assigns the slices.
+// (Open file / New project). Captures bpm + per-track engineType/patternLength/
+// enabled/mixer/steps/engines. Engine params are now emitted by syncWholeProjectDiff;
+// only the synth2 matrix array is deferred to Task 3.
 export interface ProjectSyncSnapshot {
   bpm: number;
-  tracks: { engineType: string; patternLength: number; enabled: boolean; mixer: Record<string, unknown>; steps: Record<string, unknown>[] }[];
+  tracks: {
+    engineType: string; patternLength: number; enabled: boolean;
+    mixer: Record<string, unknown>;
+    steps: Record<string, unknown>[];
+    engines: Record<string, Record<string, unknown>>; // per ENGINE_SLICES, shallow copy
+  }[];
 }
 export function snapshotProjectForSync(): ProjectSyncSnapshot {
   return {
@@ -326,15 +345,33 @@ export function snapshotProjectForSync(): ProjectSyncSnapshot {
       enabled: t.enabled,
       mixer: { ...t.mixer } as unknown as Record<string, unknown>,
       steps: t.steps.map(s => ({ ...s }) as unknown as Record<string, unknown>),
+      engines: Object.fromEntries(
+        ENGINE_SLICES.map((slice) => {
+          // Deep-ish copy: a shallow {...slice} would SHARE nested param objects
+          // (synth2's osc1/env1/filter…) and the matrix array with the live
+          // project, so an in-place nested mutation before syncWholeProjectDiff
+          // would be invisible to the diff — a data-loss-class footgun. Clone one
+          // level of nested objects + array-of-object slots so `before` is a true
+          // frozen image regardless of how the caller mutates.
+          const src = t.engines[slice] as unknown as Record<string, unknown>;
+          const copy: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(src)) {
+            if (Array.isArray(v)) copy[k] = v.map((el) => (el && typeof el === 'object' ? { ...el } : el));
+            else if (v && typeof v === 'object') copy[k] = { ...(v as Record<string, unknown>) };
+            else copy[k] = v;
+          }
+          return [slice, copy];
+        }),
+      ),
     })),
   };
 }
 
-// Sync a whole-project replace (Open file / New project). Emits ONLY the leaves the
-// removed watchers covered — bpm + per-track engineType/patternLength/enabled/mixer
-// /steps. Engine params + synth2 matrix are emitted by the RETAINED slice/matrix
-// watchers (which fire on replaceProject's Object.assign), so they are intentionally
-// NOT emitted here. `before` is a pre-replace snapshot from snapshotProjectForSync().
+// Sync a whole-project replace (Open file / New project). Emits bpm + per-track
+// engineType/patternLength/enabled/mixer/steps/engine-slice params. Engine params
+// are now emitted here (the slice watcher is gone); only the synth2 matrix array is
+// deferred to Task 3 (diffParams/emitLeafDiff intentionally skip arrays). `before`
+// is a pre-replace snapshot from snapshotProjectForSync().
 export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
   if (!outbox || !syncReady || isApplyingFromNetwork()) return;
   if (project.bpm !== before.bpm) outbox.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
@@ -352,6 +389,14 @@ export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
     for (let j = 0; j < t.steps.length; j++) {
       const sc = diffParams(t.steps[j] as unknown as Record<string, unknown>, b.steps[j]);
       if (sc) emitLeafDiff(['tracks', i, 'steps', j], sc, b.steps[j]);
+    }
+    // engine-slice params (excluding the synth2 matrix array — Task 3 emits that)
+    for (const slice of ENGINE_SLICES) {
+      const ec = diffParams(
+        t.engines[slice] as unknown as Record<string, unknown>,
+        b.engines[slice],
+      );
+      if (ec) emitLeafDiff(['tracks', i, 'engines', slice], ec, b.engines[slice]);
     }
   }
 }
@@ -468,23 +513,6 @@ function installSyncWatchers(): void {
     // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
     // nothing leaks before the room is live or while applying a remote op.
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-      for (const slice of ENGINE_SLICES) {
-        watch(
-          () => snapshot(project.tracks[i].engines[slice]),
-          (newVal, oldVal) => {
-            if (!outbox || !syncReady || isApplyingFromNetwork()) return;
-            const changed = diffParams(
-              newVal as unknown as Record<string, unknown>,
-              oldVal as unknown as Record<string, unknown>,
-            );
-            // Emit regardless of whether this is the active slice so peers stay
-            // in sync for edits to any writable param.
-            if (changed) emitLeafDiff(['tracks', i, 'engines', slice], changed, oldVal as unknown as Record<string, unknown>);
-          },
-          { flush: 'sync' },
-        );
-      }
-
       // synth2 mod matrix: an array of {source,dest,amount} slots. The
       // engine-slice watcher's emitLeafDiff skips arrays (a one-level drill would
       // emit a forbidden whole-slot object write), so the matrix is synced here —
