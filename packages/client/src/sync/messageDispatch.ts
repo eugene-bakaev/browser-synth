@@ -6,18 +6,17 @@
 // machine and hands fully-typed messages here; this layer owns the
 // application semantics.
 //
-// Suppression: `snapshot` (replaceProject) and `set` (commandBus.applyRemote)
-// both mutate the reactive `project` programmatically. Those writes are wrapped
-// in the applyingFromNetwork suppression so the sync watchers in useSynth don't
-// re-enqueue them back out as local edits. applyRemote is suppress-wrapped here
-// at the dispatch site (transitional: removed in 2b-iii once the watchers are
-// gone); the snapshot path wraps replaceProject explicitly here.
+// Both `snapshot` (replaceProject) and `set` (commandBus.applyRemote) mutate the
+// reactive `project` programmatically. These once had to be wrapped in an
+// applyingFromNetwork suppression so the outbound sync watchers in useSynth
+// wouldn't re-enqueue them as local edits — but every outbound watcher is gone
+// (all writes now flow through the CommandBus), so there is nothing to suppress:
+// the writes happen directly.
 
 import type { ServerMessage, Project } from '@fiddle/shared';
 import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
-import { enterSuppress, exitSuppress } from './applyOp.js';
 import type { CommandBus } from './CommandBus.js';
 import { roster, selfClientId, noteRemoteTouch } from './presence.js';
 import { replaceProject } from '../project/storage.js';
@@ -43,17 +42,10 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       roster.value = msg.roster;
       return;
     case 'snapshot':
-      // Programmatic bulk write — suppress so the sync watchers don't treat the
-      // incoming snapshot as a flurry of local edits and echo it all back out.
-      enterSuppress();
-      try {
-        // Normalize first so a snapshot from an older (pre-pool) server can't
-        // under-fill the fixed 32-slot model the client assumes, or leave a
-        // blank/out-of-range bpm in the reactive state.
-        replaceProject(deps.project, normalizeProject(msg.project));
-      } finally {
-        exitSuppress();
-      }
+      // Normalize first so a snapshot from an older (pre-pool) server can't
+      // under-fill the fixed 32-slot model the client assumes, or leave a
+      // blank/out-of-range bpm in the reactive state.
+      replaceProject(deps.project, normalizeProject(msg.project));
       deps.commandBus.resetWatermark();
       // Non-destructive reconcile: the snapshot just overwrote local state. Re-apply
       // any un-acked local edits on top and re-queue them for delivery so a server
@@ -85,16 +77,9 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       if (skipWrite) {
         deps.commandBus.advanceWatermark(msg.path, msg.opId);
       } else {
-        // Transitional suppression (2b-i): the outbound watchers still observe
-        // this write, so suppress while applyRemote runs to stop the applied
-        // remote op echoing straight back out. Removed in 2b-iii once the
-        // watchers are gone. applyRemote itself stays sync-agnostic.
-        enterSuppress();
-        try {
-          deps.commandBus.applyRemote(msg);
-        } finally {
-          exitSuppress();
-        }
+        // No outbound watcher observes this write any more, so the applied remote
+        // op can't echo straight back out — apply it directly.
+        deps.commandBus.applyRemote(msg);
       }
       if (msg.clientId !== selfClientId.value) {
         noteRemoteTouch(msg.path, msg.clientId);

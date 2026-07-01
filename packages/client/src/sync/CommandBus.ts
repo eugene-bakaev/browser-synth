@@ -1,16 +1,13 @@
 // CommandBus — the single write funnel for the unidirectional command model.
 //
-// Every state change flows through here. A LOCAL command writes state AND
-// enqueues an outbound op; an applied REMOTE op writes state only (no echo).
-// Because the origin is explicit (which method was called), there is no need
-// for the legacy `applyingFromNetwork` suppression flag — that disappears in
-// Phase 2b when the outbound watchers it guarded are deleted.
+// Every state change flows through here. A LOCAL command (`dispatchLocal`) writes
+// state AND enqueues an outbound op; an applied REMOTE op (`applyRemote`) writes
+// state only (no echo). Because the origin is explicit (which method was called),
+// there is no `applyingFromNetwork` suppression flag: with no outbound watcher
+// left to echo a programmatic write, none is needed.
 //
-// Phase 2b-i: the INBOUND path is now live through `applyRemote` (the legacy
-// `applyOp` is deleted). `applySet` is still an inline `setDeep` on the canonical
-// `project` (mirroring Outbox.applyLocal); folding it onto ProjectStore.applySet
-// and routing local edits through `dispatchLocal` is Phase 2b-ii/iii — until then
-// `dispatchLocal` stays dormant (constructed but not called live).
+// `applySet` is an inline `setDeep` on the canonical `project` (mirroring
+// Outbox.applyLocal); folding it onto ProjectStore.applySet is a later phase.
 
 import { pathKey, type Path, type SetOpBroadcast } from '@fiddle/shared';
 
@@ -34,8 +31,7 @@ export function createCommandBus(deps: CommandBusDeps) {
   // Per-path opId watermark: a late echo of an older op for a path we've
   // advanced past is dropped rather than allowed to clobber the newer value.
   // Private to this bus instance — created fresh per connection in
-  // buildSyncState, so a new room starts with an empty watermark (this replaced
-  // the former module-scope watermark in applyOp.ts).
+  // buildSyncState, so a new room starts with an empty watermark.
   const lastAppliedOpIdForPath = new Map<string, number>();
 
   function dispatchLocal(cmd: LocalCommand): void {
@@ -53,8 +49,8 @@ export function createCommandBus(deps: CommandBusDeps) {
     } catch (err) {
       // A malformed/out-of-range path should never reach us (the server
       // bounds-checks before broadcasting); if one does, drop it rather than
-      // let the throw break the whole inbound frame. Watermark stays advanced
-      // (matches applyOp), so the bad op won't be retried by a replay.
+      // let the throw break the whole inbound frame. The watermark stays
+      // advanced, so the bad op won't be retried by a replay.
       console.warn('applyRemote: dropped op with unresolvable path', op.path, err);
       return false;
     }

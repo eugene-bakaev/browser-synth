@@ -16,7 +16,7 @@
 //
 // The Outbox never inspects the socket itself — `OutboxDeps` injects whether
 // we're live, how to send, how to mint a clientSeq, and how to apply a local
-// rollback (which must run with the watcher's applyingFromNetwork suppression).
+// rollback.
 
 import type { Path, SetOpClient } from '@fiddle/shared';
 import { pathKey } from '@fiddle/shared';
@@ -42,7 +42,7 @@ export interface OutboxDeps {
   nextClientSeq: () => number;
   /** Send op now. Caller decides if connection is live; Outbox just hands it off. */
   send: (op: SetOpClient) => void;
-  /** Apply `value` to local `project` along `path`, with applyingFromNetwork suppression. */
+  /** Apply `value` to local `project` along `path` (nack rollback). */
   applyLocal: (path: Path, value: unknown) => void;
   /** Returns true if the WS is in 'live' state (and we should actually send). */
   isLive: () => boolean;
