@@ -305,7 +305,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
-import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff, syncEngineParamsDiff } from '../composables/useSynth';
+import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff, syncEngineParamsDiff, cloneEngineSlice } from '../composables/useSynth';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -445,7 +445,9 @@ const presetLibraryOpen = ref(false);
 // diff — the engine-slice watcher is gone, so we emit explicitly.
 function applyPresetSynced(trackIdx: number, preset: Preset): void {
   dispatchLocal(['tracks', trackIdx, 'engineType'], preset.engineType); // discrete, syncs the swap
-  const before = { ...(project.tracks[trackIdx].engines[preset.engineType] as Record<string, unknown>) };
+  // Deep-ish clone so a nested slice change survives the diff regardless of how
+  // applyPreset mutates (it uses Object.assign today, but don't depend on that).
+  const before = cloneEngineSlice(project.tracks[trackIdx].engines[preset.engineType] as Record<string, unknown>);
   applyPreset(project.tracks[trackIdx], preset);                        // mutates the slice in place
   syncEngineParamsDiff(trackIdx, preset.engineType, before);            // emit changed params (watcher is gone)
 }

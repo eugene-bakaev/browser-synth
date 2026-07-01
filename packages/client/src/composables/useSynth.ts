@@ -327,6 +327,22 @@ export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, 
 // (Open file / New project). Captures bpm + per-track engineType/patternLength/
 // enabled/mixer/steps/engines. Engine params are now emitted by syncWholeProjectDiff;
 // only the synth2 matrix array is deferred to Task 3.
+// Deep-ish clone of an engine slice: copies one level of nested param objects
+// (synth2's osc1/env1/filter…) and array-of-object slots (the matrix) so the
+// result is a stable "before" image that an in-place nested mutation on the live
+// slice cannot leak into. Used by both the bulk project snapshot and preset-load
+// diffing (applyPresetSynced), which otherwise depend on the caller replacing
+// nested references rather than mutating them.
+export function cloneEngineSlice(src: Record<string, unknown>): Record<string, unknown> {
+  const copy: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (Array.isArray(v)) copy[k] = v.map((el) => (el && typeof el === 'object' ? { ...el } : el));
+    else if (v && typeof v === 'object') copy[k] = { ...(v as Record<string, unknown>) };
+    else copy[k] = v;
+  }
+  return copy;
+}
+
 export interface ProjectSyncSnapshot {
   bpm: number;
   tracks: {
@@ -346,22 +362,10 @@ export function snapshotProjectForSync(): ProjectSyncSnapshot {
       mixer: { ...t.mixer } as unknown as Record<string, unknown>,
       steps: t.steps.map(s => ({ ...s }) as unknown as Record<string, unknown>),
       engines: Object.fromEntries(
-        ENGINE_SLICES.map((slice) => {
-          // Deep-ish copy: a shallow {...slice} would SHARE nested param objects
-          // (synth2's osc1/env1/filter…) and the matrix array with the live
-          // project, so an in-place nested mutation before syncWholeProjectDiff
-          // would be invisible to the diff — a data-loss-class footgun. Clone one
-          // level of nested objects + array-of-object slots so `before` is a true
-          // frozen image regardless of how the caller mutates.
-          const src = t.engines[slice] as unknown as Record<string, unknown>;
-          const copy: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(src)) {
-            if (Array.isArray(v)) copy[k] = v.map((el) => (el && typeof el === 'object' ? { ...el } : el));
-            else if (v && typeof v === 'object') copy[k] = { ...(v as Record<string, unknown>) };
-            else copy[k] = v;
-          }
-          return [slice, copy];
-        }),
+        ENGINE_SLICES.map((slice) => [
+          slice,
+          cloneEngineSlice(t.engines[slice] as unknown as Record<string, unknown>),
+        ]),
       ),
     })),
   };
