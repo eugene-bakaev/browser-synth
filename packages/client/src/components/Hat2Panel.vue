@@ -15,7 +15,7 @@
             :defaultValue="d.default"
             :format="d.format"
             :curve="d.curve"
-            v-model="params[d.key as keyof typeof params]"
+            :modelValue="params[d.key as keyof typeof params]" @update:modelValue="ks.set(d.key, $event)"
             :syncPath="ks.pathFor(d.key)"
             @gesture-end="ks.end(d.key)"
           />

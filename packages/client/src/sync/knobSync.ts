@@ -16,7 +16,7 @@
 
 import { inject, ref, type InjectionKey, type Ref } from 'vue';
 import type { EngineType, Path } from '@fiddle/shared';
-import { endGesture } from '../composables/useSynth';
+import { dispatchLocal, endGesture } from '../composables/useSynth';
 
 /** App.vue provides its `activeTrackIndex` ref under this key. */
 export const ACTIVE_TRACK_KEY: InjectionKey<Ref<number | null>> = Symbol('activeTrackIndex');
@@ -37,5 +37,18 @@ export function useKnobSync(engine: EngineType) {
     endGesture(pathFor(field));
   }
 
-  return { pathFor, end };
+  type Field = string | ReadonlyArray<string | number>;
+
+  // The single write primitive for every focused-track panel control: knobs
+  // (via `@update:modelValue`), selects (`@change`), and toggles (`@click`) all
+  // route their writes here, which dispatches through the command bus. Reads
+  // stay one-way off the panel's `params` prop (the live reactive engine slice),
+  // so a control never mutates `project` directly. No-op with no active track.
+  function set(field: Field, value: unknown): void {
+    const p = pathFor(field);
+    if (p.length === 0) return;
+    dispatchLocal(p, value);
+  }
+
+  return { pathFor, end, set };
 }

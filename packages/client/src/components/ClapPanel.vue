@@ -5,9 +5,9 @@
       <div class="module-group clap-panel">
         <h3>Clap Machine</h3>
         <div class="knob-row">
-          <Knob label="Decay" :min="0.05" :max="0.8" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" v-model="params.decay" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
-          <Knob label="Tone" :min="500" :max="3000" :step="10" :defaultValue="DEFAULTS.tone" format="hz" v-model="params.tone" :syncPath="ks.pathFor('tone')" @gesture-end="ks.end('tone')" />
-          <Knob label="Sloppy" :min="0.005" :max="0.03" :step="0.001" :defaultValue="DEFAULTS.sloppy" format="ms" v-model="params.sloppy" :syncPath="ks.pathFor('sloppy')" @gesture-end="ks.end('sloppy')" />
+          <Knob label="Decay" :min="0.05" :max="0.8" :step="0.01" :defaultValue="DEFAULTS.decay" format="ms" :modelValue="params.decay" @update:modelValue="ks.set('decay', $event)" :syncPath="ks.pathFor('decay')" @gesture-end="ks.end('decay')" />
+          <Knob label="Tone" :min="500" :max="3000" :step="10" :defaultValue="DEFAULTS.tone" format="hz" :modelValue="params.tone" @update:modelValue="ks.set('tone', $event)" :syncPath="ks.pathFor('tone')" @gesture-end="ks.end('tone')" />
+          <Knob label="Sloppy" :min="0.005" :max="0.03" :step="0.001" :defaultValue="DEFAULTS.sloppy" format="ms" :modelValue="params.sloppy" @update:modelValue="ks.set('sloppy', $event)" :syncPath="ks.pathFor('sloppy')" @gesture-end="ks.end('sloppy')" />
         </div>
       </div>
     </div>

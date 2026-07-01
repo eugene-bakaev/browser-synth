@@ -305,7 +305,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
-import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff } from '../composables/useSynth';
+import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff, syncEngineParamsDiff, cloneEngineSlice } from '../composables/useSynth';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -441,11 +441,15 @@ const showSettings = ref(false);
 const presetLibraryOpen = ref(false);
 
 // Dispatch engineType BEFORE applyPreset so the swap syncs with the correct prior
-// (the OLD engine), then let applyPreset re-set engineType (idempotent) and apply
-// params — the retained engine-slice watcher syncs the param Object.assign.
+// (the OLD engine), then snapshot the slice, mutate via applyPreset, and emit the
+// diff — the engine-slice watcher is gone, so we emit explicitly.
 function applyPresetSynced(trackIdx: number, preset: Preset): void {
-  dispatchLocal(['tracks', trackIdx, 'engineType'], preset.engineType); // engineType has no watcher in 2b-ii
-  applyPreset(project.tracks[trackIdx], preset);                        // re-sets engineType (no-op) + params (slice watcher syncs)
+  dispatchLocal(['tracks', trackIdx, 'engineType'], preset.engineType); // discrete, syncs the swap
+  // Deep-ish clone so a nested slice change survives the diff regardless of how
+  // applyPreset mutates (it uses Object.assign today, but don't depend on that).
+  const before = cloneEngineSlice(project.tracks[trackIdx].engines[preset.engineType] as Record<string, unknown>);
+  applyPreset(project.tracks[trackIdx], preset);                        // mutates the slice in place
+  syncEngineParamsDiff(trackIdx, preset.engineType, before);            // emit changed params (watcher is gone)
 }
 
 const onLoadPresetFromLibrary = (rec: PresetRecord) => {
@@ -624,7 +628,15 @@ const onInitPatch = async () => {
     danger: true,
   });
   // Re-check: the active track may have changed while the dialog was open.
-  if (ok && activeTrackIndex.value !== null) resetEnginePatch(project.tracks[activeTrackIndex.value]);
+  if (ok && activeTrackIndex.value !== null) {
+    const i = activeTrackIndex.value;
+    const engineType = project.tracks[i].engineType;
+    // Snapshot before the in-place reset, then emit the diff — the engine-slice
+    // watcher that used to sync this mutation is gone.
+    const before = cloneEngineSlice(project.tracks[i].engines[engineType] as Record<string, unknown>);
+    resetEnginePatch(project.tracks[i]);
+    syncEngineParamsDiff(i, engineType, before);
+  }
 };
 </script>
 

@@ -6,7 +6,7 @@
         type="button"
         class="mode-btn"
         :class="{ active: params.mode === 'mono' }"
-        @click="params.mode = 'mono'"
+        @click="ks.set('mode', 'mono')"
       >
         MONO
       </button>
@@ -14,7 +14,7 @@
         type="button"
         class="mode-btn"
         :class="{ active: params.mode === 'poly' }"
-        @click="params.mode = 'poly'"
+        @click="ks.set('mode', 'poly')"
       >
         POLY
       </button>
@@ -57,8 +57,11 @@ import MixerPanel from './MixerPanel.vue';
 import FilterPanel from './FilterPanel.vue';
 import EnvelopePanel from './EnvelopePanel.vue';
 import Visualizer from './Visualizer.vue';
+import { useKnobSync } from '../sync/knobSync';
 import type { OscillatorTypeLiteral } from '@fiddle/shared';
 import type { EngineParamsMap } from '../project';
+
+const ks = useKnobSync('synth');
 
 defineProps<{
   params: EngineParamsMap['synth'];
