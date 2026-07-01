@@ -266,7 +266,8 @@ function gestureEndForLeaf(leafKey: string): boolean {
 // accept-list forbids whole-object writes, so nested params (filterEnv/ampEnv)
 // are drilled one level to their changed a/d/s/r leaves; scalar fields emit a
 // single op. `priorValue` is the pre-edit value, carried for nack rollback.
-// Shared by the engine-slice, mixer, and step watchers.
+// Shared by the bulk sync emitters (syncStepWindowDiff / syncWholeProjectDiff /
+// syncEngineParamsDiff).
 function emitLeafDiff(
   prefix: Path,
   changed: Record<string, unknown>,
@@ -274,8 +275,8 @@ function emitLeafDiff(
 ): void {
   if (!outbox) return;
   for (const [key, value] of Object.entries(changed)) {
-    // Arrays (synth2.matrix) are synced by a dedicated per-slot watcher — never
-    // drilled here, which would emit a forbidden whole-slot object write.
+    // Arrays (synth2.matrix) are drilled per-slot by emitMatrixDiff, not here —
+    // a one-level drill here would emit a forbidden whole-slot object write.
     if (Array.isArray(value)) continue;
     if (value !== null && typeof value === 'object') {
       const oldNested = (oldObj?.[key] ?? {}) as Record<string, unknown>;
@@ -837,10 +838,10 @@ export function useSynth() {
   });
 
   // The currently-focused track, or null on the track overview. Panels read
-  // their reactive engine slice from this (e.g. focusedTrack.value.engines.synth);
-  // mutating that slice writes straight through to `project`, driving the
-  // existing slice watchers (audio + outbox). Replaces the per-param trackParam
-  // refs that previously projected each field individually.
+  // their reactive engine slice from this (e.g. focusedTrack.value.engines.synth)
+  // for display; writes route through the command bus (dispatchLocal), not direct
+  // mutation. The live slice still drives the audio-reaction watcher. Replaces the
+  // per-param trackParam refs that previously projected each field individually.
   const focusedTrack = computed(() =>
     activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value] : null
   );
