@@ -628,7 +628,15 @@ const onInitPatch = async () => {
     danger: true,
   });
   // Re-check: the active track may have changed while the dialog was open.
-  if (ok && activeTrackIndex.value !== null) resetEnginePatch(project.tracks[activeTrackIndex.value]);
+  if (ok && activeTrackIndex.value !== null) {
+    const i = activeTrackIndex.value;
+    const engineType = project.tracks[i].engineType;
+    // Snapshot before the in-place reset, then emit the diff — the engine-slice
+    // watcher that used to sync this mutation is gone.
+    const before = cloneEngineSlice(project.tracks[i].engines[engineType] as Record<string, unknown>);
+    resetEnginePatch(project.tracks[i]);
+    syncEngineParamsDiff(i, engineType, before);
+  }
 };
 </script>
 

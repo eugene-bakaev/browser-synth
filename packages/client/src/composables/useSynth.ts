@@ -294,6 +294,28 @@ function emitLeafDiff(
 // pre-write slice snapshot against the now-mutated live slice. Mirrors
 // syncStepWindowDiff: the engine-slice watcher used to cover this for free; with
 // it deleted, the bulk writer (applyPreset) must emit explicitly.
+// Drill the synth2 mod matrix (an array of {source,dest,amount} slots) to per-slot
+// leaf ops. diffParams/emitLeafDiff skip arrays, so the matrix must be diffed here
+// — shared by the whole-project (Open/New) and per-slice (preset load / INIT PATCH)
+// emitters so both cover it identically. Callers guarantee the room is live.
+function emitMatrixDiff(
+  trackIdx: number,
+  newSlice: Record<string, unknown>,
+  oldSlice: Record<string, unknown>,
+): void {
+  if (!outbox) return;
+  const newM = (newSlice as { matrix?: Record<string, unknown>[] }).matrix;
+  const oldM = (oldSlice as { matrix?: Record<string, unknown>[] }).matrix;
+  if (!newM || !oldM) return;
+  for (let s = 0; s < newM.length; s++) {
+    for (const field of ['source', 'dest', 'amount'] as const) {
+      const a = newM[s]?.[field]; const o = oldM[s]?.[field];
+      if (a === o) continue;
+      outbox.enqueue(['tracks', trackIdx, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
+    }
+  }
+}
+
 export function syncEngineParamsDiff(
   trackIdx: number,
   engineType: EngineType,
@@ -303,6 +325,9 @@ export function syncEngineParamsDiff(
   const after = project.tracks[trackIdx].engines[engineType] as unknown as Record<string, unknown>;
   const changed = diffParams(after, beforeSlice);
   if (changed) emitLeafDiff(['tracks', trackIdx, 'engines', engineType], changed, beforeSlice);
+  // The matrix is an array (skipped by emitLeafDiff) → drill it explicitly so a
+  // synth2 preset/INIT-PATCH with routing changes actually syncs.
+  if (engineType === 'synth2') emitMatrixDiff(trackIdx, after, beforeSlice);
 }
 
 // Sync an already-applied BULK local edit by diffing a pre-edit snapshot against
@@ -403,19 +428,8 @@ export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
       );
       if (ec) emitLeafDiff(['tracks', i, 'engines', slice], ec, b.engines[slice]);
     }
-    // synth2 mod matrix — drilled to per-slot leaf paths, mirroring the deleted
-    // matrix watcher's emit shape byte-for-byte (source/dest/amount per slot).
-    const newM = (t.engines.synth2 as unknown as { matrix?: Record<string, unknown>[] }).matrix;
-    const oldM = (b.engines.synth2 as { matrix?: Record<string, unknown>[] }).matrix;
-    if (newM && oldM) {
-      for (let s = 0; s < newM.length; s++) {
-        for (const field of ['source', 'dest', 'amount'] as const) {
-          const a = newM[s]?.[field]; const o = oldM[s]?.[field];
-          if (a === o) continue;
-          outbox.enqueue(['tracks', i, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
-        }
-      }
-    }
+    // synth2 mod matrix (skipped by emitLeafDiff's array guard → drilled here)
+    emitMatrixDiff(i, t.engines.synth2 as unknown as Record<string, unknown>, b.engines.synth2);
   }
 }
 

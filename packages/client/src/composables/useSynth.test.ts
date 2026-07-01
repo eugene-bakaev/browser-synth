@@ -705,6 +705,21 @@ describe('sync integration', () => {
     vi.advanceTimersByTime(50);
     expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.0.amount' && o.value === 0.5)).toBe(true);
   });
+
+  it('syncEngineParamsDiff emits synth2 matrix changes (preset load / INIT PATCH)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    // Simulate the applyPresetSynced / onInitPatch flow: snapshot the slice, mutate
+    // a matrix route in place, then emit the diff. Guards the array-skip footgun:
+    // emitLeafDiff drops arrays, so without the emitMatrixDiff drill this is silent.
+    const before = mod.cloneEngineSlice(synth.project.tracks[0].engines.synth2 as any);
+    (synth.project.tracks[0].engines.synth2 as any).matrix[2].dest = 'filter.cutoff';
+    (synth.project.tracks[0].engines.synth2 as any).matrix[2].amount = 0.7;
+    fake.sent.length = 0;
+    mod.syncEngineParamsDiff(0, 'synth2', before);
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.2.dest' && o.value === 'filter.cutoff')).toBe(true);
+    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.2.amount' && o.value === 0.7)).toBe(true);
+  });
 });
 
 describe('session-scoped connection', () => {
