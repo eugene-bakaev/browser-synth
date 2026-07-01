@@ -372,10 +372,10 @@ export function snapshotProjectForSync(): ProjectSyncSnapshot {
 }
 
 // Sync a whole-project replace (Open file / New project). Emits bpm + per-track
-// engineType/patternLength/enabled/mixer/steps/engine-slice params. Engine params
-// are now emitted here (the slice watcher is gone); only the synth2 matrix array is
-// deferred to Task 3 (diffParams/emitLeafDiff intentionally skip arrays). `before`
-// is a pre-replace snapshot from snapshotProjectForSync().
+// engineType/patternLength/enabled/mixer/steps/engine-slice params + the synth2
+// mod matrix. All outbound sync watchers are gone, so every leaf the removed
+// watchers used to cover is emitted here by diffing the live project against a
+// pre-replace snapshot from snapshotProjectForSync().
 export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
   if (!outbox || !syncReady || isApplyingFromNetwork()) return;
   if (project.bpm !== before.bpm) outbox.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
@@ -394,13 +394,27 @@ export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
       const sc = diffParams(t.steps[j] as unknown as Record<string, unknown>, b.steps[j]);
       if (sc) emitLeafDiff(['tracks', i, 'steps', j], sc, b.steps[j]);
     }
-    // engine-slice params (excluding the synth2 matrix array — Task 3 emits that)
+    // engine-slice params (the synth2 matrix array is emitted separately below —
+    // diffParams/emitLeafDiff intentionally skip arrays)
     for (const slice of ENGINE_SLICES) {
       const ec = diffParams(
         t.engines[slice] as unknown as Record<string, unknown>,
         b.engines[slice],
       );
       if (ec) emitLeafDiff(['tracks', i, 'engines', slice], ec, b.engines[slice]);
+    }
+    // synth2 mod matrix — drilled to per-slot leaf paths, mirroring the deleted
+    // matrix watcher's emit shape byte-for-byte (source/dest/amount per slot).
+    const newM = (t.engines.synth2 as unknown as { matrix?: Record<string, unknown>[] }).matrix;
+    const oldM = (b.engines.synth2 as { matrix?: Record<string, unknown>[] }).matrix;
+    if (newM && oldM) {
+      for (let s = 0; s < newM.length; s++) {
+        for (const field of ['source', 'dest', 'amount'] as const) {
+          const a = newM[s]?.[field]; const o = oldM[s]?.[field];
+          if (a === o) continue;
+          outbox.enqueue(['tracks', i, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
+        }
+      }
     }
   }
 }
@@ -495,58 +509,6 @@ function installAuthReconnectWatcher(): void {
 
 // Tear down only the room connection (audio stays alive). Shared by leaveSession,
 // room-switching, and disposeSynth.
-// Module-scope EffectScope holding the OUTBOUND-SYNC watchers. Its lifecycle is
-// the room connection (created in connectToSession, stopped in teardown), NOT
-// the audio graph. This is the whole point of the split: outbound sync is a
-// function of (reactive project, connection) with no dependency on the
-// AudioContext, so installing it here — rather than inside buildAudioState,
-// which only runs on the first PLAY gesture — is what lets edits made before
-// the first Play actually reach the server. The audio-reaction watchers (engine
-// + gain side effects) stay in buildAudioState because they genuinely need the
-// engines; the two sets are kept disjoint so no field is emitted twice once both
-// are live after Play.
-let syncWatcherScope: EffectScope | null = null;
-
-function installSyncWatchers(): void {
-  if (syncWatcherScope) return; // idempotent — exactly one set per connection
-  syncWatcherScope = effectScope(true);
-  syncWatcherScope.run(() => {
-    // Every watcher below uses flush:'sync' so the applyingFromNetwork guard —
-    // held synchronously during applyRemote/replaceProject — actually covers the
-    // fire (async flush would clear it first and remote ops would echo back
-    // out), and gates on `outbox && syncReady && !isApplyingFromNetwork()` so
-    // nothing leaks before the room is live or while applying a remote op.
-    for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-      // synth2 mod matrix: an array of {source,dest,amount} slots. The
-      // engine-slice watcher's emitLeafDiff skips arrays (a one-level drill would
-      // emit a forbidden whole-slot object write), so the matrix is synced here —
-      // drilled to leaf paths per slot. source/dest are discrete enum flips
-      // (DISCRETE_LEAF_FIELDS → flush immediately); amount is a continuous knob
-      // (rides the throttle). Mirrors the steps watcher's guards + flush:'sync'.
-      watch(
-        () => snapshot(project.tracks[i].engines.synth2.matrix),
-        (newM, oldM) => {
-          if (!outbox || !syncReady || isApplyingFromNetwork() || !oldM) return;
-          for (let s = 0; s < newM.length; s++) {
-            for (const field of ['source', 'dest', 'amount'] as const) {
-              const a = (newM[s] as unknown as Record<string, unknown>)[field];
-              const b = (oldM[s] as unknown as Record<string, unknown>)[field];
-              if (a === b) continue;
-              outbox.enqueue(['tracks', i, 'engines', 'synth2', 'matrix', s, field], a, b, gestureEndForLeaf(field));
-            }
-          }
-        },
-        { flush: 'sync' },
-      );
-    }
-  });
-}
-
-function disposeSyncWatchers(): void {
-  syncWatcherScope?.stop();
-  syncWatcherScope = null;
-}
-
 function teardownConnection(): void {
   // Deliver any throttled pending edits to the (still-live) socket before we
   // close it, so leaving a room / switching rooms can't strand the last edits.
@@ -557,10 +519,6 @@ function teardownConnection(): void {
   }
   outbox = null;
   commandBus = null;
-  // Drop the outbound-sync watchers with the connection. Done before
-  // resetLocalProject runs (in connectToSession / leaveSession) so the reset to
-  // a fresh project can't be observed and enqueued as local edits.
-  disposeSyncWatchers();
   fatalError.value = null;
   roomLoading.value = false;
   currentRoomId.value = null;
@@ -597,11 +555,11 @@ export function connectToSession(
   // Show the loader until this room's snapshot/catch-up completes (onSyncLive).
   roomLoading.value = true;
   installAuthReconnectWatcher();
+  // Outbound sync is live from here — independent of audio. buildSyncState wires
+  // the command bus whose enqueue gates on syncReady (false until sync.complete),
+  // so a local edit made during the initial catch-up writes state but is not
+  // leaked up before the room loads; no PLAY gesture is needed for edits to sync.
   buildSyncState(roomId);
-  // Outbound sync is live from here — independent of audio. The watchers still
-  // gate on syncReady (false until sync.complete), so nothing leaks during the
-  // initial catch-up; they just no longer wait for the first PLAY to exist.
-  installSyncWatchers();
   // Force a full snapshot: we just reset the local project, so a resume delta
   // (op replay since opIdLastSeen) would apply onto an empty project and leave
   // the room blank. forceSnapshot keeps our identity but pulls the whole room.
@@ -748,13 +706,15 @@ async function buildAudioState(): Promise<AudioState> {
   updateMixerGains();
 
   // Audio-reaction watchers ONLY: they drive the engine graph and track gains,
-  // so they live with the AudioContext (built on first PLAY). The watchers that
-  // EMIT sync ops live in installSyncWatchers(), tied to the room connection —
-  // see the note there. Nothing in this scope enqueues an op; doing so would
-  // double-emit once both sets are live. bpm/steps/patternLength have no engine
-  // reaction (the sequencer reads them live each tick), so they aren't watched
-  // here at all. flush:'sync' keeps each reaction in step with the synchronous
-  // applyRemote write, and the bodies are guard-free so remote ops drive audio too.
+  // so they live with the AudioContext (built on first PLAY). Outbound sync no
+  // longer uses watchers at all — every local edit reaches the wire through
+  // dispatchLocal, and bulk edits emit explicitly (syncStepWindowDiff /
+  // syncWholeProjectDiff / syncEngineParamsDiff). Nothing in this scope enqueues
+  // an op; these bodies only mutate audio nodes. bpm/steps/patternLength have no
+  // engine reaction (the sequencer reads them live each tick), so they aren't
+  // watched here at all. flush:'sync' keeps each reaction in step with the
+  // synchronous applyRemote write, and the bodies are guard-free so remote ops
+  // drive audio too.
   const scope = effectScope(true);
   scope.run(() => {
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {

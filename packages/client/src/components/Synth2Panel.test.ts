@@ -203,22 +203,22 @@ describe('Synth2Panel mod matrix (I3a)', () => {
     expect(el.querySelectorAll('.matrix-row').length).toBe(8);
   });
 
-  it('updates a route source via the select', () => {
+  it('dispatches a route source change via the select', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const sel = el.querySelector<HTMLSelectElement>('.matrix-row .matrix-source')!;
     sel.value = 'env1';
-    sel.dispatchEvent(new Event('change')); // v-model on <select> listens to 'change'
-    expect(params.matrix[0].source).toBe('env1');
+    sel.dispatchEvent(new Event('change'));
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('matrix', 0, 'source'), 'env1');
   });
 
-  it('updates a route dest via the select', () => {
+  it('dispatches a route dest change via the select', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
     const sel = el.querySelector<HTMLSelectElement>('.matrix-row .matrix-dest')!;
     sel.value = 'filter.cutoff';
-    sel.dispatchEvent(new Event('change')); // v-model on <select> listens to 'change'
-    expect(params.matrix[0].dest).toBe('filter.cutoff');
+    sel.dispatchEvent(new Event('change'));
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('matrix', 0, 'dest'), 'filter.cutoff');
   });
 
   it('each matrix row has an amount knob (8 total)', () => {

@@ -189,13 +189,13 @@
         <h3>MATRIX</h3>
         <div class="matrix-grid">
           <div v-for="(slot, s) in params.matrix" :key="s" class="matrix-row">
-            <select class="matrix-source" v-model="slot.source">
+            <select class="matrix-source" :value="slot.source" @change="ks.set(['matrix', s, 'source'], ($event.target as HTMLSelectElement).value)">
               <option v-for="src in MOD_SOURCES" :key="src" :value="src">{{ src }}</option>
             </select>
-            <select class="matrix-dest" v-model="slot.dest">
+            <select class="matrix-dest" :value="slot.dest" @change="ks.set(['matrix', s, 'dest'], ($event.target as HTMLSelectElement).value)">
               <option v-for="dst in MOD_DESTS" :key="dst" :value="dst">{{ dst }}</option>
             </select>
-            <Knob label="Amt" :min="-1" :max="1" :step="0.01" :defaultValue="0" v-model="slot.amount" :syncPath="ks.pathFor(['matrix', s, 'amount'])" @gesture-end="ks.end(['matrix', s, 'amount'])" />
+            <Knob label="Amt" :min="-1" :max="1" :step="0.01" :defaultValue="0" :modelValue="slot.amount" @update:modelValue="ks.set(['matrix', s, 'amount'], $event)" :syncPath="ks.pathFor(['matrix', s, 'amount'])" @gesture-end="ks.end(['matrix', s, 'amount'])" />
           </div>
         </div>
       </div>

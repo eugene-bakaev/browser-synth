@@ -429,20 +429,22 @@ describe('sync integration', () => {
     expect(fake.sent.length).toBe(0);
   });
 
-  it('emits a synth2 matrix source change immediately (discrete leaf) (I3a)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.matrix[1].source = 'env2';
+  it('emits a synth2 matrix source change via dispatch, exactly one op (discrete leaf) (I3a)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'matrix', 1, 'source'], 'env2');
     // No timer advance: 'source' is in DISCRETE_LEAF_FIELDS → flushes immediately.
-    const op = fake.sent.find(
+    const ops = fake.sent.filter(
       (o) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engines', 'synth2', 'matrix', 1, 'source']),
     );
-    expect(op).toBeDefined();
-    expect(op.value).toBe('env2');
+    expect(ops).toHaveLength(1);
+    expect(ops[0].value).toBe('env2');
   });
 
-  it('emits a synth2 matrix amount (throttled) and never a whole-slot write (I3a)', async () => {
-    const { fake, synth } = await bootWithFakeSocket();
-    synth.project.tracks[0].engines.synth2.matrix[0].amount = 0.3;
+  it('emits a synth2 matrix amount via dispatch (throttled) and never a whole-slot write (I3a)', async () => {
+    const { mod, fake } = await bootWithFakeSocket();
+    fake.sent.length = 0;
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth2', 'matrix', 0, 'amount'], 0.3);
     const path0 = JSON.stringify(['tracks', 0, 'engines', 'synth2', 'matrix', 0, 'amount']);
     expect(fake.sent.find((o) => JSON.stringify(o.path) === path0)).toBeUndefined();
     vi.advanceTimersByTime(50);
@@ -692,6 +694,16 @@ describe('sync integration', () => {
     mod.syncWholeProjectDiff(snap);
     vi.advanceTimersByTime(50);
     expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.osc1.morph' && o.value === 2.5)).toBe(true);
+  });
+
+  it('whole-project diff emits matrix leaf changes (Open/New)', async () => {
+    const { mod, synth, fake } = await bootWithFakeSocket();
+    const snap = mod.snapshotProjectForSync();
+    (synth.project.tracks[0].engines.synth2 as any).matrix[0].amount = 0.5;
+    fake.sent.length = 0;
+    mod.syncWholeProjectDiff(snap);
+    vi.advanceTimersByTime(50);
+    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.0.amount' && o.value === 0.5)).toBe(true);
   });
 });
 
