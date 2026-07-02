@@ -2,8 +2,6 @@ import { ref, computed } from 'vue';
 import type { OscillatorTypeLiteral } from '@fiddle/shared';
 import { AudioEngine } from '../audio/AudioEngine';
 import {
-  type Project,
-  type ProjectTrack,
   type EngineType,
   freshProject,
   replaceProject,
