@@ -143,13 +143,21 @@ export class SyncSession {
 `connect`, nulled in `disconnect`), and `syncReady` (a private connection-scoped
 flag — moved out of `useSynth`, where it belongs).
 
-**Owned side effects (installed once in the constructor):**
+**Owned side effects (installed once, lazily, on the first `connect()` via
+once-guards — preserving today's timing and keeping eager construction
+side-effect-free):**
 
 - **Auth-reconnect watcher** — `watch(() => auth.session.value?.user.id ?? null)`;
   on change, `wsClient?.reconnect()`. (Verbatim from
-  `installAuthReconnectWatcher`; the once-guard is now the constructor.)
+  `installAuthReconnectWatcher`; the `authWatcherInstalled` once-guard becomes a
+  private session flag.)
 - **`beforeunload` flush** — `outbox?.flushAllPending()`. (Verbatim from
-  `installLeaveFlushHandler`.)
+  `installLeaveFlushHandler`; the `leaveFlushInstalled` once-guard becomes a
+  private session flag.)
+
+The constructor itself does **no** side effects — it only creates the reactive
+refs and stores deps — so eager module-load construction is safe in every test
+context (no dependency on `window`/`useAuth` timing).
 
 ### `connect(roomId)` body (from `buildSyncState` + the tail of `connectToSession`)
 
@@ -169,10 +177,10 @@ previous socket **before** calling it (see the table below), preserving today's
 4. `wsClient.connect({ forceSnapshot: true })`.
 
 `onSyncLive` sets `syncReady = true` + `roomLoading = false`. `onFatalError` sets
-`fatalError` + `roomLoading = false`. The auth-reconnect watcher and
-`beforeunload` flush are installed once in the constructor (not here), so
-`connect` no longer calls `installAuthReconnectWatcher` /
-`installLeaveFlushHandler`.
+`fatalError` + `roomLoading = false`. `connect` first calls the two lazy-once
+installers (auth-reconnect watcher, `beforeunload` flush) — moved verbatim from
+`useSynth`'s `installAuthReconnectWatcher` / `installLeaveFlushHandler`, now
+guarded by private session flags.
 
 ### `disconnect()` / `dispose()` body (from `teardownConnection`)
 
