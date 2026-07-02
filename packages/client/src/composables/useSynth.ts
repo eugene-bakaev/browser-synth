@@ -48,14 +48,12 @@ import { project } from '../stores/project';
 
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
-import { Outbox } from '../sync/Outbox';
-import { createCommandBus, type CommandBus } from '../sync/CommandBus';
 import { setDeep, getDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
-import { dispatchServerMessage } from '../sync/messageDispatch';
-import { roster, selfClientId, resetPresence } from '../sync/presence';
+import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
 import type { Path } from '@fiddle/shared';
+import { SyncSession } from '../sync/SyncSession';
 
 // === Pure data state — fresh at module init. ===
 //
@@ -151,50 +149,18 @@ interface AudioState {
 // computeds would cache the initial null forever (oscilloscope stays flat).
 const audioState = shallowRef<AudioState | null>(null);
 
-// === Sync state — built alongside audio (see buildSyncState). ===
-//
-// Module-scope (like `project`) because there is exactly one room connection
-// per tab, shared by every useSynth() consumer.
-let wsClient: WsClient | null = null;
-let outbox: Outbox | null = null;
-let commandBus: CommandBus | null = null;
-const fatalError = ref<{ code: string; message: string } | null>(null);
-
-// True while the current room's initial catch-up is in flight — from
-// connectToSession (which resets the local project to blank) until the room
-// reaches 'live' on sync.complete. The studio binds a loader to this so the
-// freshly-reset empty project isn't shown as a blank session before the
-// snapshot lands. Cleared on sync.complete, teardown/leave, or a fatal error.
-const roomLoading = ref(false);
-
-// The room this tab is currently connected to (null in the lobby). A ref so the
-// shell/sidebar can react (e.g. show the Leave control only inside a session).
-const currentRoomId = ref<string | null>(null);
-
 // The current room's display name, loaded by the App shell from getSession()
 // whenever currentRoomId changes. null = not loaded / no room; '' = loaded but
 // untitled. Rendered (static) in the top app-bar; updated after a local rename.
+// App-shell-owned, not part of the SyncSession.
 const sessionName = ref<string | null>(null);
-
-let authWatcherInstalled = false;
-let leaveFlushInstalled = false;
-function installLeaveFlushHandler(): void {
-  if (leaveFlushInstalled) return;
-  if (typeof window === 'undefined') return;
-  leaveFlushInstalled = true;
-  window.addEventListener('beforeunload', () => {
-    // Best-effort: the socket is usually still open during beforeunload, so a
-    // synchronous flush gets the last throttled edits onto the wire.
-    outbox?.flushAllPending();
-  });
-}
 
 // Flush the outbox entry for `path` immediately — called from a knob's
 // gesture-end (mouseup) so the final drag value goes out without waiting out
 // the 50ms throttle. No-op when sync is off or nothing is pending. Used by the
 // panels via useKnobSync (see sync/knobSync.ts).
 export function endGesture(path: Path): void {
-  outbox?.flushPath(path);
+  session.flushPath(path);
 }
 
 // The single outbound entry point for a LOCAL edit. Writes state through the
@@ -205,14 +171,11 @@ export function endGesture(path: Path): void {
 // from the leaf field — the same policy the removed sync watchers applied.
 export function dispatchLocal(path: Path, value: unknown): void {
   const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
-  if (commandBus) {
-    commandBus.dispatchLocal({
-      path,
-      value,
-      priorValue: getDeep(project as unknown as Record<string, unknown>, path),
-      gestureEnd,
-    });
-  } else {
+  const priorValue = getDeep(project as unknown as Record<string, unknown>, path);
+  // Route through the session's command bus when connected; before a room exists
+  // (pre-connect / tests) fall back to a direct store write so the edit still
+  // drives audio + UI without trying to sync.
+  if (!session.dispatchLocal({ path, value, priorValue, gestureEnd })) {
     setDeep(project as unknown as Record<string, unknown>, path, value);
   }
 }
@@ -223,16 +186,6 @@ export function dispatchLocal(path: Path, value: unknown): void {
 let syncEnabled = true;
 export function setSyncEnabled(v: boolean): void { syncEnabled = v; }
 
-// True once the CURRENT room has reached the live / caught-up state. Outbound
-// sync is gated on this so pre-load / stale content is never written up into the
-// room — the cause of cross-session content bleed when switching sessions.
-// Reset to false on every new room connection (buildSyncState); set true on
-// sync.complete (onSyncLive) — NOT on snapshot, because a resumed connection
-// catches up via op replay with no snapshot, and that path must open the gate
-// too (otherwise edits would be silently dropped). NOT reset on transient
-// reconnects, so the offline queue still flushes correctly after a mid-session drop.
-let syncReady = false;
-
 // Injectable so tests can hand back a WsClient wired to a MockWebSocket +
 // in-memory storage instead of touching the network. Production uses the
 // default real constructor.
@@ -241,6 +194,19 @@ let wsClientFactory: WsClientFactory = (opts) => new WsClient(opts);
 export function setWsClientFactory(f: WsClientFactory | null): void {
   wsClientFactory = f ?? ((opts) => new WsClient(opts));
 }
+
+// The one room connection for this tab. Long-lived; connect/disconnect cycle the
+// socket internally, dispose() is the page-unload teardown. Owns WsClient/Outbox/
+// CommandBus + presence + the reactive connection state (currentRoomId/roomLoading/
+// fatalError), re-exported below so consumers are untouched. Constructed eagerly
+// and side-effect-free (no socket, no listeners) so a lobby read of currentRoomId
+// works before the first connect.
+const session = new SyncSession({
+  project,
+  wsClientFactory: () => wsClientFactory,
+  syncEnabled: () => syncEnabled,
+  auth: () => useAuth(),
+});
 
 // Leaf fields edited as a single discrete action (a select or toggle) flush to
 // the wire immediately; everything else (knobs/sliders/drags) rides the 50ms
@@ -272,7 +238,6 @@ function emitLeafDiff(
   changed: Record<string, unknown>,
   oldObj: Record<string, unknown> | undefined,
 ): void {
-  if (!outbox) return;
   for (const [key, value] of Object.entries(changed)) {
     // Arrays (synth2.matrix) are drilled per-slot by emitMatrixDiff, not here —
     // a one-level drill here would emit a forbidden whole-slot object write.
@@ -282,10 +247,10 @@ function emitLeafDiff(
       const newNested = value as Record<string, unknown>;
       for (const subKey of Object.keys(newNested)) {
         if (oldNested[subKey] === newNested[subKey]) continue;
-        outbox.enqueue([...prefix, key, subKey], newNested[subKey], oldNested[subKey], gestureEndForLeaf(subKey));
+        session.enqueue([...prefix, key, subKey], newNested[subKey], oldNested[subKey], gestureEndForLeaf(subKey));
       }
     } else {
-      outbox.enqueue([...prefix, key], value, oldObj?.[key], gestureEndForLeaf(key));
+      session.enqueue([...prefix, key], value, oldObj?.[key], gestureEndForLeaf(key));
     }
   }
 }
@@ -303,7 +268,6 @@ function emitMatrixDiff(
   newSlice: Record<string, unknown>,
   oldSlice: Record<string, unknown>,
 ): void {
-  if (!outbox) return;
   const newM = (newSlice as { matrix?: Record<string, unknown>[] }).matrix;
   const oldM = (oldSlice as { matrix?: Record<string, unknown>[] }).matrix;
   if (!newM || !oldM) return;
@@ -311,7 +275,7 @@ function emitMatrixDiff(
     for (const field of ['source', 'dest', 'amount'] as const) {
       const a = newM[s]?.[field]; const o = oldM[s]?.[field];
       if (a === o) continue;
-      outbox.enqueue(['tracks', trackIdx, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
+      session.enqueue(['tracks', trackIdx, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
     }
   }
 }
@@ -321,7 +285,7 @@ export function syncEngineParamsDiff(
   engineType: EngineType,
   beforeSlice: Record<string, unknown>,
 ): void {
-  if (!outbox || !syncReady) return;
+  if (!session.isSyncLive) return;
   const after = project.tracks[trackIdx].engines[engineType] as unknown as Record<string, unknown>;
   const changed = diffParams(after, beforeSlice);
   if (changed) emitLeafDiff(['tracks', trackIdx, 'engines', engineType], changed, beforeSlice);
@@ -338,7 +302,7 @@ export function syncEngineParamsDiff(
 // removed watchers' `outbox && syncReady` guard (the network-apply suppression
 // they also checked is gone — no outbound watcher remains to echo these writes).
 export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, unknown>[]): void {
-  if (!outbox || !syncReady) return;
+  if (!session.isSyncLive) return;
   const steps = project.tracks[trackId].steps;
   for (let j = 0; j < beforeSteps.length; j++) {
     const changed = diffParams(
@@ -403,8 +367,8 @@ export function snapshotProjectForSync(): ProjectSyncSnapshot {
 // watchers used to cover is emitted here by diffing the live project against a
 // pre-replace snapshot from snapshotProjectForSync().
 export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
-  if (!outbox || !syncReady) return;
-  if (project.bpm !== before.bpm) outbox.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
+  if (!session.isSyncLive) return;
+  if (project.bpm !== before.bpm) session.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
   for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     const t = project.tracks[i]; const b = before.tracks[i];
     // engineType / patternLength / enabled scalars
@@ -434,107 +398,6 @@ export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
   }
 }
 
-// Build the room connection + outbox. Does NOT call wsClient.connect() —
-// that is the caller's responsibility (connectToSession). Idempotent: if a
-// socket is already live, returns immediately.
-function buildSyncState(roomId: string): void {
-  if (wsClient) return;
-  syncReady = false;
-  const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
-    .env?.VITE_WS_URL;
-  const wsUrl = envUrl
-    ? `${envUrl.replace(/\/$/, '')}/ws/${roomId}`
-    : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${roomId}`;
-
-  const auth = useAuth();
-  wsClient = wsClientFactory({
-    url: wsUrl,
-    roomId,
-    getToken: () => auth.accessToken.value,
-    onMessage: (msg) => dispatchServerMessage(msg, {
-      project,
-      wsClient: wsClient!,
-      outbox: outbox!,
-      commandBus: commandBus!,
-      onFatalError: (code, message) => {
-        fatalError.value = { code, message };
-        // The error overlay takes over; stop showing the loader behind it.
-        roomLoading.value = false;
-      },
-      onSyncLive: () => {
-        syncReady = true;
-        // Initial catch-up done — the room's content is now applied locally.
-        roomLoading.value = false;
-      },
-    }),
-    onStateChange: (s) => {
-      if (s === 'closed' && outbox) outbox.onClosed();
-    },
-  });
-
-  outbox = new Outbox({
-    nextClientSeq: () => wsClient!.nextClientSeq(),
-    send: (op) => wsClient!.send(op),
-    applyLocal: (path: Path, value: unknown) => {
-      // Rollback write (nack): revert the local project in place. No suppression
-      // needed — no outbound watcher observes this write, so it can't re-enqueue
-      // the reverted value back to the server.
-      setDeep(project as unknown as Record<string, unknown>, path, value);
-    },
-    isLive: () => !!wsClient?.isLive(),
-  });
-  commandBus = createCommandBus({
-    // Both the inbound applyRemote path and outbound dispatchLocal funnel through
-    // the bus onto this one writer, which mutates the module-scope `project` in
-    // place (mirrors Outbox.applyLocal). No suppression wrap: no outbound watcher
-    // observes these writes, so a remote apply can't echo straight back out.
-    applySet: (path: Path, value: unknown) => {
-      setDeep(project as unknown as Record<string, unknown>, path, value);
-    },
-    enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => {
-      // Outbound is gated on the room being live — mirrors the (removed) sync
-      // watchers' `outbox && syncReady` guard, so a local edit made during the
-      // initial catch-up writes state but is not leaked up before the room loads.
-      if (syncReady) outbox!.enqueue(path, value, priorValue, gestureEnd);
-    },
-  });
-  installLeaveFlushHandler();
-}
-
-// Installed once (the shell never unmounts). Re-handshakes the live socket when
-// the user logs in/out so the server re-derives identity. Watches the user id,
-// not the token (Supabase refreshes the token silently).
-function installAuthReconnectWatcher(): void {
-  if (authWatcherInstalled) return;
-  authWatcherInstalled = true;
-  const auth = useAuth();
-  watch(
-    () => auth.session.value?.user.id ?? null,
-    (next, prev) => {
-      if (next === prev) return;
-      wsClient?.reconnect();
-    },
-  );
-}
-
-// Tear down only the room connection (audio stays alive). Shared by leaveSession,
-// room-switching, and disposeSynth.
-function teardownConnection(): void {
-  // Deliver any throttled pending edits to the (still-live) socket before we
-  // close it, so leaving a room / switching rooms can't strand the last edits.
-  outbox?.flushAllPending();
-  if (wsClient) {
-    wsClient.disconnect();
-    wsClient = null;
-  }
-  outbox = null;
-  commandBus = null;
-  fatalError.value = null;
-  roomLoading.value = false;
-  currentRoomId.value = null;
-  resetPresence();
-}
-
 // Enter a session: bring up the room connection for `roomId` and reflect it in
 // the URL. Idempotent for the same room; switches cleanly between rooms. Does
 // NOT touch audio — the AudioContext still boots lazily on first PLAY.
@@ -548,37 +411,25 @@ export function connectToSession(
   roomId: string,
   opts?: { history?: 'push' | 'replace'; force?: boolean },
 ): void {
-  // A no-op re-connect to the room we're already in (e.g. clicking the same
-  // session card again) must never PUSH a second /r/<id> entry — a duplicate
-  // makes browser Back land back on the studio instead of the previous page.
-  // Force 'replace' in that case, whatever mode the caller asked for.
-  const alreadyHere = !opts?.force && !!wsClient && currentRoomId.value === roomId;
+  // A no-op re-connect to the room we're already in must never PUSH a second
+  // /r/<id> entry — force 'replace' in that case, whatever the caller asked for.
+  const alreadyHere = !opts?.force && session.isConnected && session.currentRoomId.value === roomId;
   setRoomInUrl(roomId, alreadyHere ? 'replace' : (opts?.history ?? 'replace'));
-  if (!syncEnabled) { currentRoomId.value = roomId; return; }
+  // Test mode (sync disabled): reflect the room without opening a socket; no reset.
+  if (!syncEnabled) { session.connect(roomId); return; }
   if (alreadyHere) return;
-  if (wsClient) teardownConnection();
-  // Drop the previous session's (or localStorage's) content before connecting so
-  // it can't play, or be synced up into this room, before this room's snapshot
-  // arrives. `outbox` is null here (teardown / first connect), so no enqueue.
+  // Close the previous room's socket first, then blank the store, then build the
+  // new socket — order matters so no remote op applies onto the fresh project and
+  // no stale content is synced up into the new room before its snapshot arrives.
+  if (session.isConnected) session.disconnect();
   resetLocalProject();
-  currentRoomId.value = roomId;
-  // Show the loader until this room's snapshot/catch-up completes (onSyncLive).
-  roomLoading.value = true;
-  installAuthReconnectWatcher();
-  // Outbound sync is live from here — independent of audio. buildSyncState wires
-  // the command bus whose enqueue gates on syncReady (false until sync.complete),
-  // so a local edit made during the initial catch-up writes state but is not
-  // leaked up before the room loads; no PLAY gesture is needed for edits to sync.
-  buildSyncState(roomId);
-  // Force a full snapshot: we just reset the local project, so a resume delta
-  // (op replay since opIdLastSeen) would apply onto an empty project and leave
-  // the room blank. forceSnapshot keeps our identity but pulls the whole room.
-  wsClient!.connect({ forceSnapshot: true });
+  session.connect(roomId);
 }
 
 // Reset local project state to a neutral fresh project. Shared by leaveSession
-// and connectToSession; only safe to call while `outbox` is null (otherwise the
-// sync watchers would enqueue the reset as local edits).
+// and connectToSession; only safe to call while the session is disconnected —
+// both callers run session.disconnect() first — otherwise the outbound emitters
+// would sync the blanking up into the room as local edits.
 function resetLocalProject(): void {
   replaceProject(project, freshProject());
 }
@@ -586,7 +437,7 @@ function resetLocalProject(): void {
 // Leave the current session: drop the connection, reset local state to a neutral
 // project, and clear the room from the URL. Audio stays alive.
 export function leaveSession(): void {
-  teardownConnection();
+  session.disconnect();
   resetLocalProject();
   clearRoomFromUrl();
 }
@@ -818,7 +669,7 @@ export function disposeSynth() {
   bootstrapping = null;
 
   // Tear down the sync layer too so a re-init (or a test) starts clean.
-  teardownConnection();
+  session.dispose();
 }
 
 export function useSynth() {
@@ -940,7 +791,7 @@ export function useSynth() {
   // re-derives the view and a stale editor can't bleed across sessions. This
   // writes both the URL and the local ref in lockstep.
   const applyFocusedTrack = (index: number | null, mode: 'push' | 'replace') => {
-    const room = currentRoomId.value;
+    const room = session.currentRoomId.value;
     if (room) setFocusedTrackInUrl(room, index, mode);
     activeTrackIndex.value = index;
   };
@@ -1003,11 +854,11 @@ export function useSynth() {
     // that needs the audio graph up before the first togglePlay.
     ensureAudio,
     // --- Sync surface (read by Sidebar / AccountView / ErrorOverlay) ---
-    fatalError,       // ref<{code,message}|null> — set on a fatal server error
-    roomLoading,      // ref<boolean> — true while the room's initial catch-up runs
+    fatalError: session.fatalError,       // ref<{code,message}|null> — set on a fatal server error
+    roomLoading: session.roomLoading,     // ref<boolean> — true while the room's initial catch-up runs
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
-    currentRoomId,
+    currentRoomId: session.currentRoomId,
     sessionName,
     // Entering or leaving a session always opens the overview: the new room's URL
     // carries no `?t`, so resetting the focused-track ref here keeps the view in
