@@ -5,6 +5,31 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
+### AudioEngine command-stream params — deferred out of lifecycle Phase 4
+**Reported:** 2026-07-02 · **Status:** open / deferred follow-on · **Area:** lifecycle-architecture redesign — `packages/client/src/audio/AudioEngine.ts`, `packages/client/src/sync/CommandBus.ts`, `packages/client/src/sync/SyncSession.ts` (buildConnection.applySet), `packages/client/src/composables/useSynth.ts` (sync emitters, bulk ops)
+
+The [master lifecycle spec](./superpowers/specs/2026-06-27-lifecycle-architecture-design.md)
+scoped Phase 4 as *"extract `AudioEngine` + `dispose()`; command-stream params."*
+Phase 4 as built ([phase-4 spec](./superpowers/specs/2026-07-02-phase4-audioengine-design.md))
+ships the **structural extraction only** and **keeps the Vue reactive slice-watchers**
+as the audio param driver. The "AudioEngine subscribes to the command stream, drop the
+`diffParams` machinery" half is **deferred**.
+
+**Why deferred:** the design assumed a Pinia `ProjectStore` where `CommandBus` is the
+sole writer. Reality: `project` is a plain reactive singleton and `CommandBus.applySet`
+is a bare `setDeep` that emits **no** stream. The watchers reach audio by observing the
+reactive object, so they fire for *every* mutation — including three paths that **bypass
+the bus entirely**: (1) bulk ops (Clear/Shift/Fill, Open/New, preset load), (2) nack
+rollback (`Outbox.applyLocal`), (3) `replaceProject` (snapshot load / room reset).
+Switching audio to a command-stream subscription is not a relocation — it requires
+routing all three bypass paths into a new applied-set stream, or audio silently stops
+reacting to them. High-risk correctness work that does not serve Phase 4's litmus test.
+
+**When to pick up:** once the `CommandBus` is the sole writer and emits an applied-set
+stream — most naturally alongside/after Phase 5's `AppRuntime` work, when the bypass
+paths can be routed through the stream deliberately. Only worth doing if the reactive
+watchers become a real liability (they are not today).
+
 ### Lost durable project data on several recently-edited prod sessions — mechanism unproven
 **Reported:** 2026-06-26 · **Status:** open / investigation PAUSED · **Area:** sync durable-write path + client reconnect churn — `packages/client/src/composables/useSynth.ts` (connectToSession / leaveSession / resetLocalProject / teardownConnection), `packages/client/src/sync/reconcileSession.ts`, server flush (`SessionSync` / `packProject`)
 
