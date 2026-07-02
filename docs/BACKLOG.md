@@ -5,7 +5,36 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
-### AudioEngine command-stream params — deferred out of lifecycle Phase 4
+### Post-Phase-5 audit: re-verify the project-writer inventory is complete
+**Reported:** 2026-07-02 · **Status:** open / scheduled AFTER Phase 5 lands · **Area:** lifecycle-architecture redesign — the "single writer" claim behind `packages/client/src/sync/CommandBus.ts` + `packages/client/src/audio/AudioEngine.ts`
+
+The Phase 5 design ([spec](./superpowers/specs/2026-07-02-phase5-appruntime-design.md),
+"Complete writer inventory") rests on one load-bearing claim: **every code path
+that mutates `project` is known and routed through the CommandBus.** Once Phase 5
+deletes the audio watchers, a *missed* writer fails silently and staged: state and
+UI still update (reactive), but the write never reaches audio (no stream event)
+and never syncs — no error, no test failure unless a test covers that exact flow;
+just a control that stops changing the sound in one scenario.
+
+**Evidence so far (all clean, pre-implementation, 2026-07-02):**
+1. Mechanism-level greps: every `setDeep` call site (4, all accounted), every
+   `replaceProject` call site, every in-place mutation helper + its callers.
+2. `.vue` sweep: zero `v-model` bindings into reactive slices, zero direct
+   assignments to `params`/`project`/`track`/`step` in any component (the Phase 2b
+   migration got all component writers).
+3. The plan encodes the claim as must-pass greps (whole-branch Verification
+   section of [the plan](./superpowers/plans/2026-07-02-phase5-appruntime.md)).
+4. Browser checkpoints after plan Tasks 3/4 deliberately drive the
+   previously-bypassing flows (preset load, INIT PATCH, Clear/Shift/Fill,
+   Open/New, remote edits).
+
+**What this audit does (after the Phase 5 branch merges):** re-run sweeps 1–2
+against the MERGED tree (code moved during Tasks 1–4; the pre-implementation
+sweep does not cover code written by the implementation itself), plus:
+`grep -rnE '\bproject\.(bpm|tracks)\b.*=' packages/client/src --include='*.ts' --include='*.vue' | grep -v test`
+for bare property assignments, and an ear-test pass over every control category
+(knob, select, toggle, step cell, mixer, bulk op, preset, remote edit) confirming
+each audibly reaches the engine. Close the entry with the sweep transcript.
 **Reported:** 2026-07-02 · **Status:** open / deferred follow-on · **Area:** lifecycle-architecture redesign — `packages/client/src/audio/AudioEngine.ts`, `packages/client/src/sync/CommandBus.ts`, `packages/client/src/sync/SyncSession.ts` (buildConnection.applySet), `packages/client/src/composables/useSynth.ts` (sync emitters, bulk ops)
 
 The [master lifecycle spec](./superpowers/specs/2026-06-27-lifecycle-architecture-design.md)
