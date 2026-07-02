@@ -45,6 +45,7 @@ import {
   replaceProject,
 } from '../project';
 import { project } from '../stores/project';
+import { diffParams } from '../project/paramDiff';
 
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
@@ -99,30 +100,6 @@ function sliderToLinearGain(slider: number): number {
 // no NaN/Infinity, no functions.
 function snapshot<T>(slice: T): T {
   return JSON.parse(JSON.stringify(slice));
-}
-
-// Returns the subset of `newVal` keys whose values differ from `oldVal`, or
-// null if nothing changed. Used to feed engine.applyParams() the minimum set
-// of writes per knob turn instead of the full slice (was 13 writes/knob for
-// the synth; now typically 1).
-function diffParams<T extends Record<string, unknown>>(
-  newVal: T,
-  oldVal: T | undefined
-): Partial<T> | null {
-  if (!oldVal) return null;
-  const changed: Partial<T> = {};
-  let any = false;
-  for (const key of Object.keys(newVal) as Array<keyof T>) {
-    const a = newVal[key];
-    const b = oldVal[key];
-    if (a === b) continue;
-    if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-      if (JSON.stringify(a) === JSON.stringify(b)) continue;
-    }
-    changed[key] = a as T[keyof T];
-    any = true;
-  }
-  return any ? changed : null;
 }
 
 // === Audio state — lazy. Built on first user gesture (or test-driven ensureAudio). ===
