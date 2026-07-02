@@ -427,8 +427,9 @@ export function connectToSession(
 }
 
 // Reset local project state to a neutral fresh project. Shared by leaveSession
-// and connectToSession; only safe to call while `outbox` is null (otherwise the
-// sync watchers would enqueue the reset as local edits).
+// and connectToSession; only safe to call while the session is disconnected —
+// both callers run session.disconnect() first — otherwise the outbound emitters
+// would sync the blanking up into the room as local edits.
 function resetLocalProject(): void {
   replaceProject(project, freshProject());
 }
