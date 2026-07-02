@@ -138,6 +138,13 @@ step (notes/params) and schedules audio. Reads are not commands.
 keeping per-slice diff-watchers. Drops the `diffParams` machinery and aligns with
 the command model. (Rejected alternative: keep Pinia `watch` on slices.)
 
+> **UPDATE 2026-07-02 — DEFERRED past Phase 4.** As implemented, the bus writes to
+> a plain reactive `project` via bare `setDeep` and emits **no** stream, and three
+> paths bypass the bus (bulk ops, nack rollback, `replaceProject`) yet must reach
+> audio. Phase 4 therefore ships the structural `AudioEngine` extraction only and
+> **keeps** the reactive slice-watchers. Command-stream params picks up later, once
+> the bus is the sole writer. See the [phase-4 spec](./2026-07-02-phase4-audioengine-design.md).
+
 ## Lifecycle & ownership
 
 **Composition root — `AppRuntime`:**
@@ -211,7 +218,7 @@ Dependency-ordered; every phase ends green, browser-verified, and reviewable.
 | **1** | Store holds canonical state + selectors; migrate components to **read** from selectors | low |
 | **2** | `CommandBus`/`dispatch`; migrate **write** sites; delete direct-mutation watchers + `applyingFromNetwork`; `applyRemote` replaces `applyOp` | **high — the heart** |
 | **3** | Extract `SyncSession` (owns WsClient/Outbox/presence) + `dispose()` | medium |
-| **4** | Extract `AudioEngine` (owns ctx/engines/Sequencer) + `dispose()`; command-stream params | medium |
+| **4** | Extract `AudioEngine` (owns ctx/engines/Sequencer) + `dispose()`. ~~command-stream params~~ **DEFERRED** — Phase 4 ships the structural extraction only; the engine keeps the Vue reactive slice-watchers (see [phase-4 spec](./2026-07-02-phase4-audioengine-design.md) + `docs/BACKLOG.md`) because 3 mutation paths bypass the bus | medium |
 | **5** | `AppRuntime` root: `bootstrap`/`shutdown` + all lifecycle wiring incl. the **single** HMR hook; delete `useSynth.ts`; update `ARCHITECTURE.md` + add decision **D17** (and mark superseded decisions) | medium |
 
 Order rationale: foundation (store) → the write-funnel (correctness) → peel
