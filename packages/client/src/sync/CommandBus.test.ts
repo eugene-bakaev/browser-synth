@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Path, SetOpBroadcast } from '@fiddle/shared';
 import { createCommandBus } from './CommandBus';
 
@@ -11,6 +11,7 @@ function makeFakes() {
     enqueues,
     deps: {
       applySet: (path: Path, value: unknown) => { writes.push({ path, value }); },
+      loadProject: () => {},
       enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) =>
         { enqueues.push({ path, value, priorValue, gestureEnd }); },
     },
@@ -76,6 +77,7 @@ describe('CommandBus', () => {
     const writes: Path[] = [];
     const bus = createCommandBus({
       applySet: () => { throw new Error('unresolvable path'); },
+      loadProject: () => {},
       enqueue: (path: Path) => { writes.push(path); },
     });
     expect(bus.applyRemote(broadcast(['tracks', 999, 'nope'], 1, 1))).toBe(false);
@@ -108,5 +110,91 @@ describe('CommandBus', () => {
     bus.advanceWatermark(['bpm'], 9);
     bus.resetWatermark();
     expect(bus.advanceWatermark(['bpm'], 1)).toBe(true); // fresh again
+  });
+});
+
+describe('applied-command stream (Phase 5)', () => {
+  it('subscribe sees a set AFTER the state write, then enqueue runs', () => {
+    const calls: string[] = [];
+    const state: Record<string, unknown> = {};
+    const bus = createCommandBus({
+      applySet: (path, value) => { state[String(path[0])] = value; calls.push('applySet'); },
+      loadProject: () => { calls.push('loadProject'); },
+      enqueue: () => { calls.push('enqueue'); },
+    });
+    const seen: unknown[] = [];
+    bus.subscribe((cmd) => {
+      calls.push('emit');
+      seen.push(cmd);
+      // state is already written when the listener runs:
+      expect(state.bpm).toBe(140);
+    });
+    bus.dispatchLocal({ path: ['bpm'], value: 140 });
+    expect(calls).toEqual(['applySet', 'emit', 'enqueue']);
+    expect(seen).toEqual([{ kind: 'set', path: ['bpm'], value: 140 }]);
+  });
+
+  it('applyRemote emits on apply, and does NOT emit on a stale watermark drop', () => {
+    const state: Record<string, unknown> = {};
+    const bus = createCommandBus({
+      applySet: (path, value) => { state[String(path[0])] = value; },
+      loadProject: () => {},
+      enqueue: () => {},
+    });
+    const seen: unknown[] = [];
+    bus.subscribe((cmd) => seen.push(cmd));
+    bus.applyRemote({ v: 1, type: 'set', opId: 5, path: ['bpm'], value: 130, clientId: 'x' } as never);
+    bus.applyRemote({ v: 1, type: 'set', opId: 4, path: ['bpm'], value: 99, clientId: 'x' } as never); // stale
+    expect(seen).toHaveLength(1);
+  });
+
+  it('applyRemote does NOT emit when applySet throws', () => {
+    const bus = createCommandBus({
+      applySet: () => { throw new Error('bad path'); },
+      loadProject: () => {},
+      enqueue: () => {},
+    });
+    const seen: unknown[] = [];
+    bus.subscribe((cmd) => seen.push(cmd));
+    expect(bus.applyRemote({ v: 1, type: 'set', opId: 1, path: ['nope'], value: 1, clientId: 'x' } as never)).toBe(false);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('applyRollback writes + emits and never enqueues', () => {
+    const state: Record<string, unknown> = {};
+    const enqueue = vi.fn();
+    const bus = createCommandBus({
+      applySet: (path, value) => { state[String(path[0])] = value; },
+      loadProject: () => {},
+      enqueue,
+    });
+    const seen: unknown[] = [];
+    bus.subscribe((cmd) => seen.push(cmd));
+    bus.applyRollback(['bpm'], 120);
+    expect(state.bpm).toBe(120);
+    expect(seen).toEqual([{ kind: 'set', path: ['bpm'], value: 120 }]);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('loadProject calls deps.loadProject then emits a replace event', () => {
+    const calls: string[] = [];
+    const bus = createCommandBus({
+      applySet: () => {},
+      loadProject: () => { calls.push('loadProject'); },
+      enqueue: () => {},
+    });
+    bus.subscribe((cmd) => { calls.push(cmd.kind); });
+    bus.loadProject({} as never);
+    expect(calls).toEqual(['loadProject', 'replace']);
+  });
+
+  it('unsubscribe stops delivery', () => {
+    const bus = createCommandBus({ applySet: () => {}, loadProject: () => {}, enqueue: () => {} });
+    const seen: unknown[] = [];
+    const unsub = bus.subscribe((cmd) => seen.push(cmd));
+    bus.dispatchLocal({ path: ['bpm'], value: 1 });
+    unsub();
+    bus.dispatchLocal({ path: ['bpm'], value: 2 });
+    expect(seen).toHaveLength(1);
   });
 });

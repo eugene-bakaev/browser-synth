@@ -12,11 +12,10 @@
 // consumers are untouched.
 
 import { ref, watch, type Ref } from 'vue';
-import type { Path, Project } from '@fiddle/shared';
-import { setDeep } from '@fiddle/shared';
+import type { Path } from '@fiddle/shared';
 import { WsClient, type WsClientOptions } from './WsClient';
 import { Outbox } from './Outbox';
-import { createCommandBus, type CommandBus, type LocalCommand } from './CommandBus';
+import type { CommandBus } from './CommandBus';
 import { dispatchServerMessage } from './messageDispatch';
 import { resetPresence } from './presence';
 
@@ -31,7 +30,7 @@ export interface SyncAuth {
 }
 
 export interface SyncSessionDeps {
-  project: Project;
+  bus: CommandBus;
   wsClientFactory: () => WsClientFactory; // getter — honours setWsClientFactory (tests)
   syncEnabled: () => boolean;             // getter — honours setSyncEnabled (tests)
   auth: () => SyncAuth;                    // getter — resolved lazily (useAuth())
@@ -46,7 +45,6 @@ export class SyncSession {
   // Per-connection resources — built in connect(), nulled in disconnect().
   private wsClient: WsClient | null = null;
   private outbox: Outbox | null = null;
-  private commandBus: CommandBus | null = null;
 
   // True once the CURRENT room has caught up (sync.complete). Outbound sync is
   // gated on this so pre-load / stale content is never leaked into the room.
@@ -87,7 +85,6 @@ export class SyncSession {
       this.wsClient = null;
     }
     this.outbox = null;
-    this.commandBus = null;
     this.syncReady = false;
     this.fatalError.value = null;
     this.roomLoading.value = false;
@@ -99,15 +96,6 @@ export class SyncSession {
   // disconnect(); named separately as the lifecycle entry point the Phase-5
   // AppRuntime will call, and so a double-teardown is unmistakably a no-op.
   dispose(): void { this.disconnect(); }
-
-  // Route a local edit through the command bus (state write + gated enqueue).
-  // Returns false when not connected so the caller can fall back to a direct
-  // store write (lobby / pre-connect / tests).
-  dispatchLocal(cmd: LocalCommand): boolean {
-    if (!this.commandBus) return false;
-    this.commandBus.dispatchLocal(cmd);
-    return true;
-  }
 
   // Enqueue an already-applied leaf op (used by the bulk sync emitters). Gated on
   // the room being live — a no-op otherwise. Mirrors the removed watchers'
@@ -124,7 +112,7 @@ export class SyncSession {
 
   private buildConnection(roomId: string): void {
     this.syncReady = false;
-    const project = this.deps.project;
+    this.deps.bus.resetWatermark();
     const auth = this.deps.auth();
     const envUrl = (import.meta as unknown as { env?: Record<string, string | undefined> })
       .env?.VITE_WS_URL;
@@ -137,10 +125,9 @@ export class SyncSession {
       roomId,
       getToken: () => auth.accessToken.value,
       onMessage: (msg) => dispatchServerMessage(msg, {
-        project,
         wsClient: this.wsClient!,
         outbox: this.outbox!,
-        commandBus: this.commandBus!,
+        commandBus: this.deps.bus,
         onFatalError: (code, message) => {
           this.fatalError.value = { code, message };
           // The error overlay takes over; stop showing the loader behind it.
@@ -161,22 +148,11 @@ export class SyncSession {
       nextClientSeq: () => this.wsClient!.nextClientSeq(),
       send: (op) => this.wsClient!.send(op),
       applyLocal: (path: Path, value: unknown) => {
-        // Rollback write (nack): revert the local project in place. No suppression
-        // needed — no outbound watcher observes this write.
-        setDeep(project as unknown as Record<string, unknown>, path, value);
+        // Rollback / reassert write: route through the bus so state AND the
+        // audio stream see the restored value (state-only — never re-sends).
+        this.deps.bus.applyRollback(path, value);
       },
       isLive: () => !!this.wsClient?.isLive(),
-    });
-
-    this.commandBus = createCommandBus({
-      applySet: (path: Path, value: unknown) => {
-        setDeep(project as unknown as Record<string, unknown>, path, value);
-      },
-      enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => {
-        // Gated on the room being live so a local edit during initial catch-up
-        // writes state but is not leaked up before the room loads.
-        if (this.syncReady) this.outbox!.enqueue(path, value, priorValue, gestureEnd);
-      },
     });
   }
 

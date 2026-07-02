@@ -17,6 +17,7 @@ import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
 import type { Path } from '@fiddle/shared';
 import { SyncSession } from '../sync/SyncSession';
+import { createCommandBus } from '../sync/CommandBus';
 
 // === Pure data state — fresh at module init. ===
 //
@@ -44,21 +45,14 @@ export function endGesture(path: Path): void {
   session.flushPath(path);
 }
 
-// The single outbound entry point for a LOCAL edit. Writes state through the
-// command bus (which also enqueues the op for delivery) when a room connection
-// exists; before one does (pre-connect / tests) it mutates the local project
-// directly so the edit still drives audio + UI without trying to sync. The
-// discrete-vs-throttled policy (flush-now vs ride the 50ms throttle) is derived
-// from the leaf field — the same policy the removed sync watchers applied.
+// The single outbound entry point for a LOCAL edit. Always routes through the
+// command bus: the bus writes state + emits to the audio stream; the outbound
+// enqueue is gated on the room being live inside session.enqueue, so
+// pre-connect edits still drive audio + UI without trying to sync.
 export function dispatchLocal(path: Path, value: unknown): void {
   const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
   const priorValue = getDeep(project as unknown as Record<string, unknown>, path);
-  // Route through the session's command bus when connected; before a room exists
-  // (pre-connect / tests) fall back to a direct store write so the edit still
-  // drives audio + UI without trying to sync.
-  if (!session.dispatchLocal({ path, value, priorValue, gestureEnd })) {
-    setDeep(project as unknown as Record<string, unknown>, path, value);
-  }
+  bus.dispatchLocal({ path, value, priorValue, gestureEnd });
 }
 
 // Tests flip this off so ensureAudio() doesn't open a real socket; production
@@ -76,14 +70,30 @@ export function setWsClientFactory(f: WsClientFactory | null): void {
   wsClientFactory = f ?? ((opts) => new WsClient(opts));
 }
 
+// The one command bus for this tab — THE single gateway to project state.
+// Long-lived (survives room switches; SyncSession resets its watermark per
+// connect). applySet/loadProject write the canonical project; enqueue hands
+// outbound ops to the session, which gates on the room being live.
+const bus = createCommandBus({
+  applySet: (path, value) => {
+    setDeep(project as unknown as Record<string, unknown>, path, value);
+  },
+  loadProject: (next) => {
+    replaceProject(project, next);
+  },
+  enqueue: (path, value, priorValue, gestureEnd) => {
+    session.enqueue(path, value, priorValue, gestureEnd);
+  },
+});
+
 // The one room connection for this tab. Long-lived; connect/disconnect cycle the
-// socket internally, dispose() is the page-unload teardown. Owns WsClient/Outbox/
-// CommandBus + presence + the reactive connection state (currentRoomId/roomLoading/
+// socket internally, dispose() is the page-unload teardown. Owns WsClient/Outbox
+// + presence + the reactive connection state (currentRoomId/roomLoading/
 // fatalError), re-exported below so consumers are untouched. Constructed eagerly
 // and side-effect-free (no socket, no listeners) so a lobby read of currentRoomId
 // works before the first connect.
 const session = new SyncSession({
-  project,
+  bus,
   wsClientFactory: () => wsClientFactory,
   syncEnabled: () => syncEnabled,
   auth: () => useAuth(),
@@ -319,7 +329,7 @@ export function connectToSession(
 // both callers run session.disconnect() first — otherwise the outbound emitters
 // would sync the blanking up into the room as local edits.
 function resetLocalProject(): void {
-  replaceProject(project, freshProject());
+  bus.loadProject(freshProject());
 }
 
 // Leave the current session: drop the connection, reset local state to a neutral
