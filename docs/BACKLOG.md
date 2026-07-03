@@ -35,29 +35,6 @@ sweep does not cover code written by the implementation itself), plus:
 for bare property assignments, and an ear-test pass over every control category
 (knob, select, toggle, step cell, mixer, bulk op, preset, remote edit) confirming
 each audibly reaches the engine. Close the entry with the sweep transcript.
-**Reported:** 2026-07-02 · **Status:** open / deferred follow-on · **Area:** lifecycle-architecture redesign — `packages/client/src/audio/AudioEngine.ts`, `packages/client/src/sync/CommandBus.ts`, `packages/client/src/sync/SyncSession.ts` (buildConnection.applySet), `packages/client/src/composables/useSynth.ts` (sync emitters, bulk ops)
-
-The [master lifecycle spec](./superpowers/specs/2026-06-27-lifecycle-architecture-design.md)
-scoped Phase 4 as *"extract `AudioEngine` + `dispose()`; command-stream params."*
-Phase 4 as built ([phase-4 spec](./superpowers/specs/2026-07-02-phase4-audioengine-design.md))
-ships the **structural extraction only** and **keeps the Vue reactive slice-watchers**
-as the audio param driver. The "AudioEngine subscribes to the command stream, drop the
-`diffParams` machinery" half is **deferred**.
-
-**Why deferred:** the design assumed a Pinia `ProjectStore` where `CommandBus` is the
-sole writer. Reality: `project` is a plain reactive singleton and `CommandBus.applySet`
-is a bare `setDeep` that emits **no** stream. The watchers reach audio by observing the
-reactive object, so they fire for *every* mutation — including three paths that **bypass
-the bus entirely**: (1) bulk ops (Clear/Shift/Fill, Open/New, preset load), (2) nack
-rollback (`Outbox.applyLocal`), (3) `replaceProject` (snapshot load / room reset).
-Switching audio to a command-stream subscription is not a relocation — it requires
-routing all three bypass paths into a new applied-set stream, or audio silently stops
-reacting to them. High-risk correctness work that does not serve Phase 4's litmus test.
-
-**When to pick up:** once the `CommandBus` is the sole writer and emits an applied-set
-stream — most naturally alongside/after Phase 5's `AppRuntime` work, when the bypass
-paths can be routed through the stream deliberately. Only worth doing if the reactive
-watchers become a real liability (they are not today).
 
 ### Lost durable project data on several recently-edited prod sessions — mechanism unproven
 **Reported:** 2026-06-26 · **Status:** open / investigation PAUSED · **Area:** sync durable-write path + client reconnect churn — `packages/client/src/composables/useSynth.ts` (connectToSession / leaveSession / resetLocalProject / teardownConnection), `packages/client/src/sync/reconcileSession.ts`, server flush (`SessionSync` / `packProject`)
@@ -254,7 +231,42 @@ longer `exp(room)` reverberant tail, balanced by `mix`. Deterministic xorshift32
 
 Fold into the broader drum-voicing polish stage alongside snare2/kick2/hat2.
 
+### local-init.sql missing the 0005_presets table
+**Reported:** 2026-07-02 · **Status:** open · **Area:** `packages/server/db/local-init.sql`, `supabase/migrations/0005_presets.sql`
+
+local-init.sql missing 0005_presets table — /api/presets 500s on the local Docker
+DB (fold supabase/migrations/0005_presets.sql into packages/server/db/local-init.sql).
+Pre-existing env gap found during Phase 5 (`feat/phase5-appruntime`) browser-verification
+checkpoints, unrelated to the Phase 5 code changes.
+
 ## Resolved
+
+### AudioEngine command-stream params — deferred out of lifecycle Phase 4
+**Reported:** 2026-07-02 · **Status:** CLOSED 2026-07-02 — delivered by Phase 5 (feat/phase5-appruntime); AudioEngine subscribes to the CommandBus applied-command stream; watchers + audio-side diffParams deleted. · **Area:** lifecycle-architecture redesign — `packages/client/src/audio/AudioEngine.ts`, `packages/client/src/sync/CommandBus.ts`, `packages/client/src/sync/SyncSession.ts` (buildConnection.applySet), `packages/client/src/composables/useSynth.ts` (sync emitters, bulk ops — file since deleted, see Phase 5)
+
+The [master lifecycle spec](./superpowers/specs/2026-06-27-lifecycle-architecture-design.md)
+scoped Phase 4 as *"extract `AudioEngine` + `dispose()`; command-stream params."*
+Phase 4 as built ([phase-4 spec](./superpowers/specs/2026-07-02-phase4-audioengine-design.md))
+shipped the **structural extraction only** and **kept the Vue reactive slice-watchers**
+as the audio param driver. The "AudioEngine subscribes to the command stream, drop the
+`diffParams` machinery" half was **deferred**.
+
+**Why deferred (at the time):** the design assumed a Pinia `ProjectStore` where `CommandBus` is the
+sole writer. Reality: `project` was a plain reactive singleton and `CommandBus.applySet`
+was a bare `setDeep` that emitted **no** stream. The watchers reached audio by observing the
+reactive object, so they fired for *every* mutation — including three paths that **bypassed
+the bus entirely**: (1) bulk ops (Clear/Shift/Fill, Open/New, preset load), (2) nack
+rollback (`Outbox.applyLocal`), (3) `replaceProject` (snapshot load / room reset).
+Switching audio to a command-stream subscription was not a relocation — it required
+routing all three bypass paths into a new applied-set stream, or audio would silently stop
+reacting to them.
+
+**Resolution:** Phase 5 ([spec](./superpowers/specs/2026-07-02-phase5-appruntime-design.md))
+made the `CommandBus` the long-lived sole writer (`applySet`/`loadProject`/`applyRollback`
++ a synchronous applied-command stream), turned bulk ops into pure draft-diff-dispatch
+(`app/projectOps.ts`), and switched `AudioEngine` to subscribe to that stream instead of
+watching the reactive project — all three bypass paths above now route through the bus, and
+the `flush:'sync'` watcher/`diffParams` machinery is deleted.
 
 ### Sequencer step OCT / LEN fields are hard to edit
 **Reported:** 2026-05-31 · **Status:** fixed · **Area:** `packages/client/src/components/Tracker.vue`

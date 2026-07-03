@@ -1,6 +1,6 @@
 # Fiddle Synth — Architecture Reference
 
-**Audience:** future contributors (including future-me). Read this before changing audio engine code, sequencer scheduling, or `useSynth.ts`.
+**Audience:** future contributors (including future-me). Read this before changing audio engine code, sequencer scheduling, or `app/AppRuntime.ts`.
 
 **Companion docs:**
 - [`CODE_REVIEW.md`](./CODE_REVIEW.md) — Findings list with resolution status. Source of truth when this doc and a finding conflict.
@@ -22,13 +22,15 @@ The **Fastify WebSocket sync server** in `packages/server/` carries the project-
 ┌────────────────────────────────────────────────────────────────┐
 │  Vue 3 UI  (App shell → router: LobbyView | StudioView | …)    │
 │       │   StudioView: channel rack (Tracker columns) + panels  │
-│       │   :params engine-slice prop → v-model knob bindings    │
+│       │   :params engine-slice (read) → knob → dispatchLocal   │
 │       ▼                                                        │
-│  useSynth.ts  (module-scope singleton)                         │
-│    ├─ project:   reactive Project (32-slot pool; synced)       │
-│    ├─ engines:   sparse SoundEngine[] — enabled slots only     │
-│    ├─ sequencer: Sequencer (lookahead ticker, absolute index)  │
-│    └─ sync:      WsClient + Outbox  ←→  wss://…/ws/<sessionId> │
+│  AppRuntime  (composition root; one per page)                  │
+│    ├─ store:     Pinia ProjectStore — reactive Project (synced)│
+│    ├─ bus:       CommandBus — sole writer; applied-command     │
+│    │              stream drives AudioEngine (no watchers)      │
+│    ├─ audio:     AudioEngine (ctx, sparse SoundEngine[],        │
+│    │              Sequencer — lookahead ticker, absolute index)│
+│    └─ session:   SyncSession (WsClient + Outbox) ←→ wss://…/ws/<sessionId> │
 │       │                                                        │
 │       │   applyParams(params)         trigger(freq,dur,t,vel)  │
 │       ▼                                                        │
@@ -94,15 +96,20 @@ browser-synth/
         ├── index.html
         ├── e2e/sync.spec.ts    # Playwright two-tab collaboration e2e
         └── src/
-            ├── App.vue                     # Shell: Sidebar + <router-view> + DialogHost + ErrorOverlay
-            ├── main.ts                     # Vue mount + router install
+            ├── App.vue                     # Shell: Sidebar + <router-view> + DialogHost + ErrorOverlay;
+            │                               #   creates the one SynthContext via createSynthContext(runtime)
+            ├── main.ts                     # THE composition entry: createAppRuntime() + mount + pagehide/HMR — see §6
+            ├── app/                        # composition root (Phase 5) — see §6
+            │   ├── AppRuntime.ts           # createAppRuntime() — owns store/bus/session/audio; idempotent shutdown()
+            │   ├── synthContext.ts         # createSynthContext(runtime) — the injected SYNTH_CONTEXT facade
+            │   └── projectOps.ts           # bulk ops (Clear/Shift/Fill, preset load, INIT PATCH, New/Open) as
+            │                               #   pure draft-diff-dispatch through the CommandBus
             ├── router/                     # memory-history router (lobby/studio/account) — URL stays /r/<id>
             ├── views/
             │   ├── LobbyView.vue           # session list (useLobby poll) + create-session flow
             │   ├── StudioView.vue          # the DAW: channel rack (per-track Tracker columns) + engine panels
             │   └── AccountView.vue         # sign-in / username editor
             ├── composables/
-            │   ├── useSynth.ts             # ⚠ explicit lazy singleton — see §6
             │   └── useLobby.ts             # 30s visibility-aware poll of GET /api/sessions
             ├── auth/                       # supabase.ts (null without env), useAuth.ts (§17)
             ├── dialogs/                    # useDialog — promise-based modal host plumbing
@@ -135,19 +142,24 @@ browser-synth/
             │   ├── preset.ts       # Preset type, makePreset, serializePreset/deserializePreset, applyPreset
             │   ├── preset-file-io.ts # savePresetToFile(), openPresetFromFile()
             │   └── index.ts        # public barrel
+            ├── stores/
+            │   └── project.ts      # Pinia ProjectStore — owns the canonical `project` instance, created
+            │                       #   PER PINIA INSTANCE (per page / per test runtime, via createAppRuntime),
+            │                       #   not at module scope; applySet/loadProject (write-only, reached via the bus)
             ├── sync/                       # real-time collab client (see §15)
             │   ├── WsClient.ts             # WS state machine; per-room {clientId, opIdLastSeen, clientSeq}
             │   │                           #   persisted to sessionStorage (in-memory cached, write-through)
             │   ├── Outbox.ts               # outbound: 50ms throttle, coalesce, offline queue, nack rollback,
             │   │                           #   ack-timeout resends, flushPath, reassertPending
-            │   ├── applyOp.ts              # inbound deep-set + per-path opId guard + suppression flag
-            │   ├── messageDispatch.ts      # server-message switch (welcome/snapshot/set/presence/error/…)
+            │   ├── CommandBus.ts           # createCommandBus() — sole write funnel; see §6
+            │   ├── SyncSession.ts          # owns the room connection (WsClient+Outbox+presence) for one tab
+            │   ├── messageDispatch.ts      # server-message switch (welcome/snapshot/set/presence/error/…);
+            │   │                           #   routes inbound writes through the CommandBus
             │   ├── presence.ts             # roster + per-path "touched" map for the activity ring
             │   ├── knobSync.ts             # useKnobSync(engine): per-knob syncPath + gesture-end (§15)
             │   ├── roomId.ts               # /r/:roomId parsing + random room id generation
             │   ├── clientId.ts             # stable per-browser GUEST id (localStorage) for session ownership
-            │   ├── sessionsApi.ts          # typed HTTP client for /api/sessions (VITE_API_URL aware)
-            │   └── synthContext.ts         # injection key: App shell's one useSynth() instance → StudioView
+            │   └── sessionsApi.ts          # typed HTTP client for /api/sessions (VITE_API_URL aware)
             ├── components/                 # Knob, Tracker, StepNumberInput, panels (SynthPanel, KickPanel, …),
             │                               #   TrackMixer, Visualizer, Sidebar (nav + roster chips),
             │                               #   BaseModal/DialogHost/CreateSessionDialog, ErrorOverlay
@@ -179,7 +191,7 @@ export interface SoundEngine {
 }
 ```
 
-**Why it matters:** this is the seam that lets `useSynth` swap engine types per track without `instanceof` checks. New engine types add a class implementing this interface and a factory entry — that's it.
+**Why it matters:** this is the seam that lets `AudioEngine` swap engine types per track without `instanceof` checks. New engine types add a class implementing this interface and a factory entry — that's it.
 
 ### Contract rules
 - **`trigger`** must accept either a single freq (mono) or an array (chord/polyphonic). Drum engines treat the array as "play each one" but in practice always receive a single freq.
@@ -189,7 +201,7 @@ export interface SoundEngine {
   ```ts
   if (params.xxx !== undefined) this.setXxx(params.xxx);
   ```
-  This shape lets `useSynth` pass `state[engineType]` directly and lets per-knob updates skip serialization gymnastics.
+  This shape lets `AudioEngine` pass `track.engines[engineType]` directly and lets per-knob updates skip serialization gymnastics.
 - **`dispose`** must `stop()` any active oscillators, `disconnect()` everything, and clear any active-source tracking sets. Called when a track swaps engine type or on full teardown.
 
 ### Per-engine params: `DEFAULT_PARAMS` pattern
@@ -203,7 +215,7 @@ export class SynthEngine implements SoundEngine {
 }
 ```
 
-`useSynth` builds each track's slice via `structuredClone(EngineClass.DEFAULT_PARAMS)`. **Deep clone is required** — nested ADSR objects would otherwise be shared by reference across tracks, and mutating track 0's filterEnv would silently bleed into track 1.
+`@fiddle/shared`'s `project/factory.ts` (`freshTrack()`) builds each track's slice via `structuredClone(DEFAULT_*_PARAMS)`. **Deep clone is required** — nested ADSR objects would otherwise be shared by reference across tracks, and mutating track 0's filterEnv would silently bleed into track 1.
 
 ---
 
@@ -211,7 +223,7 @@ export class SynthEngine implements SoundEngine {
 
 ```
 SynthEngine
-├── ctx: AudioContext (shared from useSynth, NOT owned)
+├── ctx: AudioContext (shared from AudioEngine, NOT owned)
 ├── masterVCA: GainNode (engine's local sum)
 ├── voices: SynthVoice[6]
 └── activeVoiceIndex: round-robin pointer
@@ -259,64 +271,72 @@ The drum engines do **not** use `EnvelopeModule` — each implements its own bes
 
 ---
 
-## 6. `useSynth.ts` — explicit lazy singleton
+## 6. `app/` — AppRuntime composition root & synthContext facade
 
-> Was the "singleton-dressed-as-a-composable" before A1 (commit `<TBD>`). Now: data state at module scope, **audio state is lazy** and built on first user gesture.
+> Was `useSynth.ts` — the "singleton-dressed-as-a-composable" — before Phase 5 (`feat/phase5-appruntime`, 2026-07-02; decision D17). Now: **nothing lives at module scope anywhere in the app.** `app/AppRuntime.ts` is the composition root that creates and owns every long-lived resource exactly once per page; `app/synthContext.ts` builds the injected facade the component tree consumes.
 
 ### Layout
 
 ```ts
-// Module scope — pure data, no audio nodes
-const project: Project = reactive(freshProject());  // fresh at boot; sessions fill it (no localStorage — S1)
-const sequencer = reactive(new Sequencer());        // UI surface reactive; scheduler internals markRaw'd (§7)
-
-// Audio state — lazy. null until first ensureAudio() / togglePlay() call.
-// shallowRef (not a plain let) so the trackAnalysers/trackGains computeds
-// observe the null → AudioState flip.
-const audioState = shallowRef<AudioState | null>(null);
-
-interface AudioState {
-  ctx: AudioContext;
-  trackAnalysers: AnalyserNode[];   // per-track, tee off each trackGain
-  trackGains: GainNode[];
-  engines: (SoundEngine | undefined)[];  // SPARSE — only enabled slots have engines (E1)
-  pendingDisposes: Map<Timer, SoundEngine>; // engines mid anti-click fade
-  scope: EffectScope;  // owns the audio-reaction watchers, can be stopped
+// app/AppRuntime.ts
+export interface AppRuntimeOptions {
+  wsClientFactory?: WsClientFactory;  // test seam: fake sockets instead of real ones
+  syncEnabled?: boolean;              // test seam: keep the WS layer dark
 }
+
+export interface AppRuntime {
+  pinia: Pinia;
+  store: ReturnType<typeof useProjectStore>;
+  bus: CommandBus;
+  session: SyncSession;
+  audio: AudioEngine;
+  shutdown(): void;   // idempotent full teardown
+}
+
+export function createAppRuntime(opts: AppRuntimeOptions = {}): AppRuntime { /* … */ }
 ```
 
-`useSynth()` is **idempotent** — call it from as many components as you like. Each call returns fresh local refs (`currentStep`, `activeTrackIndex`) but shares the module-scope data + audio state.
+`createAppRuntime()` wires **store → bus → session → audio**, in that order: it creates the Pinia instance and the `ProjectStore` (§13's `project` is born *here*, per Pinia instance — no module-scope singleton, no `reactive(freshProject())` anywhere else), then the `CommandBus` (`{ applySet: store.applySet, loadProject: store.loadProject, enqueue: (…) => session.enqueue(…) }`), then `SyncSession` (takes the bus), then `AudioEngine` (`{ project, subscribe: bus.subscribe }`). The bus↔session circularity — the bus needs `session.enqueue`; the session needs the bus for `applyRemote`/`resetWatermark` — resolves with a late-bound closure (`session` is `let`-declared and assigned before the enqueue arrow is ever invoked), not a setter API. `AppRuntimeOptions` (`wsClientFactory`, `syncEnabled`) are the test seams that replaced `useSynth`'s module-scope `setWsClientFactory`/`setSyncEnabled`.
 
 ### Lifecycle
-1. **App boot.** Module loads. `project` is `reactive(freshProject())` — nothing is read from anywhere; the app is session-only and `connectToSession` fills the project from the room snapshot. Only `project` and `sequencer` exist at this point. No `AudioContext`, no engines, no watchers, no Chrome warning.
-2. **Entering a session** (`connectToSession(roomId)`) resets `project` to fresh (cross-session bleed guard), builds the `WsClient` + `Outbox`, installs the **outbound-sync watchers** (`installSyncWatchers`, their own `EffectScope` tied to the connection, *not* to audio — this is what lets edits made before the first PLAY reach the server), and connects with `forceSnapshot`. A `roomLoading` ref drives the studio loader until `sync.complete`.
-3. **First user gesture** (`togglePlay`) calls `ensureAudio()` which builds the audio graph: `AudioContext` (plus the async pulse-worklet module load — `ensureAudio` is single-flight so concurrent calls share one context), master chain, all 32 `trackGains` + `trackAnalysers`, engines **for enabled slots only** (E1), and the audio-reaction watchers inside an `effectScope(true)`.
-4. **Subsequent gestures.** `ensureAudio()` is a no-op (audio is up).
-5. **Leaving** (`leaveSession`) tears down the connection + sync watchers and resets the project; audio stays alive so the next session's first PLAY is instant. `disposeSynth()` (tests) additionally stops the audio scope, settles pending fade-disposes, disposes engines, and closes the AudioContext.
 
-### `useSynth()` return shape
-- **Reactive data**: `project` (the full Project object), `sequencer`, `bpm` (writable computed), `activeTrackIndex`, `currentStep`
-- **Focused-track handle**: `focusedTrack` — a computed `ProjectTrack | null` (null on the rack overview). Panels receive their reactive engine slice from this (`focusedTrack.engines.<engine>`) via a single `:params` prop and bind knobs directly to its fields (see §10 and D14). This replaced the ~30 per-field `trackParam` writable-computeds.
-- **Audio handles** (computed, null before init): `trackAnalysers`, `trackGains`
-- **Track pool**: `enabledTrackCount`, `addTrack` (enables the lowest-index disabled slot), `removeTrack` (disables a slot, non-destructively; refuses to go below 1)
-- **Methods**: `togglePlay`, `stopPlayback`, `selectTrack`, `getTrackEngineType`, `ensureAudio`
-- **Sync surface**: `fatalError`, `roomLoading`, `roster`, `selfClientId`, `currentRoomId`, `connectToSession`, `leaveSession`
+**Every lifecycle event maps to exactly one explicit call:**
 
-The App shell calls `useSynth()` exactly once and provides the result via `SYNTH_CONTEXT` (`sync/synthContext.ts`); `StudioView` injects it. The per-call refs (`currentStep`, `activeTrackIndex`) are why there must be one canonical instance.
+| Event | Wire |
+|---|---|
+| Boot | `main.ts` → `createAppRuntime()` |
+| Page unload | `pagehide` → `runtime.shutdown()` |
+| HMR swap (dev) | `import.meta.hot.dispose` → `runtime.shutdown()` (`main.ts` only) |
+| Enter / leave room | `session.connect()` / `session.disconnect()` |
+| Reconnect / logout | inside `SyncSession` (auth-id watcher calls `wsClient.reconnect()`) |
+| bfcache restore | App.vue `pageshow.persisted` → force reconnect; audio re-boots lazily on next PLAY |
 
-### Reactivity flow per knob turn (post-init)
-1. User turns `Knob` → `v-model="params.<field>"` mutates the reactive engine slice (`params` *is* `project.tracks[activeTrackIndex].engines[engine]`, passed by reference as a prop).
-2. The write lands in `project.tracks[activeTrackIndex].engines[engineType][param]`.
-3. The **narrow per-slice watcher** for `project.tracks[i].engines[slice]` (registered inside the `EffectScope`) fires. Its getter is `snapshot(slice)` (JSON-clone) — Vue tracks all nested fields as deps and the snapshot gives the watcher distinct old/new plain objects.
-4. The watcher diffs old vs new via `diffParams()`, identifies the changed key(s), and calls `engines[i].applyParams(changed)` — typically just one key.
-5. The engine's setter writes to its AudioParam using `setTargetAtTime` (smooth) where possible.
-6. The **outbound-sync watcher** for the same slice (installed with the room connection, see §15) diffs and enqueues the changed leaf path(s) into the `Outbox` — gated on `outbox && syncReady && !isApplyingFromNetwork()`.
+`main.ts` is **the only module that touches page lifetime or `import.meta.hot`** in the whole app — no `audio/`, `sync/`, `stores/`, or component module references either. `pagehide` also fires on bfcache-**freeze** (the frozen socket dies anyway; the restore path force-reconnects), so teardown now runs on a path where nothing did before — more correct, browser-verified.
 
-**Engine-type swap** is a separate watcher on `project.tracks[i].engineType` → calls `syncTrackToEngine(i)` which fades trackGain to 0, disposes the old engine, builds the new one, and applies the new engine's full slice. The same helper handles `enabled` toggles: enable constructs the slot's engine, disable fade-disposes it (engines exist only for enabled slots — E1).
+`shutdown()` = `audio.dispose()` → `session.dispose()`, both idempotent, so a second call is a no-op. **Shutdown disposes resources; it does not brick the runtime**: `ensureAudio()` rebuilds from null and `connect()` works after `dispose()`, so the bfcache-restore path needs no special casing. HMR reality: Vue SFC edits self-accept and never reach `main.ts`; a non-accepted TS-module edit bubbles to the entry, Vite full-reloads, `pagehide` fires, and the same `shutdown()` runs. Either road ends at one `shutdown()` — **dispose-and-recreate**, never preserve-in-place. After this phase no `new SyncSession` / `new AudioEngine` / `reactive(freshProject())` exists at module scope anywhere — re-evaluating any module mints nothing, so the old "two audio cores" / phantom-presence bug class is structurally impossible.
 
-**Knob turns *before* first play** mutate `project.tracks` but trigger no audio watchers (none exist yet). When `ensureAudio()` runs, it builds engines from `project.tracks`'s current values — so pre-play edits are honored on first play. The outbound-sync watchers live with the connection, not with audio, so those edits still reach the server immediately.
+### `createSynthContext` — the injected facade
 
-**Inactive-slice edits are no-ops (audio-wise).** Each per-slice watcher checks `project.tracks[i].engineType === slice` before applying — so editing the kick slice while synth is active doesn't write to the synth engine. The kick state is buffered in `project.tracks[i].engines.kick` and applied if/when the user swaps to kick (via the engineType watcher's full sync).
+`app/synthContext.ts`'s `createSynthContext(runtime: AppRuntime)` is called **exactly once**, by `App.vue` (the never-unmounting shell), and its return value is `provide`d under `SYNTH_CONTEXT`; `StudioView` and every panel `inject` it. The facade is `useSynth()`'s old return shape, unchanged for consumers, plus three Phase-5 additions:
+
+- **Reactive data**: `project` (from `runtime.store`), `sequencer`/`currentStep`/`trackAnalysers`/`trackGains` (from `runtime.audio`), `bpm` (writable computed — its setter calls `dispatchLocal`, not a direct write), `activeTrackIndex`, `focusedTrack`, `sessionName` — all **per-context** (one per `createSynthContext` call, i.e. per page), replacing `useSynth`'s per-call refs over module-scope state.
+- **Methods**: `togglePlay`/`stopPlayback`/`ensureAudio` (thin delegates to `runtime.audio`), `selectTrack`/`setFocusedTrack`, `addTrack`/`removeTrack`, `getTrackEngineType`.
+- **Sync surface**: `fatalError`/`roomLoading`/`currentRoomId` (from `runtime.session`), `roster`/`selfClientId`, `connectToSession`/`leaveSession`.
+- **Phase 5 additions** (were bare module-scope exports in `useSynth.ts`): **`dispatchLocal(path, value)`** — the single outbound entry point for a local edit; always routes through `runtime.bus.dispatchLocal`, so pre-connect edits still drive audio/UI without trying to sync (the enqueue sink is gated inside `session.enqueue`). **`endGesture(path)`** — flushes a knob's throttled outbox entry on gesture-end (`session.flushPath`). **`projectOps`** — the bulk-operation surface (below).
+
+### The applied-command stream — how a write reaches audio
+
+Every write — local dispatch, an applied remote op, a nack rollback, or a wholesale `loadProject` — funnels through the long-lived `CommandBus` (`sync/CommandBus.ts`) and, **synchronously in the same call stack as the state write**, emits on its `subscribe`-able applied-command stream:
+
+```ts
+type AppliedCommand = { kind: 'set'; path: Path; value: unknown } | { kind: 'replace' };
+```
+
+`AudioEngine` is the sole subscriber (subscribed once, at graph build — no per-room resubscribe): a `set` on an engine-param path re-reads the live slice and calls `applyParams`; on `engineType`/`enabled` it re-syncs that track's engine (`syncTrackToEngine`); on `mixer.*` it recomputes gains; anything else (bpm, steps, patternLength) is ignored — the sequencer still pulls those per tick, unchanged. A `replace` event (snapshot arrival, Open/New, room reset) re-runs the exact same full-track sync loop `buildAudioState` runs at boot — one idempotent path instead of a wall of per-slice watchers reacting to a wholesale swap. This is what replaced the old `flush:'sync'` Vue-watcher / audio-side `diffParams` machinery; see D17.
+
+### Bulk operations — `projectOps` (draft-diff-dispatch)
+
+`app/projectOps.ts`'s `createProjectOps({ project, bus, isSyncLive, enqueue })` gives `clearTrack`, `shiftTrack`, `fillTrack`, `applyPreset`, `initPatch`, `newProject`, `openProject` — every bulk mutation `StudioView` used to perform by mutating `project` in place. Each op computes a **draft** of the post-op value with pure helpers in `project/mutations.ts` / `project/preset.ts` (`clearTrackDraft`, `shiftTrackDraft`, `fillTrackDraft`, `applyPresetDraft`, `resetEnginePatchDraft` — nothing here mutates live state), diffs the draft against live state, and dispatches each changed **leaf** through `bus.dispatchLocal` — the bus performs the actual write, the stream emit, and the outbound enqueue; prior values for nack rollback come free from live (pre-write) state. `newProject`/`openProject` are the one exception: they replace the whole project via `bus.loadProject` (one `replace` stream event) and then only **enqueue** the outbound leaf diff of live-vs-before — leaf-dispatching a full file load would be thousands of redundant writes for no benefit.
 
 ---
 
@@ -343,7 +363,7 @@ s.timer = setInterval(() => {
 
 ### Three non-obvious choices
 
-**Absolute step counter.** `currentStep` increments forever (safe-integer headroom ≈ 35M years). Per-track looping is the consumer's job — the playback loop in `useSynth`, the Tracker active-row highlight, and the TrackMixer LED each apply `stepIndex % patternLength` independently, which is what makes polymeter work with one scheduler. See D15.
+**Absolute step counter.** `currentStep` increments forever (safe-integer headroom ≈ 35M years). Per-track looping is the consumer's job — the playback loop in `AudioEngine`, the Tracker active-row highlight, and the TrackMixer LED each apply `stepIndex % patternLength` independently, which is what makes polymeter work with one scheduler. See D15.
 
 **Anchor + integer counter, not accumulator.** `nextStepTime = scheduleStartTime + nextStepIndex × stepTime` — no float drift over thousands of steps. The naive `nextNoteTime += stepTime` drifts ~1ms/min, usually negligible but trivially avoidable. See Decision D6.
 
@@ -354,7 +374,7 @@ The callback `(stepIndex, time) => void` is invoked **for the audio time at whic
 
 ### Reactivity boundary (post-A5)
 
-`useSynth` wraps the sequencer with `reactive(new Sequencer())`. That makes `isPlaying` (the whole UI-facing surface — tracks and bpm live on `project`, not here) Vue-reactive — the PLAY button watches it.
+`AudioEngine` wraps the sequencer with `reactive(new Sequencer())`. That makes `isPlaying` (the whole UI-facing surface — tracks and bpm live on `project`, not here) Vue-reactive — the PLAY button watches it.
 
 The five scheduler internals (`currentStep`, `timer`, `nextStepIndex`, `scheduleStartTime`, `lastBpm`) live inside a `markRaw`'d `internals` object so Vue skips them during proxy setup. They're touched ~7× per setInterval tick during playback; without `markRaw` that's ~120ms/min of pointless proxy-trap overhead (not user-visible, but conceptually wrong: scheduler bookkeeping is not UI state, and `timer` is a `setInterval` return value that has no business being a Proxy).
 
@@ -385,7 +405,8 @@ When `state.engineType` changes, `syncTrackToEngine` fades `trackGains[i]` to 0 
 ## 9. Component layer
 
 ```
-App.vue                  ← shell: Sidebar + <router-view> + DialogHost + ErrorOverlay; owns the one useSynth()
+App.vue                  ← shell: Sidebar + <router-view> + DialogHost + ErrorOverlay; creates the one
+                            SynthContext via createSynthContext(runtime) — see §6
 ├── Sidebar.vue          ← nav (lobby/studio/account), roster chips, leave-session control
 ├── views/LobbyView.vue  ← session list (useLobby 30s visibility-aware poll) + CreateSessionDialog
 ├── views/AccountView.vue ← sign-in / username editor (§17)
@@ -403,7 +424,7 @@ App.vue                  ← shell: Sidebar + <router-view> + DialogHost + Error
     └── Knob.vue             ← the reusable rotary control; formats: hz, ms, %, octave, semitones, db, none
 ```
 
-**State direction:** `StudioView` passes each engine/drum panel a single `:params` prop — the reactive `focusedTrack.engines.<engine>` slice — and panels bind their knobs with `v-model="params.<field>"`. Because the slice is the live reactive `project` sub-object (passed by reference), those writes flow straight back to `project` and drive the `useSynth` watchers; there is no event-up plumbing. Sync paths stay owned by `knobSync` (`ks.pathFor(field)`), independent of the value binding. See D14.
+**State direction:** `StudioView` passes each engine/drum panel a single `:params` prop — the reactive `focusedTrack.engines.<engine>` slice — for **reads only**. Panels bind knobs one-way (`:modelValue="params.<field>"`) and route every write through `useKnobSync(engine).set(field, value)` (`sync/knobSync.ts`), which calls the injected synth context's `dispatchLocal` → `CommandBus.dispatchLocal` — the single write funnel that updates `project`, emits on the applied-command stream (§6), and enqueues the outbound sync op. Panels never mutate the slice directly; there is no two-way `v-model` into `project` and no event-up plumbing. The remote-activity ring and gesture-end flush still key off `knobSync`'s `ks.pathFor(field)`. See D13/D14 (revised, Phase 5).
 
 ### CSS scoping convention (post-A4)
 
@@ -446,7 +467,7 @@ App.vue                  ← shell: Sidebar + <router-view> + DialogHost + Error
 - **Param clamping:** every engine clamps its own params in setters. Don't trust upstream UI clamps as the only safety.
 - **Scheduling:** anything inside `trigger(freq, duration, time)` must reference `time`, not `ctx.currentTime`.
 - **Active sources:** if an engine creates dynamic `OscillatorNode`s or `AudioBufferSourceNode`s, track them in a `Set` and clean up via `onended`. `KickEngine` / `HatEngine` / `SnareEngine` / `ClapEngine` all follow this pattern; copy them.
-- **Defaults:** new engines must declare `static readonly DEFAULT_PARAMS` and use it to initialize private fields. `useSynth.ts` `TrackState` must reference the engine's `*EngineParams` type, not duplicate the shape.
+- **Defaults:** new engines must declare `static readonly DEFAULT_PARAMS` and use it to initialize private fields. The track's `engines: EngineParamsMap` slice (`@fiddle/shared`) must reference the engine's `*EngineParams` type, not duplicate the shape.
 
 ---
 
@@ -456,13 +477,13 @@ All client paths below are relative to `packages/client/src/`.
 
 | Task | First file to read |
 |---|---|
-| Add a new engine type | `engine/KickEngine.ts` (smallest), `engine/types.ts`, `composables/useSynth.ts` (`engineFactories`, `ENGINE_SLICES`), plus a panel taking a `:params` prop and a `<template v-else-if="focusedTrack!.engineType === '…'">` branch in `views/StudioView.vue` |
-| Add a new knob to the synth | the relevant sub-panel (e.g. `components/FilterPanel.vue`) — add a `<Knob v-model="params.<field>" :syncPath="ks.pathFor('<field>')">`; `engine/SynthEngine.ts` (the `<field>` in `*EngineParams`/`DEFAULT_PARAMS` + setter + `applyParams` line), `engine/SynthVoice.ts` (param application), and the accept-list in `@fiddle/shared` if it should sync. **No `useSynth.ts` change** — the slice binding picks it up automatically |
+| Add a new engine type | `engine/KickEngine.ts` (smallest), `engine/types.ts`, `audio/AudioEngine.ts` (`engineFactories`), plus the per-engine-slice key list duplicated in `project/preset.ts`/`storage.ts`/`app/projectOps.ts`/`@fiddle/shared`'s `project/normalize.ts`, plus a panel taking a `:params` prop and a `<template v-else-if="focusedTrack!.engineType === '…'">` branch in `views/StudioView.vue` |
+| Add a new knob to the synth | the relevant sub-panel (e.g. `components/FilterPanel.vue`) — add a `<Knob :modelValue="params.<field>" @update:modelValue="ks.set('<field>', $event)" :syncPath="ks.pathFor('<field>')" @gesture-end="ks.end('<field>')">` (`ks = useKnobSync('synth')`); `engine/SynthEngine.ts` (the `<field>` in `*EngineParams`/`DEFAULT_PARAMS` + setter + `applyParams` line), `engine/SynthVoice.ts` (param application), and the accept-list in `@fiddle/shared` if it should sync. **No `app/synthContext.ts` change** — the slice binding and the applied-command stream both pick it up automatically |
 | Change envelope behavior | `engine/modules/Envelope.ts` (+ Decision D2/D3 in appendix) |
 | Change sequencer timing | `sequencer/Sequencer.ts` (+ Decision D6) |
 | Add a named preset | F1 (presets still open) in `CODE_REVIEW.md`; persistence itself is done — see §13 and `project/storage.ts` |
 | Change project schema | `project/types.ts` (bump `PROJECT_SCHEMA_VERSION` — note: it currently re-exports from `@fiddle/shared`, so the bump lands in `packages/shared/src/index.ts`), `project/migrations.ts` (add handler), `project/storage.ts` (`reconcileWithDefaults` if new optional fields) |
-| Refactor `useSynth` | A1 in `CODE_REVIEW.md`; preserve the "one AudioContext, watchers survive HMR" property |
+| Add/change a bulk project operation | `app/projectOps.ts` (draft-diff-dispatch pattern — see §6); the pure draft producer lives in `project/mutations.ts` or `project/preset.ts` |
 | Add a server route or evolve the WS protocol | `packages/server/src/server.ts` (registration), `packages/server/src/routes/` (handlers), `packages/shared/src/index.ts` (message types if shared with the client). See §14. |
 | Add a symbol used by both client and server | `packages/shared/src/index.ts` only. Constraint: no DOM/Audio types, must stay JSON-serializable, must compile under both `moduleResolution: bundler` and `NodeNext`. |
 
@@ -530,6 +551,8 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 ### D8 — `useSynth` is an explicit lazy singleton, not a true composable
 
+**[SUPERSEDED by D17, Phase 5 2026-07-02]** — useSynth.ts is deleted; the composition root (`app/AppRuntime.ts`) owns all resources and `createSynthContext` provides the facade.
+
 **Decision.** Data state (`project`, `sequencer`) lives at module scope. **Audio state** (`AudioContext`, master chain, `trackGains`, engines, watchers) is held in a module-scope `audioState: AudioState | null` and built lazily on first `togglePlay()` / `ensureAudio()`. Watchers live inside an `effectScope(true)` so they can be stopped via `disposeSynth()`. `useSynth()` is idempotent — multiple calls return fresh local refs but share all module-scope state.
 
 **Rejected alternative A (the original code).** All audio created at module load. `new AudioContext()` ran on import, before any user gesture — Chrome printed "AudioContext was not allowed to start". Watchers had no teardown path. `useSynth()` warned on second invocation because re-running the body would have leaked watchers.
@@ -547,6 +570,8 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 **Why.** The state is a small, shallow, JSON object where last-write-wins per leaf is musically acceptable (two people rarely fight over the same knob). LWW path ops are trivially serializable, diffable, and replayable from a ring buffer — orders of magnitude less machinery than a CRDT for this payload. Local transport preserves the "everyone fiddles on the same evolving loop" feel and avoids a shared-clock coordination problem. Breaking that (pattern chaining, timeline) is the explicit fork in [`ROADMAP.md`](./ROADMAP.md) §6.
 
 ### D10 — Network-applied writes are suppressed via a sync-flush watcher guard
+
+**[REMOVED by D17]** — with the CommandBus as sole writer there is nothing to suppress; the flag, and the flush:'sync' coupling it required, are gone.
 
 **Decision.** Inbound ops apply to `project` inside `enterSuppress()`/`exitSuppress()` (module-scope `applyingFromNetwork`), and every sync-participating watcher uses `{ flush: 'sync' }`.
 
@@ -572,6 +597,8 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 ### D13 — Knob `syncPath` is provided from `App.vue`, gesture-end is a direct outbox flush
 
+**[REVISED by D17]** — reads still bind the reactive slice, but every write now flows through dispatch (`useKnobSync.set` → `ctx.dispatchLocal` → CommandBus); knobs never mutate the slice directly.
+
 **Decision.** `App.vue` provides its `activeTrackIndex` ref (`ACTIVE_TRACK_KEY`); `useKnobSync(engine)` builds each knob's path from it. Knob `gesture-end` calls `endGesture(path)` → `Outbox.flushPath(path)`.
 
 **Rejected alternative.** Have panels call `useSynth()` for the track index (each call mints a *fresh* `activeTrackIndex` ref, so they'd read `null`); and the plan's original `gestureEndingForPath` ref read by the watcher.
@@ -579,6 +606,8 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 **Why.** Only `App.vue`'s `useSynth()` instance holds the real focused-track index, so it must be injected. And `gesture-end` fires on pointer-up *after* the final value change — there's no later watcher tick to read a flag — so the final throttled value must be flushed directly from the Outbox's pending map.
 
 ### D14 — Panels bind directly to the reactive engine slice (`:params`), not per-field computeds
+
+**[REVISED by D17]** — reads still bind the reactive slice, but every write now flows through dispatch (`useKnobSync.set` → `ctx.dispatchLocal` → CommandBus); knobs never mutate the slice directly.
 
 **Decision.** `useSynth` exposes a `focusedTrack` computed (`ProjectTrack | null`). `App.vue` passes each engine/drum panel one prop — `:params="focusedTrack!.engines.<engine>"` — and panels bind their knobs with `v-model="params.<field>"`. Mutating the slice writes straight through to `project` (it's the live reactive sub-object, passed by reference), driving the existing `useSynth` slice watchers (audio + outbox). The per-field projection wall (the `trackParam` helper + ~30 writable-computeds, plus `engineType`/`synthMode`) was deleted. Phase 1 of the panel-binding refactor; descriptor-driven panels are a deferred Phase 2 (see `ROADMAP.md`).
 
@@ -602,13 +631,43 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 **Why.** Auth must not regress the guest path: the server runs **guest-only** when Supabase env is absent (verify rejects all tokens, profile store is empty/in-memory), and the client doesn't offer login. Login/logout triggers a **WS reconnect** (watching the session *user id*, not the token, so Supabase's silent token refreshes don't bounce the socket) so the server re-derives identity cleanly. Profile **writes** go browser→Supabase (RLS-guarded); the Fastify server only **reads** profiles with a privileged connection. See `docs/superpowers/specs/2026-05-30-auth-persistence-foundation-design.md` and §17.
 
+Phase 5's AppRuntime does not change this — identity remains per-connection, owned by SyncSession.
+
+### D17 — Unidirectional command architecture with an explicit composition root (Phase 5, 2026-07-02)
+
+**What.** (a) A single long-lived `CommandBus` is the only gateway to project
+state — `dispatchLocal` / `applyRemote` / `applyRollback` / `loadProject` all
+converge on `ProjectStore.applySet`/`loadProject`, and the bus emits a
+synchronous applied-command stream (`{kind:'set',path,value} | {kind:'replace'}`).
+(b) `AudioEngine` subscribes to that stream instead of watching the reactive
+project — the flush:'sync' slice-watchers and audio-side diff machinery are
+gone. (c) Bulk operations (Clear/Shift/Fill, preset load, INIT PATCH) are pure
+draft-diff-dispatch (`app/projectOps.ts`): helpers compute a draft, the diff is
+dispatched leaf-by-leaf, the bus performs every write. (d) `AppRuntime`
+(`app/AppRuntime.ts`) is the composition root: the only creator/owner of the
+store, bus, `SyncSession`, and `AudioEngine`, with an idempotent `shutdown()`;
+`main.ts` is the only module that touches page lifecycle (`pagehide`) or
+`import.meta.hot`. (e) `project` is created per Pinia instance (per page / per
+test runtime) — nothing lives at module scope.
+
+**Why.** The app's old invariant — "useSynth.ts is evaluated exactly once per
+page" — put the AudioContext, scheduler interval, and WebSocket in
+module-scope with no owner and no teardown: HMR minted parallel cores
+(duplicate audio, phantom room members) and reconnects leaked sockets. Making
+teardown first-class and state single-writer removes the whole bug class
+structurally: re-evaluating any module mints nothing, every lifecycle event
+maps to one explicit call, and audio reacts to the same stream that carries
+every write (local, remote, rollback, replace) — no suppression flag, no
+watcher-flush coupling. Supersedes D8 and D10; revises D13/D14 (writes
+dispatch; reads still bind). Design: `docs/superpowers/specs/2026-07-02-phase5-appruntime-design.md`.
+
 ---
 
 ## 13. The Project module
 
 `packages/client/src/project/` is the single source of truth for all user-editable state. Full design rationale lives in [`docs/superpowers/specs/2026-05-23-project-model-design.md`](./superpowers/specs/2026-05-23-project-model-design.md). The canonical `Project` schema now lives in `@fiddle/shared` (see §14) so the WebSocket sync server speaks the exact same project shape without pulling in DOM/Audio types; the client re-exports it through the project barrel.
 
-**What lives here and what doesn't.** `Project` holds `bpm`, a fixed pool of **32 `ProjectTrack` slots** (each with `enabled`, `engineType`, `engines: EngineParamsMap`, `mixer`, a `patternLength` (1–64), and a fixed 64-element `steps` buffer), and a `schemaVersion` field. The `enabled` flag is how tracks are added/removed — disabling is non-destructive (the slot keeps its data; re-enabling restores it), and the pool's fixed size means the wire shape never changes. `patternLength` is the play/render window — steps at indices `>= patternLength` retain their data but neither play nor render, so shrinking is non-destructive (D15). Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state in `useSynth`. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
+**What lives here and what doesn't.** `Project` holds `bpm`, a fixed pool of **32 `ProjectTrack` slots** (each with `enabled`, `engineType`, `engines: EngineParamsMap`, `mixer`, a `patternLength` (1–64), and a fixed 64-element `steps` buffer), and a `schemaVersion` field. The `enabled` flag is how tracks are added/removed — disabling is non-destructive (the slot keeps its data; re-enabling restores it), and the pool's fixed size means the wire shape never changes. `patternLength` is the play/render window — steps at indices `>= patternLength` retain their data but neither play nor render, so shrinking is non-destructive (D15). Playback state (`isPlaying`, `currentStep`), audio graph handles, and per-user UI focus (`activeTrackIndex`) are *not* part of `Project` — they're ephemeral runtime state split between `AudioEngine` (`isPlaying`, `currentStep`) and the injected synth context (`activeTrackIndex`) — see §6. Mono vs. chord (poly) behaviour is not a track-level field; the sequencer reads `track.engines.synth.mode` (`'mono' | 'poly'`) directly from the synth engine's params at trigger time.
 
 **Dense engine map.** Every `ProjectTrack` stores a full `EngineParamsMap` — all five engine param sets at once, regardless of which engine is active. This means an engine-type swap is a single-field write (`engineType` only); the new engine's params are already in place. It also means per-engine edits survive a round-trip through any other engine type. See the spec §2 for the rejected alternatives (sparse map, discriminated union) and why the dense shape was chosen.
 
@@ -645,7 +704,7 @@ A framework-free package that compiles in both the browser (`moduleResolution: b
 - `project/` — `Project` / `ProjectTrack` / `Step` types, `freshProject()`, the shared **constants** (`TRACK_POOL_SIZE=32`, `STEP_BUFFER_SIZE=64`, `BPM_MIN/MAX`, defaults), a **Zod schema**, the **accept-list** (`validatePathAndValue(pathStr, value)` in `accept-list.ts`: the allow-list of writable project paths plus value/range validation — the server's authorization boundary for inbound ops), **`normalize.ts`** (`normalizeProject` + `coerceBpm` — idempotent structural repair run at every sync/persistence boundary: exactly 32 slots, 64-step buffers padded, all engine slices present, ≥1 enabled track, bpm coerced), and **`snapshot-codec.ts`** (`packProject`/`unpackProject` — the sparse `StoredProject` form persisted to the DB: pristine disabled slots are omitted, cutting the stored blob down from the full 32-slot shape).
 - `protocol/` — wire message types + Zod schemas, `PROTOCOL_VERSION`, and identity constants (the color `PALETTE`, animal `HANDLES`, `randomBase32`).
 - `session/` — the `/api/sessions` contracts: `CreateSessionBodySchema` / `PatchSessionBodySchema`, `LobbyEntry`, and `SessionSettings` (stored per session; `maxWritableUsers` / `tracksPerUser` are stored + shown but inert until observer mode / per-user track pools land).
-- `path.ts` — `setDeep(obj, path, value)` (throws on a broken path) and `pathKey(path)` (= `JSON.stringify(path)`), shared by the client Outbox/applyOp and the server store.
+- `path.ts` — `setDeep(obj, path, value)` (throws on a broken path) and `pathKey(path)` (= `JSON.stringify(path)`), shared by the client Outbox/CommandBus and the server store.
 
 **Constraint:** anything in `@fiddle/shared` must stay portable — no DOM, no `AudioContext`, no Vue, no Node-only modules. Litmus test: "could a Cloudflare Worker or a CLI import this?"
 
@@ -680,7 +739,7 @@ Sessions are the durable unit: a `sessions` row (metadata: name, description, ow
 1. Client → `hello` (schemaVersion, optional auth token, optional `clientId` + `resumeFromOpId` for reconnect). The room's durable project loads here if it isn't live in memory (§14b); a socket that never sends hello is closed after 15s.
 2. Server → `welcome` (assigned `clientId`, color, handle, auth state, `opIdHead`, roster) → catch-up (**replay** ops from the ring buffer if the client is close enough, else a full **snapshot**) → `sync.complete`.
 3. Steady state: client → `set` (`clientSeq`, `path`, `value`); server validates against the accept-list, appends with a server `opId`, and broadcasts `set` to the room (echo to the originator carries `clientSeq`; peers don't see it). A duplicate `(clientId, clientSeq)` — an idempotent resend — is confirmed by echoing the already-applied op rather than nacked. Rejected ops get a `nack` (`path.invalid` / `value.invalid` / `rate.limited`).
-4. **Mid-session repair:** if a client sees a broadcast `opId` skip ahead of its `opIdLastSeen`, it sends `resync(fromOpId)` and the server re-runs catch-up (replay or snapshot) ending in another `sync.complete`. Per-path opId guards in `applyOp` keep older replayed ops from clobbering newer gapped ones.
+4. **Mid-session repair:** if a client sees a broadcast `opId` skip ahead of its `opIdLastSeen`, it sends `resync(fromOpId)` and the server re-runs catch-up (replay or snapshot) ending in another `sync.complete`. Per-path opId guards in `CommandBus.applyRemote` keep older replayed ops from clobbering newer gapped ones.
 5. `presence.update` fans the roster on join/leave; `ping`/`pong` heartbeat; `error` (fatal closes the socket — e.g. `room.full`, `schema.version_mismatch`, `session.not_found`, `auth.invalid`, `overloaded`; non-fatal like `resume.unknown_client` / `resume.duplicate_client` / `resume.client_ahead` does not).
 
 **Wire path shape:** `Path = ReadonlyArray<string|number>` (array form). The server bridges to the dot-string the accept-list wants via `path.join('.')`.
@@ -688,20 +747,19 @@ Sessions are the durable unit: a `sessions` row (metadata: name, description, ow
 **Client sync layer (`packages/client/src/sync/`):**
 - **`WsClient`** — connection state machine (`closed → opening → catching-up → live`); persists `{ clientId, opIdLastSeen, clientSeq }` per room in `sessionStorage` (per-tab, so two tabs are two clients) and reconnects with `resumeFromOpId`. The persisted state is **cached in memory with write-through** (E3) — per-inbound-op reads (gap check, `recordOpIdSeen`) and per-edit `clientSeq` bumps cost no `getItem`/`JSON.parse`, while every mutation still hits storage synchronously so crash-resume semantics are unchanged. Reconnect backoff 1s→30s, reset on `sync.complete`; the resync in-flight guard re-arms after 5s so a dropped resync can't wedge gap repair.
 - **`Outbox`** — sits between the watchers and the socket: 50ms per-path **throttle**, path-keyed **coalesce**, an **offline queue** (last-write-wins while disconnected, flushed on reconnect), **nack rollback** (every entry remembers its `priorValue`), **ack-timeout resends** (4s, up to 3 — same `clientSeq`, so the server's dedup confirms instead of double-applying; guaranteed local delivery), **`reassertPending()`** (re-applies + re-queues un-acked edits after a snapshot overwrites local state, so a server repair can never erase a pending change), and **`flushPath(path)`** for immediate gesture-end flush.
-- **`messageDispatch`** — the server-message switch. Snapshot apply = `normalizeProject` → `replaceProject` under suppression → `reassertPending`. For `set`: detects opId gaps (→ `requestResync`), and **skips the write for an echo of our own op when a newer local edit is pending for that path** (M2 — during a drag the echo carries the value from ~RTT ago; writing it back snapped the knob and its sound backward), while still advancing the per-path opId watermark.
-- **`applyOp`** — deep-sets an inbound op into `project` via shared `setDeep`, with a per-path opId guard (replayed older ops can't clobber newer values), under the suppression flag (below).
+- **`messageDispatch`** — the server-message switch, now routed through the `CommandBus` (§6) instead of direct `project` mutation. Snapshot apply = `normalizeProject` → `commandBus.loadProject` (one `replace` stream event) → `resetWatermark` → `reassertPending`. For `set`: detects opId gaps (→ `requestResync`), and **skips the write for an echo of our own op when a newer local edit is pending for that path** (M2 — during a drag the echo carries the value from ~RTT ago; writing it back snapped the knob and its sound backward) via `commandBus.advanceWatermark`; otherwise applies it through `commandBus.applyRemote`, which also owns the per-path opId guard (replayed older ops can't clobber newer ones).
 - **`presence`** — reactive roster (drives the `Sidebar` chips) + a per-path "touched" map that fades the `Knob` activity ring when a peer edits that path.
 - **`knobSync`** (`useKnobSync(engine)`) — builds each knob's `syncPath` (`['tracks', activeTrackIndex, 'engines', engine, field]`, injected from `App.vue` via `ACTIVE_TRACK_KEY`) and routes `gesture-end` → `endGesture` → `Outbox.flushPath`. `TrackMixer` builds `['tracks', i, 'mixer', 'volume']` from its loop index directly.
 
-**⚠ The suppression mechanism (load-bearing — read before adding a syncable field).** Inbound ops are applied to `project` inside an `enterSuppress()`/`exitSuppress()` window backed by a module-scope `applyingFromNetwork` boolean. This only works because the sync-participating watchers in `useSynth` use Vue **`{ flush: 'sync' }`** — they fire synchronously *inside* the suppressed programmatic write, so the guard is still held and the watcher does not re-enqueue the change as an outbound op. With the default async flush the guard would already be cleared by the time the watcher ran → an echo loop + snapshot flood. New syncable fields must follow this pattern. (Also recorded in the `sync_suppression_mechanism` memory.)
+**There is no suppression mechanism any more (D10 — removed by D17).** Every inbound write — a remote op (`commandBus.applyRemote`), a snapshot (`commandBus.loadProject`), or a nack rollback / reassert (`commandBus.applyRollback`, called from `Outbox`'s `applyLocal`) — is applied directly. With the `CommandBus` as the sole writer there is no outbound Vue watcher left to observe the reactive `project` and re-enqueue the change as a local op, so there is nothing to suppress and no `flush:'sync'` dependency. (The old `applyingFromNetwork`/`enterSuppress`/`exitSuppress` mechanism and why it used to be load-bearing are preserved for historical context in D10 and the `sync_suppression_mechanism` memory.)
 
-**Outbound coverage:** the engine-slice / mixer / steps / bpm watchers in `useSynth` diff their snapshot and emit **leaf** paths (e.g. `filterEnv` → `.a/.d/.s/.r`; whole-object writes are forbidden by the accept-list). Discrete edits (selects, toggles — `engineType`, `muted`, `note`, …) flush immediately; continuous knob drags ride the throttle and flush on gesture-end.
+**Outbound coverage:** every local edit dispatches through `CommandBus.dispatchLocal` at **leaf** granularity directly — a knob write is one `dispatchLocal(path, value)` call (`useKnobSync.set` / `useCommandModel`), not a diffed watcher snapshot. Bulk operations (Clear/Shift/Fill, preset load, INIT PATCH) go through `app/projectOps.ts`'s draft-diff-dispatch, which diffs a computed draft against live state and dispatches each changed leaf the same way (whole-object writes are forbidden by the accept-list either way — see §6). Discrete edits (selects, toggles — `engineType`, `muted`, `note`, …) flush immediately (`gestureEnd: true`); continuous knob drags ride the `Outbox`'s throttle and flush on gesture-end.
 
 ## 16. Deployment
 
 Three services: **client on Vercel**, **server on Render**, **database (Postgres + auth) on Supabase**. Client and server are cross-origin in prod: the WebSocket needs no CORS, but the **`/api` routes do** — the server registers `@fastify/cors` with `resolveCorsOrigin()` (`CORS_ORIGIN` env, falling back to permissive in dev).
 
-- **Client (Vercel).** `vercel.json` pins the Vite preset, `buildCommand: npm run build -w @fiddle/client`, `outputDirectory: packages/client/dist`. Required pieces: (1) **`VITE_WS_URL`** = the server **origin only** (e.g. `wss://fiddle-server.onrender.com`) — the client appends `/ws/<roomId>` itself (`buildSyncState` in `useSynth`); (2) **`VITE_API_URL`** = the server origin for the `/api/sessions` HTTP client (`sessionsApi.ts`); (3) **`VITE_SUPABASE_URL`** / **`VITE_SUPABASE_ANON_KEY`** for sign-in (§17 — absent = guest-only). All compiled in at build time, so changing them needs a redeploy. If unset, WS/API fall back to same-origin (the dev-proxy case). (4) An **SPA rewrite** `"/(.*)" → "/index.html"` in `vercel.json` — without it, refreshing or sharing a `/r/<room>` deep link 404s (the monorepo config doesn't get Vite's default SPA fallback).
+- **Client (Vercel).** `vercel.json` pins the Vite preset, `buildCommand: npm run build -w @fiddle/client`, `outputDirectory: packages/client/dist`. Required pieces: (1) **`VITE_WS_URL`** = the server **origin only** (e.g. `wss://fiddle-server.onrender.com`) — the client appends `/ws/<roomId>` itself (`SyncSession.buildConnection`); (2) **`VITE_API_URL`** = the server origin for the `/api/sessions` HTTP client (`sessionsApi.ts`); (3) **`VITE_SUPABASE_URL`** / **`VITE_SUPABASE_ANON_KEY`** for sign-in (§17 — absent = guest-only). All compiled in at build time, so changing them needs a redeploy. If unset, WS/API fall back to same-origin (the dev-proxy case). (4) An **SPA rewrite** `"/(.*)" → "/index.html"` in `vercel.json` — without it, refreshing or sharing a `/r/<room>` deep link 404s (the monorepo config doesn't get Vite's default SPA fallback).
 - **Server (Render).** `render.yaml` Blueprint: a single-instance web service, `buildCommand: npm ci && npm run build:server`, `startCommand: node packages/server/dist/index.js`, health check `/health` (DB-free by design — it stays green through a database outage, which is exactly what made the 2026-06-06 incident diagnosable). The build is `tsc --noEmit` (typecheck) **then esbuild** — `esbuild src/index.ts --bundle --format=esm --packages=external --alias:@fiddle/shared=../shared/src/index.ts` — which **inlines `@fiddle/shared` from source** into a single `dist/index.js` while keeping real npm deps external. (Plain `tsc` emitted a bare `@fiddle/shared` import that Node resolved to the package's `.ts` source `main` → `ERR_MODULE_NOT_FOUND` at runtime.) Server env: `DATABASE_URL` (the Supabase **pooler** string — see below), `SUPABASE_JWKS_URL`, optional `CORS_ORIGIN`; `FIDDLE_OTEL` is dev-only and never set here.
 - **Supabase pooler constraints.** `db/postgresOptions.ts` sets `prepare: false` — the transaction pooler doesn't support prepared statements, and leaving them on caused the prod crash-loop fixed 2026-06-05. `processSafetyNet` (§14) absorbs the pooler's out-of-band rejections; the 8s `withTimeout` on session loads (§14) bounds a wedged DB read. Free-tier Supabase can pause the database entirely (the 2026-06-06 outage) — `/health` stays up, WS joins fail fast with retryable `overloaded`.
 - **Constraints that follow from the in-memory room store:** keep Render at **one instance** (live rooms are per-process; scaling out would split collaborators). Free tier spins down on idle (cold start ~30–60s). A restart/redeploy is **not** data loss: sessions are durable in Supabase, graceful shutdown flushes all dirty rooms, and rooms reseed from their snapshots on the next join. What a restart does lose is the in-memory op ring buffer — reconnecting clients fall back to a snapshot (and a fresh identity via the non-fatal `resume.unknown_client` path), so nothing breaks.
@@ -716,7 +774,7 @@ Optional Google sign-in over Supabase Auth, layered onto the existing sync backe
 3. Server looks up the username in `profiles` via the **`ProfileStore`** (`profile/`) — `PostgresProfileStore` in prod (privileged connection, bypasses RLS), `InMemoryProfileStore` for tests/fallback — and builds an authenticated `Identity` (`makeAuthenticatedIdentity`): handle = username ?? googleName, `authenticated: true`, `userId` carried alongside a fresh per-connection `clientId`.
 4. `welcome` carries `userId` + `authenticated` so the originator learns its own auth state; the roster carries them for peers.
 
-**Client surface (`auth/`):** `supabase.ts` is a singleton that is **null when `VITE_SUPABASE_*` env is absent** (app boots guest-only). `useAuth.ts` is a module-singleton composable: reactive `session`, `signInWithGoogle`/`signOut`, and `setUsername` (writes the user's own `profiles` row — RLS-guarded — mapping a Postgres `23505` unique violation to `{ ok: false, reason: 'taken' }`). `useSynth` passes `getToken` into the `WsClient` and watches the session **user id** to call `reconnect()` on login/logout (D16). `AccountView.vue` renders the sign-in button / username editor (reached via the `Sidebar`).
+**Client surface (`auth/`):** `supabase.ts` is a singleton that is **null when `VITE_SUPABASE_*` env is absent** (app boots guest-only). `useAuth.ts` is a module-singleton composable: reactive `session`, `signInWithGoogle`/`signOut`, and `setUsername` (writes the user's own `profiles` row — RLS-guarded — mapping a Postgres `23505` unique violation to `{ ok: false, reason: 'taken' }`). `SyncSession` passes `getToken` into the `WsClient` and watches the session **user id** to call `reconnect()` on login/logout (D16). `AccountView.vue` renders the sign-in button / username editor (reached via the `Sidebar`).
 
 **Graceful degradation.** No Supabase env on the server → `verify` rejects all tokens + empty in-memory profile store; no env on the client → `supabase === null`, auth calls no-op, no login offered. Guests are unaffected either way.
 
@@ -735,4 +793,4 @@ Optional Google sign-in over Supabase Auth, layered onto the existing sync backe
 
 ---
 
-*Last updated: 2026-06-11 (D1 doc refresh — caught the doc up to: durable sessions + lobby + `/api/sessions` (§14b), session-scoped rooms, the 32-slot track pool with `enabled` flags, lazy per-enabled-slot audio graph (E1), per-track analysers (§8), router/views/Sidebar shell (§9), localStorage path removal (S1, §13), sync-layer hardening from the 2026-06-09 review (M1–M4, E2–E3, D2, §14–§15), and the corrected deployment story (§16). See `CODE_REVIEW_2026-06-09.md` for the findings driving this pass.) Prior: 2026-05-31 (auth & persistence foundation; §17 + D16). Prior: 2026-05-30 (variable track length, D15; slice-down panel binding, D14). Prior: 2026-05-29 (sync protocol implemented + deployed). When the contracts in §3 / §11 change, or the sync model in §15 evolves, update this doc — `CODE_REVIEW.md`, `CODE_REVIEW_2026-06-09.md`, `ROADMAP.md`, and the memories (`audio_engine_decisions`, `sync_suppression_mechanism`, `project_state`) are the other places to keep in sync.*
+*Last updated: 2026-07-02 (Phase 5 — `feat/phase5-appruntime` — the lifecycle-architecture redesign lands: §2 module map (`app/`, `stores/`), §6 rewritten as the `app/` composition root + `synthContext` facade (was `useSynth.ts`), §7/§9/§15 updated for the applied-command stream and the removed suppression mechanism, new decision **D17**, **D8/D10 superseded, D13/D14 revised, D16 cross-referenced**. Design: `docs/superpowers/specs/2026-07-02-phase5-appruntime-design.md`.) Prior: 2026-06-11 (D1 doc refresh — caught the doc up to: durable sessions + lobby + `/api/sessions` (§14b), session-scoped rooms, the 32-slot track pool with `enabled` flags, lazy per-enabled-slot audio graph (E1), per-track analysers (§8), router/views/Sidebar shell (§9), localStorage path removal (S1, §13), sync-layer hardening from the 2026-06-09 review (M1–M4, E2–E3, D2, §14–§15), and the corrected deployment story (§16). See `CODE_REVIEW_2026-06-09.md` for the findings driving this pass.) Prior: 2026-05-31 (auth & persistence foundation; §17 + D16). Prior: 2026-05-30 (variable track length, D15; slice-down panel binding, D14). Prior: 2026-05-29 (sync protocol implemented + deployed). When the contracts in §3 / §11 change, or the sync model in §15 evolves, update this doc — `CODE_REVIEW.md`, `CODE_REVIEW_2026-06-09.md`, `ROADMAP.md`, and the memories (`audio_engine_decisions`, `sync_suppression_mechanism`, `project_state`) are the other places to keep in sync.*
