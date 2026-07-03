@@ -29,7 +29,9 @@ export interface AppRuntime {
   shutdown(): void;
 }
 
-export const RUNTIME_KEY: InjectionKey<AppRuntime> = Symbol('appRuntime');
+// Symbol.for (not Symbol()) is HMR-stable — see the sibling rationale on
+// SYNTH_CONTEXT in app/synthContext.ts.
+export const RUNTIME_KEY: InjectionKey<AppRuntime> = Symbol.for('fiddle:appRuntime');
 
 export function createAppRuntime(opts: AppRuntimeOptions = {}): AppRuntime {
   const pinia = createPinia();

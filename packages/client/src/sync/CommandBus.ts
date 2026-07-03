@@ -6,7 +6,7 @@
 // there is no `applyingFromNetwork` suppression flag: with no outbound watcher
 // left to echo a programmatic write, none is needed.
 //
-// Long-lived: created once by the app root (useSynth, until Task 4's AppRuntime),
+// Long-lived: created once by the app root (AppRuntime, app/AppRuntime.ts),
 // not per-connection. `resetWatermark()` is called per connect (a fresh room
 // starts with an empty watermark) instead of the bus itself being rebuilt. Every
 // write also emits on the applied-command stream (`subscribe`) — consumed by

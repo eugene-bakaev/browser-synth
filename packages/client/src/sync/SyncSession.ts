@@ -8,8 +8,8 @@
 //
 // Behaviour is byte-identical to the pre-extraction useSynth: this is a
 // relocation, not a rewrite. The reactive connection state (currentRoomId /
-// roomLoading / fatalError) lives here and is re-exported through useSynth so
-// consumers are untouched.
+// roomLoading / fatalError) lives here and is re-exported through synthContext
+// so consumers are untouched.
 
 import { ref, watch, type Ref } from 'vue';
 import type { Path } from '@fiddle/shared';
@@ -64,8 +64,9 @@ export class SyncSession {
 
   // Enter a room: build the socket/outbox/bus and open with a forced snapshot.
   // In disabled (test) mode, just reflect the room id — no socket, no loader.
-  // Assumes it is called from a disconnected state (the useSynth wrapper closes
-  // any previous socket first, preserving the teardown → reset → build ordering).
+  // Assumes it is called from a disconnected state (connectToSession in
+  // app/synthContext.ts closes any previous socket first, preserving the
+  // teardown → reset → build ordering).
   connect(roomId: string): void {
     if (!this.deps.syncEnabled()) { this.currentRoomId.value = roomId; return; }
     this.installAuthReconnectWatcher();

@@ -1,14 +1,14 @@
 // messageDispatch — routes a decoded ServerMessage to the right side effect.
 //
-// Kept separate from useSynth so the wiring (which reactive store / which
+// Kept as its own module so the wiring (which reactive store / which
 // Outbox method each message type touches) reads as one switch instead of
-// being smeared through the composable. WsClient owns the socket + state
+// being smeared through AppRuntime/synthContext. WsClient owns the socket + state
 // machine and hands fully-typed messages here; this layer owns the
 // application semantics.
 //
 // Both `snapshot` (commandBus.loadProject) and `set` (commandBus.applyRemote)
 // mutate the reactive `project` programmatically. These once had to be wrapped in an
-// applyingFromNetwork suppression so the outbound sync watchers in useSynth
+// applyingFromNetwork suppression so the outbound sync watchers (deleted in Phase 5)
 // wouldn't re-enqueue them as local edits — but every outbound watcher is gone
 // (all writes now flow through the CommandBus), so there is nothing to suppress:
 // the writes happen directly.
@@ -26,7 +26,7 @@ export interface DispatchDeps {
   commandBus: CommandBus;
   onFatalError: (code: string, message: string) => void;
   // Called when the room reaches the live / caught-up state (sync.complete).
-  // Opens the outbound-sync gate in useSynth so local edits can't leak into the
+  // Opens the outbound-sync gate in SyncSession so local edits can't leak into the
   // room before it has loaded (cross-session bleed guard). Keyed on sync.complete
   // — NOT snapshot — because catch-up can arrive as op replay instead of a
   // snapshot (a resumed connection), and sync.complete fires on every path.

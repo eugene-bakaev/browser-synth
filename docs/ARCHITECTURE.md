@@ -617,6 +617,8 @@ The non-obvious choices. Each lists the **decision**, the **alternative that was
 
 ### D15 — Variable track length is a play-window over a fixed 64-step buffer; the sequencer counter is absolute
 
+**[REVISED by D17]** — `patternLength` now syncs via `dispatchLocal` → CommandBus (no `flush:'sync'` watcher, no `applyingFromNetwork` suppression guard), and the playback loop lives in `AudioEngine` (subscribed to the applied-command stream), not `useSynth` (deleted).
+
 **Decision.** Each `ProjectTrack` always stores a 64-element `steps` buffer plus `patternLength` (1–64). Playback/render use only `[0, patternLength)`; buffered steps beyond the window keep their data (non-destructive shrink). The `Sequencer` emits a **monotonic absolute** step index (no `% 16`); the consumer applies `stepIndex % track.patternLength` per track — playback loop (`useSynth`), Tracker active-row highlight, and TrackMixer LED each mod independently. Tracks share a downbeat and loop at their own length (polymeter), realigning at the LCM. `patternLength` syncs as a normal discrete leaf op (`['tracks', i, 'patternLength']`, flush:'sync' + suppression guard).
 
 **Rejected alternative.** Storing `steps` at exactly `patternLength` (destructive resize, smaller payload, more sync churn) — rejected for the non-destructive window. A per-track timer/clock (true per-track *speed*: triplets, swing, independent tempo) — rejected as out of scope; the absolute-counter model gives polymeter with one scheduler and could later take integer clock-dividers cheaply. See `docs/superpowers/specs/2026-05-30-variable-track-length-design.md`.

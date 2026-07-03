@@ -9,7 +9,9 @@ import { createProjectOps } from './projectOps';
 import type { AppRuntime } from './AppRuntime';
 
 export type SynthContext = ReturnType<typeof createSynthContext>;
-export const SYNTH_CONTEXT: InjectionKey<SynthContext> = Symbol('synthContext');
+// Symbol.for (not Symbol()) is HMR-stable: a hot-swapped module re-creates a
+// plain Symbol, which would break provide/inject pairing across the swap.
+export const SYNTH_CONTEXT: InjectionKey<SynthContext> = Symbol.for('fiddle:synthContext');
 
 // createSynthContext — builds the injected facade the component tree consumes.
 // Called EXACTLY ONCE, by App.vue (the never-unmounting shell), with the
@@ -107,8 +109,9 @@ export function createSynthContext(runtime: AppRuntime) {
   // The currently-focused track, or null on the track overview. Panels read
   // their reactive engine slice from this (e.g. focusedTrack.value.engines.synth)
   // for display; writes route through the command bus (dispatchLocal), not direct
-  // mutation. The live slice still drives the audio-reaction watcher. Replaces the
-  // per-param trackParam refs that previously projected each field individually.
+  // mutation. Audio reacts via the bus's applied-command stream, not by watching
+  // this slice (the watchers are gone). Replaces the per-param trackParam refs
+  // that previously projected each field individually.
   const focusedTrack = computed(() =>
     activeTrackIndex.value !== null ? project.tracks[activeTrackIndex.value] : null
   );

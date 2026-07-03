@@ -1,7 +1,7 @@
-// Pure param-diff helpers, shared by AudioEngine (its slice watcher) and the
-// bulk project ops (app/projectOps draft-diff-dispatch). Lives in its own leaf
-// module because both units need it — putting it in either would create an
-// import cycle. Relocated verbatim from useSynth.ts (Phases 4–5).
+// Pure param-diff helpers, shared by AudioEngine (its applied-command stream
+// subscription) and the bulk project ops (app/projectOps draft-diff-dispatch).
+// Lives in its own leaf module because both units need it — putting it in
+// either would create an import cycle. Relocated verbatim from useSynth.ts (Phases 4–5).
 
 // Returns the subset of `newVal` keys whose values differ from `oldVal`, or
 // null if nothing changed. Used to feed engine.applyParams() the minimum set

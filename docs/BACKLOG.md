@@ -36,6 +36,32 @@ for bare property assignments, and an ear-test pass over every control category
 (knob, select, toggle, step cell, mixer, bulk op, preset, remote edit) confirming
 each audibly reaches the engine. Close the entry with the sweep transcript.
 
+### AppRuntime shutdown hardening
+**Reported:** 2026-07-03 · **Status:** open (deferred, zero-risk polish) · **Area:** `packages/client/src/audio/AudioEngine.ts`, `packages/client/src/sync/CommandBus.ts`, `packages/client/src/sync/SyncSession.ts`
+
+Two deferred Minors from the Phase 5 (`feat/phase5-appruntime`) final whole-branch
+review, plus one related sweep item — none are regressions, all pre-existing shape
+carried into the new composition root:
+
+1. **Dispose-during-bootstrap race.** If `shutdown()` runs while
+   `AudioEngine.buildAudioState()` is still in flight (`ensureAudio`, ~`AudioEngine.ts:286-295`),
+   `dispose()` early-returns on a null `audioState` (~`AudioEngine.ts:373-375`) because
+   there's nothing to tear down yet — but the in-flight promise then resolves and
+   installs a live AudioContext + stream subscription *after* shutdown. Dev/HMR-exposure
+   mainly (a real page unload doesn't usually race a first `ensureAudio()`). Fix sketch:
+   a `disposed` flag set by `dispose()` and checked in the `buildAudioState().then(...)`
+   continuation — if set, dispose the just-built state instead of installing it.
+2. **CommandBus emit hardening.** `emit()` (`CommandBus.ts` ~50-52) calls every stream
+   listener in a plain loop with no per-listener try/catch — a throwing subscriber
+   blocks the outbound enqueue in `dispatchLocal`. This is watcher-era parity (the old
+   `flush:'sync'` watchers had the same fragility), not a regression, but worth
+   hardening now that the bus is the sole writer. Fix sketch: wrap each listener call
+   in try/catch + `console.error`.
+3. **`SyncSession`'s `beforeunload` listener is never removed.** Lazily installed
+   (`installLeaveFlushHandler`) but has no matching `removeEventListener` in `dispose()`.
+   Harmless today (the listener is idempotent and the page is unloading anyway) —
+   worth sweeping in the same pass as #1/#2 rather than fixing in isolation.
+
 ### Lost durable project data on several recently-edited prod sessions — mechanism unproven
 **Reported:** 2026-06-26 · **Status:** open / investigation PAUSED · **Area:** sync durable-write path + client reconnect churn — `packages/client/src/composables/useSynth.ts` (connectToSession / leaveSession / resetLocalProject / teardownConnection), `packages/client/src/sync/reconcileSession.ts`, server flush (`SessionSync` / `packProject`)
 
