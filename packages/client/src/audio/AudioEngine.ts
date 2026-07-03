@@ -1,4 +1,4 @@
-import { ref, reactive, watch, computed, effectScope, shallowRef, type Ref, type EffectScope, type ComputedRef } from 'vue';
+import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 'vue';
 import { TRACK_POOL_SIZE } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
@@ -15,7 +15,7 @@ import { Clap2Engine } from '../engine/Clap2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
-import { diffParams } from '../project/paramDiff';
+import type { AppliedCommand } from '../project/appliedCommand';
 
 // Worklet asset URL — must be a separate browser asset loaded via
 // audioContext.audioWorklet.addModule, not bundled into the main chunk. Vite
@@ -38,10 +38,6 @@ const hat2WorkletUrl = '/worklets/hat2-processor.js';
 const clap2WorkletUrl = '/worklets/clap2-processor.js';
 
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
-
-// Local copy of the engine-slice key list (already duplicated across preset.ts /
-// storage.ts / normalize.ts; DRY-ing all copies is a separate cleanup).
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2', 'clap2'];
 
 const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
   synth:  (ctx, dest) => new SynthEngine(ctx, dest),
@@ -86,15 +82,18 @@ export interface AudioState {
   // Engines mid anti-click fade, waiting on their dispose timer. dispose()
   // settles these immediately so no timer outlives the AudioContext.
   pendingDisposes: Map<ReturnType<typeof setTimeout>, SoundEngine>;
-  scope: EffectScope;
+  // Applied-command stream subscription torn down in dispose().
+  unsubscribe: () => void;
 }
 
 export interface AudioEngineDeps {
   project: Project;
+  /** Subscribe to the bus's applied-command stream; returns an unsubscribe. */
+  subscribe: (listener: (cmd: AppliedCommand) => void) => () => void;
 }
 
 // AudioEngine — owns the AudioContext, the per-track sound engines, the track
-// gains/analysers, the audio-reaction watchers, the Sequencer, and the transport
+// gains/analysers, the audio-reaction stream subscription, the Sequencer, and the transport
 // (currentStep). Extracted from useSynth (Phase 4) so audio ownership + teardown
 // are explicit. Long-lived, one per tab; the graph boots lazily on the first
 // ensureAudio()/togglePlay(), and dispose() is the idempotent full teardown.
@@ -235,63 +234,53 @@ export class AudioEngine {
     }
     updateMixerGains();
 
-    // Audio-reaction watchers ONLY: they drive the engine graph and track gains,
-    // so they live with the AudioContext (built on first PLAY). Outbound sync no
-    // longer uses watchers at all. Nothing in this scope enqueues an op; these
-    // bodies only mutate audio nodes. flush:'sync' keeps each reaction in step
-    // with the synchronous applyRemote write, and the bodies are guard-free so
-    // remote ops drive audio too.
-    const scope = effectScope(true);
-    scope.run(() => {
-      for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-        // Engine-type change: dispose the old engine, build the new one, apply the
-        // whole slice. Fires for remote swaps too.
-        watch(
-          () => project.tracks[i].engineType,
-          () => { syncTrackToEngine(i); },
-          { flush: 'sync' },
-        );
-
-        // Per-slice param edits feed the active engine. snapshot()+diff lets Vue
-        // track nested fields without deep:true and gives a real before/after.
-        for (const slice of ENGINE_SLICES) {
-          watch(
-            () => snapshot(project.tracks[i].engines[slice]),
-            (newVal, oldVal) => {
-              if (project.tracks[i].engineType !== slice) return;
-              const engine = engines[i];
-              if (!engine) return; // disabled slot — params apply on enable via syncTrackToEngine
-              const changed = diffParams(
-                newVal as unknown as Record<string, unknown>,
-                oldVal as unknown as Record<string, unknown>,
-              );
-              if (changed) engine.applyParams(changed);
-            },
-            { flush: 'sync' },
-          );
-        }
-
-        // Mixer: any change recomputes all track gains (solo logic is global).
-        watch(
-          () => snapshot(project.tracks[i].mixer),
-          () => { updateMixerGains(); },
-          { flush: 'sync' },
-        );
-
-        // enabled toggles the slot's engine lifecycle: enable constructs the
-        // engine (and applies the slice), disable fade-disposes it.
-        watch(
-          () => project.tracks[i].enabled,
-          () => {
-            syncTrackToEngine(i);
-            updateMixerGains();
-          },
-          { flush: 'sync' },
-        );
+    // Audio reactions ride the bus's applied-command stream (Phase 5) instead
+    // of Vue watchers: the bus emits synchronously after every state write —
+    // local dispatch, remote op, nack rollback — the same timing flush:'sync'
+    // gave the old watchers. `replace` (snapshot / Open / New / room reset)
+    // re-runs the same full sync the initial build above just did. The handler
+    // only touches audio nodes — never dispatches (bus stream constraint).
+    const onCommand = (cmd: AppliedCommand): void => {
+      if (cmd.kind === 'replace') {
+        for (let i = 0; i < TRACK_POOL_SIZE; i++) syncTrackToEngine(i);
+        updateMixerGains();
+        return;
       }
-    });
+      const p = cmd.path;
+      if (p[0] !== 'tracks' || typeof p[1] !== 'number') return; // bpm etc.: sequencer pulls per tick
+      const i = p[1];
+      switch (p[2]) {
+        case 'engineType':
+          syncTrackToEngine(i);
+          return;
+        case 'enabled':
+          syncTrackToEngine(i);
+          updateMixerGains();
+          return;
+        case 'mixer':
+          updateMixerGains();
+          return;
+        case 'engines': {
+          const slice = p[3] as EngineType;
+          if (project.tracks[i].engineType !== slice) return; // inactive slice
+          const engine = engines[i];
+          if (!engine) return; // disabled slot — params apply on enable via syncTrackToEngine
+          const key = p[4];
+          if (typeof key !== 'string') return;
+          // Re-read the top-level key from live state: a nested-leaf edit
+          // applies its whole sub-object (superset — applyParams setters are
+          // idempotent per param); a matrix slot edit applies the whole matrix.
+          const liveSlice = project.tracks[i].engines[slice] as unknown as Record<string, unknown>;
+          engine.applyParams({ [key]: snapshot(liveSlice[key]) } as Record<string, any>);
+          return;
+        }
+        default:
+          return; // steps / patternLength — pull model, no audio reaction
+      }
+    };
+    const unsubscribe = this.deps.subscribe(onCommand);
 
-    return { ctx, trackAnalysers, trackGains, engines, pendingDisposes, scope };
+    return { ctx, trackAnalysers, trackGains, engines, pendingDisposes, unsubscribe };
   }
 
   ensureAudio = async (): Promise<AudioState> => {
@@ -307,8 +296,8 @@ export class AudioEngine {
 
   togglePlay = async (): Promise<void> => {
     const project = this.deps.project;
-    // First user gesture: this is where the AudioContext + engines + watchers
-    // come alive. Doing it here (not at module load) eliminates Chrome's
+    // First user gesture: this is where the AudioContext + engines + stream
+    // subscription come alive. Doing it here (not at module load) eliminates Chrome's
     // "AudioContext was not allowed to start" warning.
     const state = await this.ensureAudio();
 
@@ -326,8 +315,8 @@ export class AudioEngine {
         for (let i = 0; i < TRACK_POOL_SIZE; i++) {
           const track = project.tracks[i];
           if (!track.enabled) continue;
-          // Engine construction rides the synchronous enabled watcher, so an
-          // enabled track always has one — guard anyway so a scheduling tick
+          // Engine construction rides the synchronous enabled stream reaction,
+          // so an enabled track always has one — guard anyway so a scheduling tick
           // racing a toggle can't crash the audio callback.
           const engine = state.engines[i];
           if (!engine) continue;
@@ -384,7 +373,7 @@ export class AudioEngine {
   dispose(): void {
     const state = this.audioState.value;
     if (!state) return;
-    state.scope.stop();
+    state.unsubscribe();
     // Settle in-flight fade-disposes first so their timers never fire against a
     // closed AudioContext (or, in tests, after globals are torn down).
     for (const [timer, engine] of state.pendingDisposes) {

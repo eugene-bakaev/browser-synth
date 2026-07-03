@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApp, type App } from 'vue';
 import Tracker from './Tracker.vue';
 import { freshStep } from '../project';
 import { DEFAULT_MIXER_STATE } from '../project';
+import { SYNTH_CONTEXT, type SynthContext } from '../app/synthContext';
+
+// Tracker takes dispatchLocal/endGesture off the injected synth context
+// (Phase 5); these layout tests never write, so a minimal fake suffices.
+const fakeSynth = { dispatchLocal: vi.fn(), endGesture: vi.fn() } as unknown as SynthContext;
 
 let app: App | null = null;
 let host: HTMLElement | null = null;
@@ -19,6 +24,7 @@ function mountTracker(props: Record<string, unknown>): HTMLElement {
   host = document.createElement('div');
   document.body.appendChild(host);
   app = createApp(Tracker, props);
+  app.provide(SYNTH_CONTEXT, fakeSynth);
   app.mount(host);
   return host;
 }

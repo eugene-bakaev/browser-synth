@@ -7,17 +7,18 @@
 // `path` may be a thunk so a loop-bound control (a step cell, a mixer channel)
 // can compute its path per render.
 
-import { computed, type WritableComputedRef } from 'vue';
+import { computed, inject, type WritableComputedRef } from 'vue';
 import { getDeep, type Path } from '@fiddle/shared';
-import { project } from '../stores/project';
-import { dispatchLocal } from '../composables/useSynth';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 
 export function useCommandModel<T = unknown>(
   path: Path | (() => Path),
 ): WritableComputedRef<T> {
+  const synth = inject(SYNTH_CONTEXT);
+  if (!synth) throw new Error('useCommandModel requires SYNTH_CONTEXT (provided by App)');
   const resolve = typeof path === 'function' ? path : () => path;
   return computed<T>({
-    get: () => getDeep(project as unknown as Record<string, unknown>, resolve()) as T,
-    set: (v) => dispatchLocal(resolve(), v),
+    get: () => getDeep(synth.project as unknown as Record<string, unknown>, resolve()) as T,
+    set: (v) => synth.dispatchLocal(resolve(), v),
   });
 }

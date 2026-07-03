@@ -49,7 +49,7 @@ import { computed, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { roster, selfClientId } from '../sync/presence';
 import { useAuth } from '../auth/useAuth';
-import { SYNTH_CONTEXT } from '../sync/synthContext';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 
 const emit = defineEmits<{ (e: 'close'): void }>();
 

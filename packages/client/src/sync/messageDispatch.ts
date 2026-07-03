@@ -1,34 +1,32 @@
 // messageDispatch — routes a decoded ServerMessage to the right side effect.
 //
-// Kept separate from useSynth so the wiring (which reactive store / which
+// Kept as its own module so the wiring (which reactive store / which
 // Outbox method each message type touches) reads as one switch instead of
-// being smeared through the composable. WsClient owns the socket + state
+// being smeared through AppRuntime/synthContext. WsClient owns the socket + state
 // machine and hands fully-typed messages here; this layer owns the
 // application semantics.
 //
-// Both `snapshot` (replaceProject) and `set` (commandBus.applyRemote) mutate the
-// reactive `project` programmatically. These once had to be wrapped in an
-// applyingFromNetwork suppression so the outbound sync watchers in useSynth
+// Both `snapshot` (commandBus.loadProject) and `set` (commandBus.applyRemote)
+// mutate the reactive `project` programmatically. These once had to be wrapped in an
+// applyingFromNetwork suppression so the outbound sync watchers (deleted in Phase 5)
 // wouldn't re-enqueue them as local edits — but every outbound watcher is gone
 // (all writes now flow through the CommandBus), so there is nothing to suppress:
 // the writes happen directly.
 
-import type { ServerMessage, Project } from '@fiddle/shared';
+import type { ServerMessage } from '@fiddle/shared';
 import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
 import type { CommandBus } from './CommandBus.js';
 import { roster, selfClientId, noteRemoteTouch } from './presence.js';
-import { replaceProject } from '../project/storage.js';
 
 export interface DispatchDeps {
-  project: Project;
   wsClient: WsClient;
   outbox: Outbox;
   commandBus: CommandBus;
   onFatalError: (code: string, message: string) => void;
   // Called when the room reaches the live / caught-up state (sync.complete).
-  // Opens the outbound-sync gate in useSynth so local edits can't leak into the
+  // Opens the outbound-sync gate in SyncSession so local edits can't leak into the
   // room before it has loaded (cross-session bleed guard). Keyed on sync.complete
   // — NOT snapshot — because catch-up can arrive as op replay instead of a
   // snapshot (a resumed connection), and sync.complete fires on every path.
@@ -43,14 +41,10 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       return;
     case 'snapshot':
       // Normalize first so a snapshot from an older (pre-pool) server can't
-      // under-fill the fixed 32-slot model the client assumes, or leave a
-      // blank/out-of-range bpm in the reactive state.
-      replaceProject(deps.project, normalizeProject(msg.project));
+      // under-fill the fixed 32-slot model or leave an out-of-range bpm.
+      // Routed through the bus so the audio stream gets one `replace` event.
+      deps.commandBus.loadProject(normalizeProject(msg.project));
       deps.commandBus.resetWatermark();
-      // Non-destructive reconcile: the snapshot just overwrote local state. Re-apply
-      // any un-acked local edits on top and re-queue them for delivery so a server
-      // repair (mid-session resync or reconnect eviction) can never erase a pending
-      // change.
       deps.outbox.reassertPending();
       return;
     case 'set': {

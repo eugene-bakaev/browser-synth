@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 class MockAudioNode {
@@ -63,6 +63,7 @@ class MockAudioContext {
   sampleRate = 44100;
   destination = new MockAudioNode();
   audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
+  close = vi.fn().mockResolvedValue(undefined);
   resume = vi.fn().mockImplementation(() => {
     this.state = 'running';
     return Promise.resolve();
@@ -79,37 +80,41 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
-// Mirrors useSynth.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
+// Mirrors AudioEngine.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
 // Same math, so the floating-point result matches bit-for-bit.
 const sliderGain = (s: number) => s <= 0 ? 0 : Math.pow(10, (-54 + s * 60) / 20);
 
-let useSynth: any;
 let trackGains: any[];
 
 describe('TrackMixer Logic', () => {
+  let runtime: any;
   let synthData: any;
-
-  beforeAll(async () => {
-    const mod = await import('../composables/useSynth');
-    useSynth = mod.useSynth;
-    // Mixer tests don't exercise the WS layer — keep it dark so ensureAudio()
-    // doesn't try to resolve a room / open a socket (no `window` in node env).
-    mod.setSyncEnabled(false);
-  });
+  let mod: { dispatchLocal: (path: any, value: any) => void };
 
   beforeEach(async () => {
-    synthData = useSynth();
-    // Audio state is lazy now — force it up so trackGains exist + watchers are live.
-    // Bootstrap is async because of the pulse worklet's addModule step.
+    // Fresh runtime + context per test (Phase 5: replaces the useSynth module
+    // singletons). Mixer tests don't exercise the WS layer — keep it dark so
+    // ensureAudio() doesn't try to resolve a room / open a socket (no `window`
+    // in node env).
+    const { createAppRuntime } = await import('../app/AppRuntime');
+    const { createSynthContext } = await import('../app/synthContext');
+    runtime = createAppRuntime({ syncEnabled: false });
+    synthData = createSynthContext(runtime);
+    mod = { dispatchLocal: synthData.dispatchLocal };
+    // Audio state is lazy now — force it up so trackGains exist + the bus
+    // stream subscription is live. Bootstrap is async because of the pulse
+    // worklet's addModule step.
     await synthData.ensureAudio();
     trackGains = synthData.trackGains.value;
 
-    // Reset project.tracks to defaults. Slider is 0..1 (perceptual); the gain
-    // node receives sliderGain(slider) after the U4 log-scale conversion.
-    synthData.project.tracks.forEach((track: any) => {
-      track.mixer.volume = 0.8;
-      track.mixer.muted = false;
-      track.mixer.soloed = false;
+    // Reset project.tracks to defaults through the bus — a direct mutation no
+    // longer reaches audio (watchers gone; reactions ride the command stream).
+    // Slider is 0..1 (perceptual); the gain node receives sliderGain(slider)
+    // after the U4 log-scale conversion.
+    synthData.project.tracks.forEach((_track: any, i: number) => {
+      mod.dispatchLocal(['tracks', i, 'mixer', 'volume'], 0.8);
+      mod.dispatchLocal(['tracks', i, 'mixer', 'muted'], false);
+      mod.dispatchLocal(['tracks', i, 'mixer', 'soloed'], false);
     });
     // Reset spy call records + mock gain.value to the new expected baseline.
     // Disabled pool slots are gated to silence regardless of mixer volume.
@@ -118,6 +123,10 @@ describe('TrackMixer Logic', () => {
       g.gain.value = synthData.project.tracks[i].enabled ? sliderGain(0.8) : 0;
     });
   });
+
+  // Full teardown per test: settles fade-dispose timers + closes the (mock) ctx
+  // so nothing outlives the stubbed globals.
+  afterEach(() => { runtime?.shutdown(); runtime = null; });
 
   it('should initialize the full pool: enabled slots at default gain, disabled slots silent', () => {
     expect(trackGains.length).toBe(TRACK_POOL_SIZE);
@@ -131,7 +140,7 @@ describe('TrackMixer Logic', () => {
 
   it('should apply volume changes smoothly to gain nodes', async () => {
     // Modify volume on track 0
-    synthData.project.tracks[0].mixer.volume = 0.5;
+    mod.dispatchLocal(['tracks', 0, 'mixer', 'volume'], 0.5);
 
     // Wait for Vue's watch/reactive effect cycle
     await vi.waitFor(() => {
@@ -142,7 +151,7 @@ describe('TrackMixer Logic', () => {
 
   it('should mute a track correctly by setting gain to 0', async () => {
     // Mute track 1
-    synthData.project.tracks[1].mixer.muted = true;
+    mod.dispatchLocal(['tracks', 1, 'mixer', 'muted'], true);
 
     await vi.waitFor(() => {
       expect(trackGains[1].gain.setTargetAtTime).toHaveBeenCalledWith(0, expect.any(Number), 0.015);
@@ -154,7 +163,7 @@ describe('TrackMixer Logic', () => {
 
   it('should solo a track and silence all other non-soloed tracks', async () => {
     // Solo track 2
-    synthData.project.tracks[2].mixer.soloed = true;
+    mod.dispatchLocal(['tracks', 2, 'mixer', 'soloed'], true);
 
     await vi.waitFor(() => {
       // Soloed track should remain at its volume
@@ -168,8 +177,8 @@ describe('TrackMixer Logic', () => {
 
   it('should support multiple soloed tracks simultaneously', async () => {
     // Solo track 0 and 2
-    synthData.project.tracks[0].mixer.soloed = true;
-    synthData.project.tracks[2].mixer.soloed = true;
+    mod.dispatchLocal(['tracks', 0, 'mixer', 'soloed'], true);
+    mod.dispatchLocal(['tracks', 2, 'mixer', 'soloed'], true);
 
     await vi.waitFor(() => {
       expect(trackGains[0].gain.value).toBe(sliderGain(0.8));
@@ -181,8 +190,8 @@ describe('TrackMixer Logic', () => {
 
   it('should respect mute on a soloed track', async () => {
     // Solo track 0, but also mute it
-    synthData.project.tracks[0].mixer.soloed = true;
-    synthData.project.tracks[0].mixer.muted = true;
+    mod.dispatchLocal(['tracks', 0, 'mixer', 'soloed'], true);
+    mod.dispatchLocal(['tracks', 0, 'mixer', 'muted'], true);
 
     await vi.waitFor(() => {
       // Even though track 0 is soloed, it is muted so gain should be 0
@@ -194,14 +203,14 @@ describe('TrackMixer Logic', () => {
 
   it('should restore all track volumes when solo is turned off', async () => {
     // First solo track 3
-    synthData.project.tracks[3].mixer.soloed = true;
+    mod.dispatchLocal(['tracks', 3, 'mixer', 'soloed'], true);
     await vi.waitFor(() => {
       expect(trackGains[0].gain.value).toBe(0);
       expect(trackGains[3].gain.value).toBe(sliderGain(0.8));
     });
 
     // Unsolo track 3
-    synthData.project.tracks[3].mixer.soloed = false;
+    mod.dispatchLocal(['tracks', 3, 'mixer', 'soloed'], false);
     await vi.waitFor(() => {
       // All tracks should return to their regular volume
       expect(trackGains[0].gain.value).toBe(sliderGain(0.8));

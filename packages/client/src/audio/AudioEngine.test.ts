@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { reactive, nextTick } from 'vue';
 import { freshProject, type Project } from '../project';
-import { TRACK_POOL_SIZE } from '@fiddle/shared';
+import { setDeep, TRACK_POOL_SIZE, type Path } from '@fiddle/shared';
+import type { AppliedCommand } from '../project/appliedCommand';
 
 // Minimal Web Audio mock (same shape as useSynth.test / TrackMixer.test).
 class MockAudioNode { connect = vi.fn(); disconnect = vi.fn(); context = { currentTime: 0 }; }
@@ -53,7 +54,18 @@ import { AudioEngine } from './AudioEngine';
 
 function makeEngine() {
   const project = reactive(freshProject()) as Project;
-  return { project, engine: new AudioEngine({ project }) };
+  const listeners = new Set<(cmd: AppliedCommand) => void>();
+  const engine = new AudioEngine({
+    project,
+    subscribe: (l) => { listeners.add(l); return () => { listeners.delete(l); }; },
+  });
+  const emit = (cmd: AppliedCommand) => { for (const l of listeners) l(cmd); };
+  // Simulate a bus write: state first, then the synchronous stream event.
+  const set = (path: Path, value: unknown) => {
+    setDeep(project as unknown as Record<string, unknown>, path, value);
+    emit({ kind: 'set', path, value });
+  };
+  return { project, engine, set, emit, listeners };
 }
 
 describe('AudioEngine', () => {
@@ -77,17 +89,84 @@ describe('AudioEngine', () => {
     expect(a.engines[0]).toBeDefined();      // track 0 enabled by default
   });
 
-  it('forwards only the changed key when one active-engine param is mutated', async () => {
-    const { project, engine } = makeEngine();
+  it('applies a dispatched param to the active engine (single key, from live state)', async () => {
+    const { engine, set } = makeEngine();
     const state = await engine.ensureAudio();
     const applySpy = vi.spyOn(state.engines[0]!, 'applyParams');
     applySpy.mockClear();
 
-    project.tracks[0].engines.synth.filterCutoff = 1234;
-    await nextTick();
+    set(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1234);
 
     expect(applySpy).toHaveBeenCalledTimes(1);
     expect(applySpy).toHaveBeenCalledWith({ filterCutoff: 1234 });
+  });
+
+  it('a DIRECT reactive mutation no longer reaches audio (watchers are gone)', async () => {
+    const { project, engine } = makeEngine();
+    const state = await engine.ensureAudio();
+    const applySpy = vi.spyOn(state.engines[0]!, 'applyParams');
+    applySpy.mockClear();
+    project.tracks[0].engines.synth.filterCutoff = 777;   // bypasses the bus
+    await nextTick();
+    expect(applySpy).not.toHaveBeenCalled();
+  });
+
+  it('applies a nested sub-object as a whole re-read superset', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    const applySpy = vi.spyOn(state.engines[0]!, 'applyParams');
+    applySpy.mockClear();
+    set(['tracks', 0, 'engines', 'synth', 'filterEnv', 'a'], 0.42);
+    expect(applySpy).toHaveBeenCalledTimes(1);
+    // whole filterEnv (live re-read), not just {a}:
+    expect(applySpy.mock.calls[0][0]).toEqual({ filterEnv: expect.objectContaining({ a: 0.42 }) });
+  });
+
+  it('ignores a param set for an inactive engine slice', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    const applySpy = vi.spyOn(state.engines[0]!, 'applyParams');
+    applySpy.mockClear();
+    set(['tracks', 0, 'engines', 'kick', 'level'], 0.5);   // track 0 is synth
+    expect(applySpy).not.toHaveBeenCalled();
+  });
+
+  it('enabled=false disposes the slot engine; enabled=true rebuilds it', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    expect(state.engines[0]).toBeDefined();
+    set(['tracks', 0, 'enabled'], false);
+    expect(state.engines[0]).toBeUndefined();
+    set(['tracks', 0, 'enabled'], true);
+    expect(state.engines[0]).toBeDefined();
+  });
+
+  it('engineType set swaps the slot engine', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    const before = state.engines[0]!;
+    set(['tracks', 0, 'engineType'], 'kick');
+    expect(state.engines[0]).not.toBe(before);
+    expect(state.engines[0]!.engineType).toBe('kick');
+  });
+
+  it('a replace event re-syncs every slot from current state', async () => {
+    const { project, engine, emit } = makeEngine();
+    const state = await engine.ensureAudio();
+    // wholesale replace outside the leaf-op path (snapshot / Open / New):
+    project.tracks[0].engineType = 'kick';
+    project.tracks[1].enabled = false;
+    emit({ kind: 'replace' });
+    expect(state.engines[0]!.engineType).toBe('kick');
+    expect(state.engines[1]).toBeUndefined();
+  });
+
+  it('dispose unsubscribes from the stream', async () => {
+    const { engine, listeners } = makeEngine();
+    await engine.ensureAudio();
+    expect(listeners.size).toBe(1);
+    engine.dispose();
+    expect(listeners.size).toBe(0);
   });
 
   it('dispose closes the ctx, stops the transport, and is idempotent', async () => {

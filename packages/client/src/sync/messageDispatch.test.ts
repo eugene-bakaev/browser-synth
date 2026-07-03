@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { dispatchServerMessage, type DispatchDeps } from './messageDispatch.js';
 import { createCommandBus } from './CommandBus.js';
+import { replaceProject } from '../project';
 import { freshProject, setDeep, TRACK_POOL_SIZE, type Project, type ServerMessage } from '@fiddle/shared';
 
 function deps(project: Project): DispatchDeps {
   return {
-    project,
     wsClient: { recordOpIdSeen: vi.fn(), opIdLastSeen: vi.fn(() => 0), requestResync: vi.fn() } as unknown as DispatchDeps['wsClient'],
     outbox: {
       onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn(),
@@ -14,6 +14,7 @@ function deps(project: Project): DispatchDeps {
     onFatalError: vi.fn(),
     commandBus: createCommandBus({
       applySet: (path, value) => setDeep(project as unknown as Record<string, unknown>, path, value),
+      loadProject: (next) => replaceProject(project, next),
       enqueue: vi.fn(),
     }),
   };

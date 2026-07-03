@@ -145,6 +145,14 @@ the command model. (Rejected alternative: keep Pinia `watch` on slices.)
 > **keeps** the reactive slice-watchers. Command-stream params picks up later, once
 > the bus is the sole writer. See the [phase-4 spec](./2026-07-02-phase4-audioengine-design.md).
 
+> **UPDATE 2026-07-02 — DELIVERED by Phase 5.** The deferred command-stream params
+> landed: `CommandBus` became the long-lived sole writer (`applySet`/`loadProject`/
+> `applyRollback` + a synchronous applied-command stream), bulk ops became pure
+> draft-diff-dispatch (`app/projectOps.ts`), and `AudioEngine` subscribes to the
+> stream instead of watching the reactive project — the reactive slice-watchers and
+> audio-side `diffParams` machinery are deleted. All three bypass paths named above
+> now route through the bus. See the [phase-5 spec](./2026-07-02-phase5-appruntime-design.md).
+
 ## Lifecycle & ownership
 
 **Composition root — `AppRuntime`:**
@@ -218,8 +226,8 @@ Dependency-ordered; every phase ends green, browser-verified, and reviewable.
 | **1** | Store holds canonical state + selectors; migrate components to **read** from selectors | low |
 | **2** | `CommandBus`/`dispatch`; migrate **write** sites; delete direct-mutation watchers + `applyingFromNetwork`; `applyRemote` replaces `applyOp` | **high — the heart** |
 | **3** | Extract `SyncSession` (owns WsClient/Outbox/presence) + `dispose()` | medium |
-| **4** | Extract `AudioEngine` (owns ctx/engines/Sequencer) + `dispose()`. ~~command-stream params~~ **DEFERRED** — Phase 4 ships the structural extraction only; the engine keeps the Vue reactive slice-watchers (see [phase-4 spec](./2026-07-02-phase4-audioengine-design.md) + `docs/BACKLOG.md`) because 3 mutation paths bypass the bus | medium |
-| **5** | `AppRuntime` root: `bootstrap`/`shutdown` + all lifecycle wiring incl. the **single** HMR hook; delete `useSynth.ts`; update `ARCHITECTURE.md` + add decision **D17** (and mark superseded decisions) | medium |
+| **4** | Extract `AudioEngine` (owns ctx/engines/Sequencer) + `dispose()`. ~~command-stream params~~ **DEFERRED** — Phase 4 ships the structural extraction only; the engine keeps the Vue reactive slice-watchers (see [phase-4 spec](./2026-07-02-phase4-audioengine-design.md) + `docs/BACKLOG.md`) because 3 mutation paths bypass the bus — **DELIVERED by Phase 5** (see [phase-5 spec](./2026-07-02-phase5-appruntime-design.md); `docs/BACKLOG.md` entry closed) | medium |
+| **5** | `AppRuntime` root: `bootstrap`/`shutdown` + all lifecycle wiring incl. the **single** HMR hook; delete `useSynth.ts`; update `ARCHITECTURE.md` + add decision **D17** (and mark superseded decisions) — **DONE 2026-07-02**, see [phase-5 spec](./2026-07-02-phase5-appruntime-design.md) | medium |
 
 Order rationale: foundation (store) → the write-funnel (correctness) → peel
 resources into services → the root that owns lifecycle. Each phase leaves the app

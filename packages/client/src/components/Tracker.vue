@@ -220,7 +220,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, inject, watch } from 'vue';
 import { NOTES } from '../utils/notes';
 import type { Step } from '../sequencer/Sequencer';
 import { CHORD_FORMULAS } from '../utils/chords';
@@ -229,8 +229,14 @@ import { engineLabel } from '../ui/engineLabel';
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE } from '../project';
 import type { MixerState } from '../project';
-import { dispatchLocal, endGesture } from '../composables/useSynth';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 import { useCommandModel } from '../sync/commandModel';
+
+// Writes route through the injected context's command-bus entry points (was a
+// module-scope import from useSynth before Phase 5).
+const synthCtx = inject(SYNTH_CONTEXT);
+if (!synthCtx) throw new Error('SYNTH_CONTEXT not provided');
+const { dispatchLocal, endGesture } = synthCtx;
 
 const props = withDefaults(defineProps<{
   steps: Step[];

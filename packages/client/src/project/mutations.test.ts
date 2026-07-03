@@ -1,79 +1,87 @@
 import { describe, it, expect } from 'vitest';
-import { freshTrack, freshStep } from './factory';
-import { clearTrack, shiftTrack, fillTrack } from './mutations';
+import { freshTrack } from './factory';
+import { clearTrackDraft, shiftTrackDraft, fillTrackDraft } from './mutations';
 
-describe('clearTrack', () => {
-  it('only clears within the window', () => {
-    const t = freshTrack();
-    t.patternLength = 4;
-    t.steps[2].note = 'C';
-    t.steps[10].note = 'E'; // outside window — must be preserved
-    clearTrack(t, t.patternLength);
-    expect(t.steps[2].note).toBe(null);
-    expect(t.steps[10].note).toBe('E');
+describe('clearTrackDraft', () => {
+  it('returns a fresh window of exactly patternLength steps', () => {
+    const draft = clearTrackDraft(4);
+    expect(draft).toHaveLength(4);
+    expect(draft.every((s) => s.note === null)).toBe(true);
   });
 
-  it('does not change track.engineType or track.engines', () => {
+  it('does not touch any track state (pure)', () => {
     const track = freshTrack();
     track.engineType = 'kick';
     track.engines.synth.osc1Coarse = 2;
-    clearTrack(track, track.patternLength);
+    clearTrackDraft(track.patternLength);
     expect(track.engineType).toBe('kick');
     expect(track.engines.synth.osc1Coarse).toBe(2);
   });
 });
 
-describe('shiftTrack', () => {
+describe('shiftTrackDraft', () => {
   it('wraps within the window only (left)', () => {
     const t = freshTrack();
     t.patternLength = 3;
     t.steps[0].note = 'C'; t.steps[1].note = 'D'; t.steps[2].note = 'E';
-    t.steps[5].note = 'X'; // outside window — must not move
-    shiftTrack(t, 'left', t.patternLength);
-    expect([t.steps[0].note, t.steps[1].note, t.steps[2].note]).toEqual(['D', 'E', 'C']);
-    expect(t.steps[5].note).toBe('X');
+    t.steps[5].note = 'X'; // outside window — must not appear in the draft
+    const draft = shiftTrackDraft(t.steps, 'left', t.patternLength);
+    expect(draft.map((s) => s.note)).toEqual(['D', 'E', 'C']);
   });
 
   it('right wraps within the window only', () => {
     const t = freshTrack();
     t.patternLength = 3;
     t.steps[0].note = 'C'; t.steps[1].note = 'D'; t.steps[2].note = 'E';
-    shiftTrack(t, 'right', t.patternLength);
-    expect([t.steps[0].note, t.steps[1].note, t.steps[2].note]).toEqual(['E', 'C', 'D']);
+    const draft = shiftTrackDraft(t.steps, 'right', t.patternLength);
+    expect(draft.map((s) => s.note)).toEqual(['E', 'C', 'D']);
   });
 
-  it('preserves step length (still 64 after shift)', () => {
+  it('returns exactly patternLength steps', () => {
     const track = freshTrack();
-    shiftTrack(track, 'left', track.patternLength);
-    expect(track.steps).toHaveLength(64);
-    shiftTrack(track, 'right', track.patternLength);
-    expect(track.steps).toHaveLength(64);
+    expect(shiftTrackDraft(track.steps, 'left', track.patternLength)).toHaveLength(track.patternLength);
+    expect(shiftTrackDraft(track.steps, 'right', track.patternLength)).toHaveLength(track.patternLength);
+  });
+
+  it('patternLength <= 1 returns the window unchanged', () => {
+    const track = freshTrack();
+    track.patternLength = 1;
+    track.steps[0].note = 'G';
+    const draft = shiftTrackDraft(track.steps, 'left', track.patternLength);
+    expect(draft).toEqual([expect.objectContaining({ note: 'G' })]);
   });
 });
 
-describe('fillTrack', () => {
+describe('fillTrackDraft', () => {
   it('only fills within the window', () => {
     const t = freshTrack();
     t.patternLength = 4;
-    fillTrack(t, 2, t.patternLength);
-    expect(t.steps[0].note).toBe('C');
-    expect(t.steps[2].note).toBe('C');
-    expect(t.steps[8].note).toBe(null); // outside window untouched
+    const draft = fillTrackDraft(t.steps, 2, t.patternLength);
+    expect(draft[0].note).toBe('C');
+    expect(draft[2].note).toBe('C');
+    expect(draft).toHaveLength(4); // outside-window steps are not part of the draft at all
   });
 
   it('un-mutes filled steps', () => {
     const track = freshTrack();
     track.steps[0].muted = true;
-    fillTrack(track, 4, track.patternLength);
-    expect(track.steps[0].muted).toBe(false);
+    const draft = fillTrackDraft(track.steps, 4, track.patternLength);
+    expect(draft[0].muted).toBe(false);
   });
 
   it('resets chord state on filled steps', () => {
     const track = freshTrack();
     track.steps[0].isChord = true;
     track.steps[0].chordType = 'min';
-    fillTrack(track, 4, track.patternLength);
-    expect(track.steps[0].isChord).toBe(false);
-    expect(track.steps[0].chordType).toBe('maj');
+    const draft = fillTrackDraft(track.steps, 4, track.patternLength);
+    expect(draft[0].isChord).toBe(false);
+    expect(draft[0].chordType).toBe('maj');
+  });
+
+  it('interval <= 0 returns the window unchanged (modulo guard)', () => {
+    const track = freshTrack();
+    track.patternLength = 4;
+    const draft = fillTrackDraft(track.steps, 0, track.patternLength);
+    expect(draft.every((s) => s.note === null)).toBe(true);
   });
 });

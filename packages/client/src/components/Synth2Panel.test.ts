@@ -4,16 +4,13 @@ import { createApp, ref, type App } from 'vue';
 import Synth2Panel from './Synth2Panel.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
 import { ACTIVE_TRACK_KEY } from '../sync/knobSync';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 
-// Panel controls now route writes through the command bus (dispatchLocal), not
-// direct params mutation. Partial-mock useSynth so we can assert the dispatched
-// op; every other export (endGesture, touchedFor read by Knob, …) stays real so
-// the panel and its child Knobs still mount and render normally.
-vi.mock('../composables/useSynth', async (orig) => {
-  const actual = await orig<typeof import('../composables/useSynth')>();
-  return { ...actual, dispatchLocal: vi.fn() };
-});
-import { dispatchLocal } from '../composables/useSynth';
+// Panel controls route writes through the injected synth context's dispatchLocal
+// (via useKnobSync). Provide a minimal fake context so we can assert the
+// dispatched op; the panel and its child Knobs still mount and render normally.
+const dispatchLocal = vi.fn();
+const fakeSynth = { dispatchLocal, endGesture: vi.fn() } as unknown as import('../app/synthContext').SynthContext;
 
 // Wire path for the focused synth2 track (mountPanel provides active track 0).
 const SYN2 = (...tail: (string | number)[]) => ['tracks', 0, 'engines', 'synth2', ...tail];
@@ -35,6 +32,7 @@ function mountPanel(params: object): HTMLElement {
   document.body.appendChild(host);
   app = createApp(Synth2Panel, { params, analyser: null, color: '#fff' });
   app.provide(ACTIVE_TRACK_KEY, ref(0));
+  app.provide(SYNTH_CONTEXT, fakeSynth);
   app.mount(host);
   return host;
 }

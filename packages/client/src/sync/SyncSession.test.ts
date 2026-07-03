@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref } from 'vue';
-import { freshProject } from '../project';
+import { setDeep } from '@fiddle/shared';
+import { freshProject, replaceProject } from '../project';
 import { SyncSession, type SyncSessionDeps } from './SyncSession';
+import { createCommandBus } from './CommandBus';
 
 // A fake WsClient matching the surface SyncSession/messageDispatch touch. The
 // factory captures opts so the test can push server messages via opts.onMessage.
@@ -32,15 +34,22 @@ function stubEnv() {
 
 function makeSession(overrides: Partial<SyncSessionDeps> = {}) {
   const built: any[] = [];
+  const project = freshProject();
+  let session: SyncSession;
+  const bus = createCommandBus({
+    applySet: (path, value) => setDeep(project as unknown as Record<string, unknown>, path, value),
+    loadProject: (next) => replaceProject(project, next),
+    enqueue: (path, value, prior, ge) => session.enqueue(path, value, prior, ge),
+  });
   const deps: SyncSessionDeps = {
-    project: freshProject(),
+    bus,
     wsClientFactory: () => (o: any) => { const f = makeFakeWsClient(o); built.push(f); return f as any; },
     syncEnabled: () => true,
     auth: () => ({ accessToken: ref(undefined), session: ref(null) }),
     ...overrides,
   };
-  const session = new SyncSession(deps);
-  return { session, built };
+  session = new SyncSession(deps);
+  return { session, built, project, bus };
 }
 
 describe('SyncSession', () => {
@@ -76,15 +85,15 @@ describe('SyncSession', () => {
     expect(session.roomLoading.value).toBe(false);
   });
 
-  it('dispatchLocal writes state + enqueues when live; returns false when disconnected', () => {
+  it('bus.dispatchLocal pre-connect writes state but sends nothing; after live it reaches the wire', () => {
     stubEnv();
-    const { session, built } = makeSession();
-    // disconnected: no bus → returns false, no throw
-    expect(session.dispatchLocal({ path: ['bpm'], value: 140 })).toBe(false);
+    const { session, built, project, bus } = makeSession();
+    bus.dispatchLocal({ path: ['bpm'], value: 140 });   // disconnected: no throw, no send
+    expect(project.bpm).toBe(140);
     session.connect('room-a');
     built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 }); // go live
-    expect(session.dispatchLocal({ path: ['bpm'], value: 140, priorValue: 120, gestureEnd: true })).toBe(true);
-    expect(built[0].sent.some((op: any) => op.path?.[0] === 'bpm' && op.value === 140)).toBe(true);
+    bus.dispatchLocal({ path: ['bpm'], value: 141, priorValue: 140, gestureEnd: true });
+    expect(built[0].sent.some((op: any) => op.path?.[0] === 'bpm' && op.value === 141)).toBe(true);
   });
 
   it('enqueue is a no-op until the room is live, then reaches the outbox', () => {
@@ -121,5 +130,17 @@ describe('SyncSession', () => {
     expect(session.isConnected).toBe(false);
     expect(session.currentRoomId.value).toBe('room-a');
     expect(session.roomLoading.value).toBe(false);
+  });
+
+  it('reconnecting to a room resets the bus watermark (an old opId applies again)', () => {
+    stubEnv();
+    const { session, built, project, bus } = makeSession();
+    session.connect('room-a');
+    bus.applyRemote({ v: 1, type: 'set', opId: 7, path: ['bpm'], value: 130, clientId: 'peer' } as never);
+    session.disconnect();
+    session.connect('room-b');   // buildConnection resets the watermark
+    expect(bus.applyRemote({ v: 1, type: 'set', opId: 3, path: ['bpm'], value: 99, clientId: 'peer' } as never)).toBe(true);
+    expect(project.bpm).toBe(99);
+    expect(built).toHaveLength(2);
   });
 });
