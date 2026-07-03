@@ -100,7 +100,7 @@ const session = new SyncSession({
 // teardown. Owns ctx/engines/gains/analysers/Sequencer + the transport
 // (currentStep), re-exported below so consumers are untouched. Constructed
 // eagerly and side-effect-free (no AudioContext until first play).
-const audioEngine = new AudioEngine({ project });
+const audioEngine = new AudioEngine({ project, subscribe: bus.subscribe });
 
 // Bulk project operations (Clear/Shift/Fill, preset load, INIT PATCH, New/Open)
 // as pure draft-diff-dispatch through the bus. Interim module-scope instance —

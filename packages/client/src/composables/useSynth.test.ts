@@ -72,75 +72,73 @@ vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
 let useSynth: any;
 let disposeSynth: any;
+let mod: any;
 
-describe('useSynth narrow watchers (A2)', () => {
+describe('audio reactions via the command stream (A2)', () => {
   beforeEach(async () => {
     // Clear persisted project so each test gets a fresh module-scope project.
     try { localStorage.removeItem('fiddle:project'); } catch {}
     vi.resetModules();
-    const mod = await import('./useSynth');
+    mod = await import('./useSynth');
     useSynth = mod.useSynth;
     disposeSynth = mod.disposeSynth;
-    // These tests exercise the audio watchers only — keep the WS layer dark so
+    // These tests exercise the audio reactions only — keep the WS layer dark so
     // ensureAudio() doesn't open a real socket.
     mod.setSyncEnabled(false);
     // Reset audio state between tests so each gets a fresh engine to spy on.
     disposeSynth();
   });
 
-  it('forwards only the changed key when one synth param is mutated', async () => {
+  it('forwards only the changed key when one synth param is dispatched', async () => {
     const synth = useSynth();
     const state = await synth.ensureAudio();
     const engine = state.engines[0];
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.project.tracks[0].engines.synth.filterCutoff = 1234;
-    await nextTick();
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterCutoff'], 1234);
 
     expect(applySpy).toHaveBeenCalledTimes(1);
     expect(applySpy).toHaveBeenCalledWith({ filterCutoff: 1234 });
   });
 
-  it('forwards the full ADSR object when an envelope leaf is mutated', async () => {
+  it('forwards the full ADSR object (live superset) when an envelope leaf is dispatched', async () => {
     const synth = useSynth();
     const state = await synth.ensureAudio();
     const engine = state.engines[0];
     const applySpy = vi.spyOn(engine, 'applyParams');
     applySpy.mockClear();
 
-    synth.project.tracks[0].engines.synth.filterEnv.a = 0.123;
-    await nextTick();
+    mod.dispatchLocal(['tracks', 0, 'engines', 'synth', 'filterEnv', 'a'], 0.123);
 
-    // ADSR objects are passed whole to applyParams (engine setter takes a/d/s/r
-    // together) — but only the filterEnv key, not the other 12 synth params.
+    // A nested-leaf edit re-reads its whole top-level sub-object from live
+    // state (superset apply) — only the filterEnv key, not the other params.
     expect(applySpy).toHaveBeenCalledTimes(1);
     const call = applySpy.mock.calls[0][0] as Record<string, any>;
     expect(Object.keys(call)).toEqual(['filterEnv']);
-    expect(call.filterEnv).toMatchObject({ a: 0.123 });
+    expect(call).toEqual({ filterEnv: expect.objectContaining({ a: 0.123 }) });
   });
 
-  it('skips applyParams when an inactive engine slice changes', async () => {
+  it('skips applyParams when an inactive engine slice is dispatched', async () => {
     const synth = useSynth();
     const state = await synth.ensureAudio();
     const synthEngine = state.engines[0]; // track 0 starts as synth
     const applySpy = vi.spyOn(synthEngine, 'applyParams');
     applySpy.mockClear();
 
-    // Mutate the kick slice on track 0 while engineType is still 'synth'.
-    synth.project.tracks[0].engines.kick.tune = 80;
-    await nextTick();
+    // Dispatch to the kick slice on track 0 while engineType is still 'synth'.
+    mod.dispatchLocal(['tracks', 0, 'engines', 'kick', 'tune'], 80);
 
     expect(applySpy).not.toHaveBeenCalled();
   });
 });
 
 describe('lazy per-slot engines (E1)', () => {
-  // Same module bootstrap as the narrow-watchers suite above.
+  // Same module bootstrap as the command-stream suite above.
   beforeEach(async () => {
     try { localStorage.removeItem('fiddle:project'); } catch {}
     vi.resetModules();
-    const mod = await import('./useSynth');
+    mod = await import('./useSynth');
     useSynth = mod.useSynth;
     disposeSynth = mod.disposeSynth;
     mod.setSyncEnabled(false);
@@ -163,14 +161,14 @@ describe('lazy per-slot engines (E1)', () => {
     const state = await synth.ensureAudio();
     expect(state.engines[10]).toBeUndefined();
 
-    // Enable: the flush:'sync' watcher builds the engine immediately.
-    synth.project.tracks[10].enabled = true;
+    // Enable: the synchronous stream reaction builds the engine immediately.
+    mod.dispatchLocal(['tracks', 10, 'enabled'], true);
     const engine = state.engines[10];
     expect(engine).toBeDefined();
     const disposeSpy = vi.spyOn(engine, 'dispose');
 
     // Disable: the slot empties at once; dispose waits out the anti-click fade.
-    synth.project.tracks[10].enabled = false;
+    mod.dispatchLocal(['tracks', 10, 'enabled'], false);
     expect(state.engines[10]).toBeUndefined();
     expect(disposeSpy).not.toHaveBeenCalled();
     vi.advanceTimersByTime(30);
@@ -182,10 +180,10 @@ describe('lazy per-slot engines (E1)', () => {
     const synth = useSynth();
     const state = await synth.ensureAudio();
     // Edit a disabled slot's slice — no engine yet, nothing to crash.
-    synth.project.tracks[10].engines.synth.filterCutoff = 1234;
+    mod.dispatchLocal(['tracks', 10, 'engines', 'synth', 'filterCutoff'], 1234);
     expect(state.engines[10]).toBeUndefined();
 
-    synth.project.tracks[10].enabled = true;
+    mod.dispatchLocal(['tracks', 10, 'enabled'], true);
     // syncTrackToEngine applies the whole slice at construction — SynthEngine
     // records the cutoff in baseCutoff.
     expect(state.engines[10]).toBeDefined();
