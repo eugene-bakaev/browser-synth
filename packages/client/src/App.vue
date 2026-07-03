@@ -29,21 +29,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useSynth } from './composables/useSynth';
+import { RUNTIME_KEY } from './app/AppRuntime';
+import { createSynthContext, SYNTH_CONTEXT } from './app/synthContext';
 import { ACTIVE_TRACK_KEY } from './sync/knobSync';
-import { SYNTH_CONTEXT } from './sync/synthContext';
 import { reconcileSessionToUrl } from './sync/reconcileSession';
 import { getSession } from './sync/sessionsApi';
 import ErrorOverlay from './components/ErrorOverlay.vue';
 import DialogHost from './components/DialogHost.vue';
 import Sidebar from './components/Sidebar.vue';
 
-// useSynth() is called exactly once here, in the never-unmounting shell, so its
-// per-call currentStep/activeTrackIndex are stable and audio/WS (module-scope)
-// survive any future navigation.
-const synth = useSynth();
+// The synth context is built exactly once here, in the never-unmounting shell,
+// from the page's AppRuntime (provided by main.ts). Its per-context
+// currentStep/activeTrackIndex are stable and the runtime's audio/WS survive any
+// future navigation.
+const runtime = inject(RUNTIME_KEY);
+if (!runtime) throw new Error('RUNTIME_KEY not provided — main.ts must provide the AppRuntime');
+const synth = createSynthContext(runtime);
 provide(SYNTH_CONTEXT, synth);
 provide(ACTIVE_TRACK_KEY, synth.activeTrackIndex);
 

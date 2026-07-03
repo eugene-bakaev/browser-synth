@@ -305,8 +305,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
-import { dispatchLocal, projectOps } from '../composables/useSynth';
-import { SYNTH_CONTEXT } from '../sync/synthContext';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
   saveProjectToFile,
@@ -343,6 +342,7 @@ const dialog = useDialog();
 
 const synth = inject(SYNTH_CONTEXT);
 if (!synth) throw new Error('SYNTH_CONTEXT not provided');
+const { dispatchLocal, projectOps } = synth;
 
 const projectStore = useProjectStore();
 

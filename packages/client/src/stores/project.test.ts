@@ -2,13 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { TRACK_POOL_SIZE } from '@fiddle/shared';
 import { freshProject } from '../project';
-import { useProjectStore, __resetProjectStoreForTest } from './project';
+import { useProjectStore } from './project';
 
 describe('useProjectStore', () => {
   beforeEach(() => {
-    // The canonical project is now a module-scope singleton, so a fresh Pinia
-    // alone no longer resets its state — reset the shared instance explicitly.
-    __resetProjectStoreForTest();
+    // Phase 5: the canonical project is created inside the setup store, so a
+    // fresh Pinia genuinely isolates state — no module-reset gymnastics.
     setActivePinia(createPinia());
   });
 
@@ -37,21 +36,13 @@ describe('useProjectStore', () => {
     expect(store.project.bpm).toBe(137);
   });
 
-  it('exposes ONE module-scope canonical instance shared across Pinia instances', () => {
+  it('a fresh Pinia mints an isolated project instance', () => {
     const a = useProjectStore();
     a.project.bpm = 151;
-    setActivePinia(createPinia()); // a brand-new Pinia → a new store wrapper
+    setActivePinia(createPinia()); // a brand-new Pinia → a fresh store + project
     const b = useProjectStore();
-    expect(b.project).toBe(a.project); // same underlying canonical object
-    expect(b.project.bpm).toBe(151);   // shared state, not a fresh copy
-  });
-
-  it('__resetProjectStoreForTest restores a fresh project in place', () => {
-    const store = useProjectStore();
-    store.project.bpm = 200;
-    __resetProjectStoreForTest();
-    expect(store.project.bpm).toBe(freshProject().bpm);
-    expect(store.project.tracks.length).toBe(TRACK_POOL_SIZE);
+    expect(b.project).not.toBe(a.project); // per-Pinia instance
+    expect(b.project.bpm).toBe(freshProject().bpm); // isolated, not the mutated 151
   });
 
   it('bpm selector reflects project.bpm and updates after a mutation', () => {

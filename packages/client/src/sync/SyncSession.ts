@@ -31,8 +31,8 @@ export interface SyncAuth {
 
 export interface SyncSessionDeps {
   bus: CommandBus;
-  wsClientFactory: () => WsClientFactory; // getter — honours setWsClientFactory (tests)
-  syncEnabled: () => boolean;             // getter — honours setSyncEnabled (tests)
+  wsClientFactory: () => WsClientFactory; // getter — honours AppRuntimeOptions.wsClientFactory (tests)
+  syncEnabled: () => boolean;             // getter — honours AppRuntimeOptions.syncEnabled (tests)
   auth: () => SyncAuth;                    // getter — resolved lazily (useAuth())
 }
 
@@ -57,6 +57,10 @@ export class SyncSession {
 
   get isConnected(): boolean { return this.wsClient !== null; }
   get isSyncLive(): boolean { return this.outbox !== null && this.syncReady; }
+  // Whether the WS layer is live at all (false in test mode). Read by
+  // synthContext.connectToSession to pick the reflect-only test branch —
+  // previously useSynth's module-scope `syncEnabled` flag.
+  get isSyncEnabled(): boolean { return this.deps.syncEnabled(); }
 
   // Enter a room: build the socket/outbox/bus and open with a forced snapshot.
   // In disabled (test) mode, just reflect the room id — no socket, no loader.

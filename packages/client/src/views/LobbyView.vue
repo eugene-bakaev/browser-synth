@@ -35,7 +35,7 @@
 import { onMounted, onBeforeUnmount, ref, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useLobby } from '../composables/useLobby';
-import { SYNTH_CONTEXT } from '../sync/synthContext';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 import CreateSessionDialog from '../components/CreateSessionDialog.vue';
 
 const router = useRouter();

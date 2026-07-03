@@ -79,13 +79,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
 import Knob from './Knob.vue';
 import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
-import { dispatchLocal, endGesture } from '../composables/useSynth';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 import { useCommandModel } from '../sync/commandModel';
 import { trackColor } from '../ui/trackColors';
 import { TRACK_POOL_SIZE } from '@fiddle/shared';
+
+// Writes route through the injected context's command-bus entry points (was a
+// module-scope import from useSynth before Phase 5).
+const synthCtx = inject(SYNTH_CONTEXT);
+if (!synthCtx) throw new Error('SYNTH_CONTEXT not provided');
+const { dispatchLocal, endGesture } = synthCtx;
 
 const props = defineProps<{
   trackStates: ProjectTrack[];
@@ -122,7 +128,7 @@ const isTrackTriggered = (index: number) => {
   if (!mixer || mixer.muted) return false;
 
   // Only enabled slots count toward solo — matches the audio engine's gating
-  // (useSynth updateMixerGains), so a disabled slot with a stale soloed flag
+  // (AudioEngine updateMixerGains), so a disabled slot with a stale soloed flag
   // never suppresses the trigger LED on the tracks that are actually playing.
   const anySoloed = props.trackStates.some(ts => ts.enabled && ts.mixer?.soloed);
   if (anySoloed && !mixer.soloed) return false;

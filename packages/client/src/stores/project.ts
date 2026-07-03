@@ -3,17 +3,13 @@ import { reactive, computed } from 'vue';
 import { freshProject, replaceProject, type Project, type ProjectTrack, type EngineType } from '../project';
 import { setDeep, type Path } from '@fiddle/shared';
 
-// THE single canonical project instance for the whole app. Lifted to module
-// scope (Phase 1) so the Pinia store and the legacy `useSynth` module share ONE
-// object: useSynth imports this instead of creating its own. This matches
-// useSynth's existing module-scope singleton (useSynth.ts:66 before Phase 1).
-// Phase 5 moves creation into AppRuntime.bootstrap (one instance per page) and
-// drops this module-scope singleton.
-//
-// Holds ONLY data — no socket, no AudioContext, no timers.
-const project = reactive<Project>(freshProject());
-
 export const useProjectStore = defineStore('project', () => {
+  // THE canonical project instance — created per Pinia instance, i.e. per
+  // AppRuntime (one per page; one per test runtime). Phase 5: creation moved
+  // in here from module scope, so re-evaluating any module mints nothing.
+  // Holds ONLY data — no socket, no AudioContext, no timers.
+  const project = reactive<Project>(freshProject());
+
   const enabledTrackCount = computed(() => project.tracks.filter((t) => t.enabled).length);
 
   function getTrack(index: number): ProjectTrack {
@@ -22,37 +18,22 @@ export const useProjectStore = defineStore('project', () => {
 
   const bpm = computed(() => project.bpm);
 
-  // Mirrors useSynth.getTrackEngineType — the canonical read API components
-  // migrate to. (Convenience over getTrack(index).engineType.)
   function getTrackEngineType(index: number): EngineType {
     return project.tracks[index].engineType;
   }
 
-  // The single low-level state-write primitive. Phase 2's CommandBus routes
-  // every write — local dispatch and applied remote op — through here, so this
-  // is the one place project state is mutated by a path/value. Pure state: no
-  // suppression, no opId logic, no sync (the store never knows about the socket).
+  // The single low-level state-write primitive — reached ONLY via the
+  // CommandBus. Pure state: no suppression, no opId logic, no sync.
   function applySet(path: Path, value: unknown): void {
     setDeep(project as unknown as Record<string, unknown>, path, value);
   }
 
-  // Replace the project's contents in place (snapshot load / future reconnect),
-  // preserving the `project` object identity so reactive bindings survive.
+  // Replace the project's contents in place (snapshot load / Open / New / room
+  // reset), preserving object identity so reactive bindings survive. Reached
+  // ONLY via CommandBus.loadProject.
   function loadProject(next: Project): void {
     replaceProject(project, next);
   }
 
   return { project, enabledTrackCount, getTrack, getTrackEngineType, bpm, applySet, loadProject };
 });
-
-// Raw access to the canonical instance for the legacy useSynth module (and the
-// sync layer it feeds), which still mutates project directly this phase.
-// Removed in Phase 2 when all writes funnel through the command bus.
-export { project };
-
-// Test-only: reset the shared module-scope instance between cases. The module
-// singleton means setActivePinia(createPinia()) alone no longer isolates project
-// state. Removed in Phase 5 when creation moves to AppRuntime.bootstrap.
-export function __resetProjectStoreForTest(): void {
-  replaceProject(project, freshProject());
-}

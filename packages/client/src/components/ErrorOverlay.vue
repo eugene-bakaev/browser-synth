@@ -10,12 +10,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useSynth } from '../composables/useSynth';
+import { computed, inject } from 'vue';
+import { SYNTH_CONTEXT } from '../app/synthContext';
 
 // fatalError is set by the dispatcher when the server sends a fatal `error`
 // (then closes the socket). Until then it's null and the overlay is hidden.
-const { fatalError } = useSynth();
+const synth = inject(SYNTH_CONTEXT);
+if (!synth) throw new Error('SYNTH_CONTEXT not provided');
+const { fatalError } = synth;
 
 const heading = computed(() => {
   switch (fatalError.value?.code) {

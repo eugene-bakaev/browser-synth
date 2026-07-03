@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TRACK_POOL_SIZE } from '@fiddle/shared';
 
 class MockAudioNode {
@@ -63,6 +63,7 @@ class MockAudioContext {
   sampleRate = 44100;
   destination = new MockAudioNode();
   audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
+  close = vi.fn().mockResolvedValue(undefined);
   resume = vi.fn().mockImplementation(() => {
     this.state = 'running';
     return Promise.resolve();
@@ -79,27 +80,27 @@ vi.stubGlobal('AudioParam', MockAudioParam);
 vi.stubGlobal('AudioContext', MockAudioContext);
 vi.stubGlobal('AudioWorkletNode', MockAudioWorkletNode);
 
-// Mirrors useSynth.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
+// Mirrors AudioEngine.sliderToLinearGain — slider 0..1 → -54..+6 dB → linear gain.
 // Same math, so the floating-point result matches bit-for-bit.
 const sliderGain = (s: number) => s <= 0 ? 0 : Math.pow(10, (-54 + s * 60) / 20);
 
-let useSynth: any;
-let mod: any;
 let trackGains: any[];
 
 describe('TrackMixer Logic', () => {
+  let runtime: any;
   let synthData: any;
-
-  beforeAll(async () => {
-    mod = await import('../composables/useSynth');
-    useSynth = mod.useSynth;
-    // Mixer tests don't exercise the WS layer — keep it dark so ensureAudio()
-    // doesn't try to resolve a room / open a socket (no `window` in node env).
-    mod.setSyncEnabled(false);
-  });
+  let mod: { dispatchLocal: (path: any, value: any) => void };
 
   beforeEach(async () => {
-    synthData = useSynth();
+    // Fresh runtime + context per test (Phase 5: replaces the useSynth module
+    // singletons). Mixer tests don't exercise the WS layer — keep it dark so
+    // ensureAudio() doesn't try to resolve a room / open a socket (no `window`
+    // in node env).
+    const { createAppRuntime } = await import('../app/AppRuntime');
+    const { createSynthContext } = await import('../app/synthContext');
+    runtime = createAppRuntime({ syncEnabled: false });
+    synthData = createSynthContext(runtime);
+    mod = { dispatchLocal: synthData.dispatchLocal };
     // Audio state is lazy now — force it up so trackGains exist + the bus
     // stream subscription is live. Bootstrap is async because of the pulse
     // worklet's addModule step.
@@ -122,6 +123,10 @@ describe('TrackMixer Logic', () => {
       g.gain.value = synthData.project.tracks[i].enabled ? sliderGain(0.8) : 0;
     });
   });
+
+  // Full teardown per test: settles fade-dispose timers + closes the (mock) ctx
+  // so nothing outlives the stubbed globals.
+  afterEach(() => { runtime?.shutdown(); runtime = null; });
 
   it('should initialize the full pool: enabled slots at default gain, disabled slots silent', () => {
     expect(trackGains.length).toBe(TRACK_POOL_SIZE);
