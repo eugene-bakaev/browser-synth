@@ -113,7 +113,9 @@
           <template v-if="isPoly">
             <div class="col-note">
               <select :value="step.note" @change="e => dispatchLocal(['tracks', trackId, 'steps', i, 'note'], (e.target as HTMLSelectElement).value || null)" title="Root Note">
-                <option :value="null">---</option>
+                <!-- value="" (not :value="null"): the select's `:value` binding coerces a
+                     null note to "", which must match this option or the select renders blank. -->
+                <option value="">---</option>
                 <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
@@ -132,7 +134,9 @@
           <template v-else>
             <div class="col-note">
               <select :value="step.note" @change="e => dispatchLocal(['tracks', trackId, 'steps', i, 'note'], (e.target as HTMLSelectElement).value || null)" title="Note">
-                <option :value="null">---</option>
+                <!-- value="" (not :value="null"): the select's `:value` binding coerces a
+                     null note to "", which must match this option or the select renders blank. -->
+                <option value="">---</option>
                 <option v-for="n in NOTES" :key="n" :value="n">{{ n }}</option>
               </select>
             </div>
