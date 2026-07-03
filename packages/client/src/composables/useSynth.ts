@@ -7,7 +7,6 @@ import {
   replaceProject,
 } from '../project';
 import { project } from '../stores/project';
-import { diffParams } from '../project/paramDiff';
 
 // --- Sync layer (WebSocket collaboration) ---
 import { WsClient, type WsClientOptions } from '../sync/WsClient';
@@ -18,6 +17,8 @@ import { useAuth } from '../auth/useAuth';
 import type { Path } from '@fiddle/shared';
 import { SyncSession } from '../sync/SyncSession';
 import { createCommandBus } from '../sync/CommandBus';
+import { gestureEndForLeaf } from '../sync/dispatchPolicy';
+import { createProjectOps } from '../app/projectOps';
 
 // === Pure data state — fresh at module init. ===
 //
@@ -25,11 +26,6 @@ import { createCommandBus } from '../sync/CommandBus';
 // room snapshot replaces it, so nothing ever rendered a locally-persisted
 // project. The old localStorage load/autosave path was removed (review S1) —
 // file save/open (file-io.ts) is the offline persistence story.
-
-// Local copy of the engine-slice key list (already duplicated across preset.ts /
-// storage.ts / normalize.ts; DRY-ing all copies is a separate cleanup). Still
-// used by the sync emitters below (snapshotProjectForSync / syncWholeProjectDiff).
-const ENGINE_SLICES: EngineType[] = ['synth', 'kick', 'hat', 'snare', 'clap', 'synth2', 'kick2', 'snare2', 'hat2', 'clap2'];
 
 // The current room's display name, loaded by the App shell from getSession()
 // whenever currentRoomId changes. null = not loaded / no room; '' = loaded but
@@ -106,195 +102,15 @@ const session = new SyncSession({
 // eagerly and side-effect-free (no AudioContext until first play).
 const audioEngine = new AudioEngine({ project });
 
-// Leaf fields edited as a single discrete action (a select or toggle) flush to
-// the wire immediately; everything else (knobs/sliders/drags) rides the 50ms
-// throttle. Centralized here so the policy lives in one place rather than being
-// re-derived inline in each watcher. Keyed by leaf field name — unambiguous
-// across the accept-list (no continuous and discrete field share a name).
-const DISCRETE_LEAF_FIELDS = new Set<string>([
-  'engineType', 'muted', 'soloed', 'note', 'octave', 'isChord', 'chordType', 'patternLength', 'enabled',
-  'sync', // synth2 osc hard-sync toggle: an instantaneous discrete flip, like muted/soloed
-  'loop', // synth2 envelope loop toggle (I3c): a discrete flip — flush immediately
-  'type', // synth2 filter.type enum: a discrete selector flip — flush immediately
-  'source', // synth2 matrix route source enum — discrete selector flip
-  'dest',   // synth2 matrix route dest enum — discrete selector flip
-  'model',  // synth2 filter.model enum (I3d): a discrete selector flip — flush immediately
-  // ('amount' is intentionally NOT here — a continuous knob that rides the throttle.)
-]);
-function gestureEndForLeaf(leafKey: string): boolean {
-  return DISCRETE_LEAF_FIELDS.has(leafKey);
-}
-
-// Emit the leaf-level outbound ops for one diffed object at `prefix`. The
-// accept-list forbids whole-object writes, so nested params (filterEnv/ampEnv)
-// are drilled one level to their changed a/d/s/r leaves; scalar fields emit a
-// single op. `priorValue` is the pre-edit value, carried for nack rollback.
-// Shared by the bulk sync emitters (syncStepWindowDiff / syncWholeProjectDiff /
-// syncEngineParamsDiff).
-function emitLeafDiff(
-  prefix: Path,
-  changed: Record<string, unknown>,
-  oldObj: Record<string, unknown> | undefined,
-): void {
-  for (const [key, value] of Object.entries(changed)) {
-    // Arrays (synth2.matrix) are drilled per-slot by emitMatrixDiff, not here —
-    // a one-level drill here would emit a forbidden whole-slot object write.
-    if (Array.isArray(value)) continue;
-    if (value !== null && typeof value === 'object') {
-      const oldNested = (oldObj?.[key] ?? {}) as Record<string, unknown>;
-      const newNested = value as Record<string, unknown>;
-      for (const subKey of Object.keys(newNested)) {
-        if (oldNested[subKey] === newNested[subKey]) continue;
-        session.enqueue([...prefix, key, subKey], newNested[subKey], oldNested[subKey], gestureEndForLeaf(subKey));
-      }
-    } else {
-      session.enqueue([...prefix, key], value, oldObj?.[key], gestureEndForLeaf(key));
-    }
-  }
-}
-
-// Sync an already-applied engine-slice param write (preset load) by diffing the
-// pre-write slice snapshot against the now-mutated live slice. Mirrors
-// syncStepWindowDiff: the engine-slice watcher used to cover this for free; with
-// it deleted, the bulk writer (applyPreset) must emit explicitly.
-// Drill the synth2 mod matrix (an array of {source,dest,amount} slots) to per-slot
-// leaf ops. diffParams/emitLeafDiff skip arrays, so the matrix must be diffed here
-// — shared by the whole-project (Open/New) and per-slice (preset load / INIT PATCH)
-// emitters so both cover it identically. Callers guarantee the room is live.
-function emitMatrixDiff(
-  trackIdx: number,
-  newSlice: Record<string, unknown>,
-  oldSlice: Record<string, unknown>,
-): void {
-  const newM = (newSlice as { matrix?: Record<string, unknown>[] }).matrix;
-  const oldM = (oldSlice as { matrix?: Record<string, unknown>[] }).matrix;
-  if (!newM || !oldM) return;
-  for (let s = 0; s < newM.length; s++) {
-    for (const field of ['source', 'dest', 'amount'] as const) {
-      const a = newM[s]?.[field]; const o = oldM[s]?.[field];
-      if (a === o) continue;
-      session.enqueue(['tracks', trackIdx, 'engines', 'synth2', 'matrix', s, field], a, o, gestureEndForLeaf(field));
-    }
-  }
-}
-
-export function syncEngineParamsDiff(
-  trackIdx: number,
-  engineType: EngineType,
-  beforeSlice: Record<string, unknown>,
-): void {
-  if (!session.isSyncLive) return;
-  const after = project.tracks[trackIdx].engines[engineType] as unknown as Record<string, unknown>;
-  const changed = diffParams(after, beforeSlice);
-  if (changed) emitLeafDiff(['tracks', trackIdx, 'engines', engineType], changed, beforeSlice);
-  // The matrix is an array (skipped by emitLeafDiff) → drill it explicitly so a
-  // synth2 preset/INIT-PATCH with routing changes actually syncs.
-  if (engineType === 'synth2') emitMatrixDiff(trackIdx, after, beforeSlice);
-}
-
-// Sync an already-applied BULK local edit by diffing a pre-edit snapshot against
-// the now-mutated live project and enqueuing the changed leaves — exactly what the
-// removed steps/mixer/scalar watchers did, but invoked on demand for the bulk
-// operations (Clear/Shift/Fill, Open/New) whose multi-leaf writes don't flow
-// through per-control dispatchLocal. Gated on the room being live, mirroring the
-// removed watchers' `outbox && syncReady` guard (the network-apply suppression
-// they also checked is gone — no outbound watcher remains to echo these writes).
-export function syncStepWindowDiff(trackId: number, beforeSteps: Record<string, unknown>[]): void {
-  if (!session.isSyncLive) return;
-  const steps = project.tracks[trackId].steps;
-  for (let j = 0; j < beforeSteps.length; j++) {
-    const changed = diffParams(
-      steps[j] as unknown as Record<string, unknown>,
-      beforeSteps[j],
-    );
-    if (changed) emitLeafDiff(['tracks', trackId, 'steps', j], changed, beforeSteps[j]);
-  }
-}
-
-// Snapshot the sync-relevant fields of the current project before a bulk replace
-// (Open file / New project). Captures bpm + per-track engineType/patternLength/
-// enabled/mixer/steps/engines. Engine params are now emitted by syncWholeProjectDiff;
-// only the synth2 matrix array is deferred to Task 3.
-// Deep-ish clone of an engine slice: copies one level of nested param objects
-// (synth2's osc1/env1/filter…) and array-of-object slots (the matrix) so the
-// result is a stable "before" image that an in-place nested mutation on the live
-// slice cannot leak into. Used by both the bulk project snapshot and preset-load
-// diffing (applyPresetSynced), which otherwise depend on the caller replacing
-// nested references rather than mutating them.
-export function cloneEngineSlice(src: Record<string, unknown>): Record<string, unknown> {
-  const copy: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(src)) {
-    if (Array.isArray(v)) copy[k] = v.map((el) => (el && typeof el === 'object' ? { ...el } : el));
-    else if (v && typeof v === 'object') copy[k] = { ...(v as Record<string, unknown>) };
-    else copy[k] = v;
-  }
-  return copy;
-}
-
-export interface ProjectSyncSnapshot {
-  bpm: number;
-  tracks: {
-    engineType: string; patternLength: number; enabled: boolean;
-    mixer: Record<string, unknown>;
-    steps: Record<string, unknown>[];
-    engines: Record<string, Record<string, unknown>>; // per ENGINE_SLICES, shallow copy
-  }[];
-}
-export function snapshotProjectForSync(): ProjectSyncSnapshot {
-  return {
-    bpm: project.bpm,
-    tracks: project.tracks.map(t => ({
-      engineType: t.engineType,
-      patternLength: t.patternLength,
-      enabled: t.enabled,
-      mixer: { ...t.mixer } as unknown as Record<string, unknown>,
-      steps: t.steps.map(s => ({ ...s }) as unknown as Record<string, unknown>),
-      engines: Object.fromEntries(
-        ENGINE_SLICES.map((slice) => [
-          slice,
-          cloneEngineSlice(t.engines[slice] as unknown as Record<string, unknown>),
-        ]),
-      ),
-    })),
-  };
-}
-
-// Sync a whole-project replace (Open file / New project). Emits bpm + per-track
-// engineType/patternLength/enabled/mixer/steps/engine-slice params + the synth2
-// mod matrix. All outbound sync watchers are gone, so every leaf the removed
-// watchers used to cover is emitted here by diffing the live project against a
-// pre-replace snapshot from snapshotProjectForSync().
-export function syncWholeProjectDiff(before: ProjectSyncSnapshot): void {
-  if (!session.isSyncLive) return;
-  if (project.bpm !== before.bpm) session.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
-  for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-    const t = project.tracks[i]; const b = before.tracks[i];
-    // engineType / patternLength / enabled scalars
-    const headNew = { engineType: t.engineType, patternLength: t.patternLength, enabled: t.enabled } as Record<string, unknown>;
-    const headOld = { engineType: b.engineType, patternLength: b.patternLength, enabled: b.enabled } as Record<string, unknown>;
-    const headChanged = diffParams(headNew, headOld);
-    if (headChanged) emitLeafDiff(['tracks', i], headChanged, headOld);
-    // mixer leaves
-    const mixChanged = diffParams(t.mixer as unknown as Record<string, unknown>, b.mixer);
-    if (mixChanged) emitLeafDiff(['tracks', i, 'mixer'], mixChanged, b.mixer);
-    // step leaves
-    for (let j = 0; j < t.steps.length; j++) {
-      const sc = diffParams(t.steps[j] as unknown as Record<string, unknown>, b.steps[j]);
-      if (sc) emitLeafDiff(['tracks', i, 'steps', j], sc, b.steps[j]);
-    }
-    // engine-slice params (the synth2 matrix array is emitted separately below —
-    // diffParams/emitLeafDiff intentionally skip arrays)
-    for (const slice of ENGINE_SLICES) {
-      const ec = diffParams(
-        t.engines[slice] as unknown as Record<string, unknown>,
-        b.engines[slice],
-      );
-      if (ec) emitLeafDiff(['tracks', i, 'engines', slice], ec, b.engines[slice]);
-    }
-    // synth2 mod matrix (skipped by emitLeafDiff's array guard → drilled here)
-    emitMatrixDiff(i, t.engines.synth2 as unknown as Record<string, unknown>, b.engines.synth2);
-  }
-}
+// Bulk project operations (Clear/Shift/Fill, preset load, INIT PATCH, New/Open)
+// as pure draft-diff-dispatch through the bus. Interim module-scope instance —
+// Phase 5 Task 4 moves this onto the synth context.
+export const projectOps = createProjectOps({
+  project,
+  bus,
+  isSyncLive: () => session.isSyncLive,
+  enqueue: (path, value, prior, gestureEnd) => session.enqueue(path, value, prior, gestureEnd),
+});
 
 // Enter a session: bring up the room connection for `roomId` and reflect it in
 // the URL. Idempotent for the same room; switches cleanly between rooms. Does

@@ -305,22 +305,15 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
 import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
-import { dispatchLocal, syncStepWindowDiff, snapshotProjectForSync, syncWholeProjectDiff, syncEngineParamsDiff, cloneEngineSlice } from '../composables/useSynth';
+import { dispatchLocal, projectOps } from '../composables/useSynth';
 import { SYNTH_CONTEXT } from '../sync/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
-  clearTrack as clearProjectTrack,
-  shiftTrack as shiftProjectTrack,
-  fillTrack  as fillProjectTrack,
   saveProjectToFile,
   openProjectFromFile,
-  replaceProject,
-  freshProject,
   makePreset,
   savePresetToFile,
   openPresetFromFile,
-  applyPreset,
-  resetEnginePatch,
   PRESET_SCHEMA_VERSION,
   type EngineParamsMap,
   type ProjectTrack,
@@ -440,16 +433,8 @@ const currentUserId = computed(() => auth.session.value?.user.id ?? null);
 const showSettings = ref(false);
 const presetLibraryOpen = ref(false);
 
-// Dispatch engineType BEFORE applyPreset so the swap syncs with the correct prior
-// (the OLD engine), then snapshot the slice, mutate via applyPreset, and emit the
-// diff — the engine-slice watcher is gone, so we emit explicitly.
 function applyPresetSynced(trackIdx: number, preset: Preset): void {
-  dispatchLocal(['tracks', trackIdx, 'engineType'], preset.engineType); // discrete, syncs the swap
-  // Deep-ish clone so a nested slice change survives the diff regardless of how
-  // applyPreset mutates (it uses Object.assign today, but don't depend on that).
-  const before = cloneEngineSlice(project.tracks[trackIdx].engines[preset.engineType] as Record<string, unknown>);
-  applyPreset(project.tracks[trackIdx], preset);                        // mutates the slice in place
-  syncEngineParamsDiff(trackIdx, preset.engineType, before);            // emit changed params (watcher is gone)
+  projectOps.applyPreset(trackIdx, preset);
 }
 
 const onLoadPresetFromLibrary = (rec: PresetRecord) => {
@@ -528,23 +513,12 @@ const activeAnalyser = computed(() =>
   trackAnalysers.value?.[activeTrackIndex.value ?? 0] ?? null
 );
 
-const onClear = (trackId: number) => {
-  const len = project.tracks[trackId].patternLength;
-  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
-  clearProjectTrack(project.tracks[trackId], len);
-  syncStepWindowDiff(trackId, before);
-};
+const onClear = (trackId: number) => { projectOps.clearTrack(trackId); };
 const onShift = ({ trackId, direction }: { trackId: number; direction: 'left' | 'right' }) => {
-  const len = project.tracks[trackId].patternLength;
-  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
-  shiftProjectTrack(project.tracks[trackId], direction, len);
-  syncStepWindowDiff(trackId, before);
+  projectOps.shiftTrack(trackId, direction);
 };
 const onFill = ({ trackId, interval }: { trackId: number; interval: number }) => {
-  const len = project.tracks[trackId].patternLength;
-  const before = project.tracks[trackId].steps.slice(0, len).map(s => ({ ...s }) as unknown as Record<string, unknown>);
-  fillProjectTrack(project.tracks[trackId], interval, len);
-  syncStepWindowDiff(trackId, before);
+  projectOps.fillTrack(trackId, interval);
 };
 const onSetLength = ({ trackId, length }: { trackId: number; length: number }) => {
   dispatchLocal(['tracks', trackId, 'patternLength'], length);
@@ -558,9 +532,7 @@ const onNew = async () => {
     danger: true,
   });
   if (!ok) return;
-  const before = snapshotProjectForSync();
-  replaceProject(project, freshProject());
-  syncWholeProjectDiff(before);
+  projectOps.newProject();
 };
 
 const onSave = () => {
@@ -571,9 +543,7 @@ const onOpen = async () => {
   try {
     const loaded = await openProjectFromFile();
     if (!loaded) return;
-    const before = snapshotProjectForSync();
-    replaceProject(project, loaded);
-    syncWholeProjectDiff(before);
+    projectOps.openProject(loaded);
   } catch (e) {
     console.warn('Open failed:', e);
     await dialog.alert(`Could not open project: ${e instanceof Error ? e.message : 'unknown error'}`);
@@ -629,13 +599,7 @@ const onInitPatch = async () => {
   });
   // Re-check: the active track may have changed while the dialog was open.
   if (ok && activeTrackIndex.value !== null) {
-    const i = activeTrackIndex.value;
-    const engineType = project.tracks[i].engineType;
-    // Snapshot before the in-place reset, then emit the diff — the engine-slice
-    // watcher that used to sync this mutation is gone.
-    const before = cloneEngineSlice(project.tracks[i].engines[engineType] as Record<string, unknown>);
-    resetEnginePatch(project.tracks[i]);
-    syncEngineParamsDiff(i, engineType, before);
+    projectOps.initPatch(activeTrackIndex.value);
   }
 };
 </script>

@@ -3,8 +3,8 @@ import {
   makePreset,
   serializePreset,
   deserializePreset,
-  applyPreset,
-  resetEnginePatch,
+  applyPresetDraft,
+  resetEnginePatchDraft,
   PRESET_SCHEMA_VERSION,
   type Preset,
 } from './preset';
@@ -70,54 +70,55 @@ describe('preset — serialize/deserialize round-trip', () => {
   });
 });
 
-describe('preset — applyPreset', () => {
-  it('preserves track reference identity', () => {
+describe('preset — applyPresetDraft', () => {
+  it('does not mutate the track (pure draft producer)', () => {
     const track = freshTrack();
-    const before = track;
-    applyPreset(track, makePreset('synth', { ...SynthEngine.DEFAULT_PARAMS, filterCutoff: 4444 }));
-    expect(track).toBe(before);
+    expect(track.engineType).toBe('synth');
+    applyPresetDraft(track, makePreset('synth', { ...SynthEngine.DEFAULT_PARAMS, filterCutoff: 4444 }));
+    expect(track.engineType).toBe('synth'); // engineType is dispatched separately by the caller
+    expect(track.engines.synth.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
   });
 
-  it('writes engineType + the matching engine slice; leaves other engines untouched', () => {
+  it('returns the matching engine slice with the preset params merged over the live clone', () => {
     const track = freshTrack();
     track.engines.kick.tune = 88;
     track.engines.synth.filterCutoff = 1111;
-    expect(track.engineType).toBe('synth');
 
-    applyPreset(track, makePreset('kick', { ...KickEngine.DEFAULT_PARAMS, tune: 22 }));
-    expect(track.engineType).toBe('kick');
-    expect(track.engines.kick.tune).toBe(22);
+    const draft = applyPresetDraft(track, makePreset('kick', { ...KickEngine.DEFAULT_PARAMS, tune: 22 }));
+    expect((draft as { tune: number }).tune).toBe(22);
+    // other engine slices on the track are untouched (the draft is scoped to
+    // the preset's engineType only)
     expect(track.engines.synth.filterCutoff).toBe(1111);
   });
 
-  it('leaves mixer + steps untouched', () => {
+  it('does not touch mixer or steps', () => {
     const track = freshTrack();
     track.mixer.volume = 0.42;
     track.steps[0].note = 'C';
 
-    applyPreset(track, makePreset('hat', { decay: 0.99, tone: 5000, metallic: 0.1 } as any));
+    applyPresetDraft(track, makePreset('hat', { decay: 0.99, tone: 5000, metallic: 0.1 } as any));
     expect(track.mixer.volume).toBe(0.42);
     expect(track.steps[0].note).toBe('C');
   });
 });
 
-describe('preset — resetEnginePatch', () => {
-  it('restores active engine params to DEFAULT_PARAMS', () => {
+describe('preset — resetEnginePatchDraft', () => {
+  it('returns the active engine params reset to DEFAULT_PARAMS', () => {
     const track = freshTrack();
     track.engines.synth.filterCutoff = 1234;
     track.engines.synth.mode = 'poly';
-    resetEnginePatch(track);
-    expect(track.engines.synth.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
-    expect(track.engines.synth.mode).toBe(SynthEngine.DEFAULT_PARAMS.mode);
+    const draft = resetEnginePatchDraft(track) as { filterCutoff: number; mode: string };
+    expect(draft.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
+    expect(draft.mode).toBe(SynthEngine.DEFAULT_PARAMS.mode);
   });
 
-  it('leaves engineType unchanged', () => {
+  it('does not mutate the track (pure draft producer)', () => {
     const track = freshTrack();
     track.engineType = 'kick';
     track.engines.kick.tune = 99;
-    resetEnginePatch(track);
+    resetEnginePatchDraft(track);
     expect(track.engineType).toBe('kick');
-    expect(track.engines.kick.tune).toBe(KickEngine.DEFAULT_PARAMS.tune);
+    expect(track.engines.kick.tune).toBe(99);
   });
 
   it('leaves other engines on the track untouched (dense-model preservation)', () => {
@@ -125,25 +126,17 @@ describe('preset — resetEnginePatch', () => {
     track.engineType = 'synth';
     track.engines.synth.filterCutoff = 1234;
     track.engines.kick.tune = 88;
-    resetEnginePatch(track);
-    expect(track.engines.synth.filterCutoff).toBe(SynthEngine.DEFAULT_PARAMS.filterCutoff);
+    resetEnginePatchDraft(track);
     expect(track.engines.kick.tune).toBe(88);
   });
 
-  it('leaves mixer + steps untouched', () => {
+  it('does not touch mixer or steps', () => {
     const track = freshTrack();
     track.mixer.volume = 0.42;
     track.steps[0].note = 'C';
     track.engines.synth.filterCutoff = 1234;
-    resetEnginePatch(track);
+    resetEnginePatchDraft(track);
     expect(track.mixer.volume).toBe(0.42);
     expect(track.steps[0].note).toBe('C');
-  });
-
-  it('preserves track reference identity', () => {
-    const track = freshTrack();
-    const before = track;
-    resetEnginePatch(track);
-    expect(track).toBe(before);
   });
 });

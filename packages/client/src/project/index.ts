@@ -11,7 +11,7 @@ export {
   activeParams,
 } from './types';
 export { freshProject, freshTrack, freshStep } from './factory';
-export { clearTrack, shiftTrack, fillTrack } from './mutations';
+export { clearTrackDraft, shiftTrackDraft, fillTrackDraft } from './mutations';
 export { reconcileWithDefaults } from './storage';
 export { migrateToLatest } from './migrations';
 export {
@@ -29,8 +29,8 @@ export {
   makePreset,
   serializePreset,
   deserializePreset,
-  applyPreset,
-  resetEnginePatch,
+  applyPresetDraft,
+  resetEnginePatchDraft,
   type Preset,
 } from './preset';
 export {

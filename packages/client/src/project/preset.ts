@@ -10,6 +10,7 @@ import { Kick2Engine } from '../engine/Kick2Engine';
 import { Snare2Engine } from '../engine/Snare2Engine';
 import { Hat2Engine } from '../engine/Hat2Engine';
 import { Clap2Engine } from '../engine/Clap2Engine';
+import { cloneEngineSlice } from './paramDiff';
 import type {
   EngineType,
   EngineParamsMap,
@@ -93,25 +94,23 @@ export function deserializePreset(text: string): Preset {
   };
 }
 
-// Mutate `track` in place to take on the preset's engine + params.
-// Leaves track.mixer, track.steps, and the other-engines' params on
-// this track untouched. Preserves the track reference identity, so
-// installed Vue watchers on `track` keep firing.
-export function applyPreset(track: ProjectTrack, preset: Preset): void {
-  track.engineType = preset.engineType;
-  Object.assign(
-    track.engines[preset.engineType] as unknown as Record<string, unknown>,
-    preset.params as unknown as Record<string, unknown>,
-  );
+// Compute the engine slice a preset load would produce — a plain draft, no
+// mutation. Mirrors the old applyPreset semantics: preset params are assigned
+// over a clone of the live slice (whole nested objects replaced by assign).
+// engineType is NOT part of the draft — the caller dispatches it separately
+// (discrete op, correct prior = the OLD engine).
+export function applyPresetDraft(track: ProjectTrack, preset: Preset): Record<string, unknown> {
+  const live = track.engines[preset.engineType] as unknown as Record<string, unknown>;
+  const draft = cloneEngineSlice(live);
+  Object.assign(draft, preset.params as unknown as Record<string, unknown>);
+  return draft;
 }
 
-// Mutate `track` in place: reset the active engine's params to its
-// DEFAULT_PARAMS. Leaves engineType, the other engines, mixer, and
-// steps untouched. structuredClone is safe here — DEFAULTS values are
-// the engine classes' static plain objects, not Vue reactive proxies.
-export function resetEnginePatch(track: ProjectTrack): void {
-  Object.assign(
-    track.engines[track.engineType] as unknown as Record<string, unknown>,
-    structuredClone(DEFAULTS[track.engineType]) as unknown as Record<string, unknown>,
-  );
+// Draft for INIT PATCH: the active engine's DEFAULT_PARAMS over a clone of the
+// live slice. structuredClone is safe — DEFAULTS are static plain objects.
+export function resetEnginePatchDraft(track: ProjectTrack): Record<string, unknown> {
+  const live = track.engines[track.engineType] as unknown as Record<string, unknown>;
+  const draft = cloneEngineSlice(live);
+  Object.assign(draft, structuredClone(DEFAULTS[track.engineType]) as unknown as Record<string, unknown>);
+  return draft;
 }

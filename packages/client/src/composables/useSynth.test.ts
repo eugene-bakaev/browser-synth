@@ -606,63 +606,6 @@ describe('sync integration', () => {
     expect(fake.sent.find((o) => JSON.stringify(o.path) === JSON.stringify(['bpm']))).toBeUndefined();
   });
 
-  // C1: syncStepWindowDiff — bulk step writes (Clear/Shift/Fill)
-  it('syncStepWindowDiff emits changed step fields as leaf ops (C1)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const before = synth.project.tracks[0].steps.slice(0, 4).map((s: any) => ({ ...s }));
-    synth.project.tracks[0].steps[0].note = 'C';
-    synth.project.tracks[0].steps[2].note = 'D';
-    mod.syncStepWindowDiff(0, before);
-    // 'note' is discrete → no timer advance needed
-    const noteOp0 = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
-    expect(noteOp0?.value).toBe('C');
-    const noteOp2 = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 2, 'note']));
-    expect(noteOp2?.value).toBe('D');
-  });
-
-  it('syncStepWindowDiff emits nothing when the window is unchanged (C1 regression)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const before = synth.project.tracks[0].steps.slice(0, 4).map((s: any) => ({ ...s }));
-    fake.sent.length = 0;
-    mod.syncStepWindowDiff(0, before);
-    expect(fake.sent.length).toBe(0);
-  });
-
-  // M3: snapshotProjectForSync + syncWholeProjectDiff — Open file / New project
-  it('syncWholeProjectDiff emits bpm, patternLength, mixer.volume, and step note (M3)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const before = mod.snapshotProjectForSync();
-    synth.project.bpm = 150;
-    synth.project.tracks[0].patternLength = 32;
-    synth.project.tracks[1].mixer.volume = 0.3;
-    synth.project.tracks[0].steps[0].note = 'C';
-    mod.syncWholeProjectDiff(before);
-    vi.advanceTimersByTime(50); // bpm and mixer.volume are throttled
-    const bpmOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['bpm']));
-    expect(bpmOp?.value).toBe(150);
-    const plOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'patternLength']));
-    expect(plOp?.value).toBe(32);
-    const volOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 1, 'mixer', 'volume']));
-    expect(volOp?.value).toBeCloseTo(0.3);
-    const noteOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'steps', 0, 'note']));
-    expect(noteOp?.value).toBe('C');
-    // No engine params changed in this test, so nothing under 'engines' should be
-    // emitted. The synth2 matrix array is still deferred to Task 3's watcher.
-    for (const o of fake.sent) {
-      expect((o.path as string[]).includes('engines')).toBe(false);
-      expect((o.path as string[]).includes('matrix')).toBe(false);
-    }
-  });
-
-  it('syncWholeProjectDiff emits nothing when snapshot matches live (M3 regression)', async () => {
-    const { mod, fake } = await bootWithFakeSocket();
-    const before = mod.snapshotProjectForSync();
-    fake.sent.length = 0;
-    mod.syncWholeProjectDiff(before);
-    vi.advanceTimersByTime(50);
-    expect(fake.sent.length).toBe(0);
-  });
-
   // --- Phase 2b-iii new tests ---
 
   it('engine param edit via dispatch emits exactly one op (no double-emit)', async () => {
@@ -673,52 +616,6 @@ describe('sync integration', () => {
     const ops = fake.sent.filter((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.filter.cutoff');
     expect(ops).toHaveLength(1);
     expect(ops[0].value).toBe(3000);
-  });
-
-  it('applyPreset emits the changed engine-slice params', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const before = { ...(synth.project.tracks[0].engines.kick as Record<string, unknown>) };
-    // simulate the StudioView flow: mutate the slice then call the diff emitter
-    (synth.project.tracks[0].engines.kick as any).tune = 99;
-    fake.sent.length = 0;
-    mod.syncEngineParamsDiff(0, 'kick', before);
-    vi.advanceTimersByTime(50);
-    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.kick.tune' && o.value === 99)).toBe(true);
-  });
-
-  it('whole-project diff emits engine-slice param changes (Open/New)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const snap = mod.snapshotProjectForSync();
-    (synth.project.tracks[0].engines.synth2 as any).osc1.morph = 2.5;
-    fake.sent.length = 0;
-    mod.syncWholeProjectDiff(snap);
-    vi.advanceTimersByTime(50);
-    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.osc1.morph' && o.value === 2.5)).toBe(true);
-  });
-
-  it('whole-project diff emits matrix leaf changes (Open/New)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    const snap = mod.snapshotProjectForSync();
-    (synth.project.tracks[0].engines.synth2 as any).matrix[0].amount = 0.5;
-    fake.sent.length = 0;
-    mod.syncWholeProjectDiff(snap);
-    vi.advanceTimersByTime(50);
-    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.0.amount' && o.value === 0.5)).toBe(true);
-  });
-
-  it('syncEngineParamsDiff emits synth2 matrix changes (preset load / INIT PATCH)', async () => {
-    const { mod, synth, fake } = await bootWithFakeSocket();
-    // Simulate the applyPresetSynced / onInitPatch flow: snapshot the slice, mutate
-    // a matrix route in place, then emit the diff. Guards the array-skip footgun:
-    // emitLeafDiff drops arrays, so without the emitMatrixDiff drill this is silent.
-    const before = mod.cloneEngineSlice(synth.project.tracks[0].engines.synth2 as any);
-    (synth.project.tracks[0].engines.synth2 as any).matrix[2].dest = 'filter.cutoff';
-    (synth.project.tracks[0].engines.synth2 as any).matrix[2].amount = 0.7;
-    fake.sent.length = 0;
-    mod.syncEngineParamsDiff(0, 'synth2', before);
-    vi.advanceTimersByTime(50);
-    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.2.dest' && o.value === 'filter.cutoff')).toBe(true);
-    expect(fake.sent.some((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.matrix.2.amount' && o.value === 0.7)).toBe(true);
   });
 });
 
