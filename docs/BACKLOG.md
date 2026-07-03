@@ -5,6 +5,77 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
+### 🔴 P0 — Reload of a session shows a blank default project (auth-reconnect races the initial snapshot)
+**Reported:** 2026-07-03 · **Status:** open / **HIGHEST PRIORITY** · **Area:** `packages/client/src/sync/WsClient.ts`, `packages/client/src/sync/SyncSession.ts` (auth-reconnect watcher)
+
+**Symptom.** Signed-in user opens a session (`/r/<id>`), hits cmd+R: ~75% of the
+time the app comes back "live" showing the **default fresh project** (4 ×
+SYNTH·MONO, empty steps, BPM 120) instead of the room's content. The connection
+looks healthy — room name in the app-bar, LEAVE present, loader gone. A further
+reload sometimes fixes it. **Guests are unaffected** (which is why the Phase 4/5
+browser checkpoints — all guest-mode — never caught it).
+
+**Root cause (confirmed 2026-07-03, local repro + OpenObserve server logs).**
+A boot-time race between the initial snapshot and the auth-reconnect watcher:
+
+1. Boot with a room URL: `connectToSession` loads `freshProject()` into the
+   store as a placeholder, then `wsClient.connect({ forceSnapshot: true })`
+   opens socket A. Supabase hasn't restored the login yet → guest hello,
+   no `resumeFromOpId` → server sends the full snapshot.
+2. A few ms later `useAuth`'s `getSession()` resolves → user id flips
+   `null → uid` → `SyncSession.installAuthReconnectWatcher` fires
+   `wsClient.reconnect()`.
+3. `reconnect()` = `disconnect()` + `connect()` **without** `forceSnapshot`.
+   Socket A is superseded (its in-flight snapshot is dropped by the
+   superseded-socket guard); socket B's hello carries the token AND
+   `resumeFromOpId = persisted.opIdLastSeen` — the sessionStorage value from
+   **before the reload** (also pre-advanced to `opIdHead` by socket A's
+   welcome, before any content applied).
+4. Server: `resumeFrom == opIdHead` → nothing to replay → `sync.complete`.
+   Client goes live with the blank placeholder; the outbound gate opens.
+
+Whether the user sees content is literally whether socket A's snapshot frame is
+dispatched before step 2 fires — an event-loop coin flip (~25% lucky locally).
+
+**Evidence.** Reproduced in the reporter's Chrome on `/r/zeeekndd4` (1 blank in
+3 reloads); on the blank reload the OpenObserve `default` stream shows **two
+`client live` handshakes 15 ms apart** (first resuming `c_jh3fxpe`, second
+minting `c_r4eyaw2` — authenticated hellos always mint via
+`makeAuthenticatedIdentity`), and sessionStorage's `fiddle:sync:<room>`
+clientId flips on every signed-in reload. `engineTexts` sampling shows
+4 × SYNTH·MONO exactly when the reconnect wins the race.
+
+**Almost certainly the June prod data-loss root cause.** Pre-Phase-2b the
+outbound `flush:'sync'` watchers were still alive: the same race put a blank
+project on a live, gate-open connection, and the watchers synced the blank
+state up — matching the incident signature ("recently-edited sessions blanked
+to 4×synth, steps gone, bpm survived"). The command architecture no longer
+emits the blank state wholesale, so today it is a display bug — **but the
+outbound gate is open in the blank state, so any user edit made on top of it
+still syncs and clobbers real room data.** Hence P0.
+
+**Proposed fix (minimal, root-cause).** In `WsClient`, change
+`forceSnapshotNextHello` semantics from "next hello only" to **"until a
+snapshot actually arrives"**:
+- `connect(opts)`: only ever *set* the flag (`if (opts?.forceSnapshot) …= true`),
+  never clear it — today's unconditional assignment is what lets the
+  auto/auth reconnect consume it.
+- Clear the flag in `onSocketMessage` when a `snapshot` frame is received.
+
+Then the post-auth reconnect (and any auto-reconnect that fires before
+catch-up completed) also omits `resumeFromOpId` and receives the full
+snapshot; mid-session transient reconnects (project intact in memory, flag
+long cleared) still resume cheaply. Cover with a WsClient unit test: connect
+with `forceSnapshot: true`, drop the socket before the snapshot arrives,
+assert the reconnect hello still omits `resumeFromOpId`.
+
+**Related hardening (separate, non-blocking):**
+- `welcome` pre-advances `opIdLastSeen` to `opIdHead` before any content is
+  applied — harmless once the fix lands, but the invariant "resume only claims
+  ops actually applied" would be cleaner.
+- Authenticated hellos mint a fresh identity every time (ghost identities +
+  color churn per reload) — cosmetic.
+
 ### Post-Phase-5 audit: re-verify the project-writer inventory is complete
 **Reported:** 2026-07-02 · **Status:** open / scheduled AFTER Phase 5 lands · **Area:** lifecycle-architecture redesign — the "single writer" claim behind `packages/client/src/sync/CommandBus.ts` + `packages/client/src/audio/AudioEngine.ts`
 

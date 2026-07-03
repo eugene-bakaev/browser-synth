@@ -96,3 +96,21 @@ describe('Tracker isPoly computed', () => {
     expect(el.querySelector('.tracker-header.chord-row')).toBeNull();
   });
 });
+
+describe('note select empty placeholder', () => {
+  // A `:value` binding coerces null to "" on the <select>, so the placeholder
+  // option must carry value="" to match — otherwise an empty step renders a
+  // blank select (selectedIndex -1) instead of the "---" marker.
+  it.each(['mono', 'poly'] as const)('null note shows the --- option selected (%s)', (mode) => {
+    const el = mountTracker({
+      ...BASE_PROPS,
+      steps: makeSteps(), // freshStep() → note: null
+      engineType: 'synth',
+      mode,
+    });
+    const select = el.querySelector<HTMLSelectElement>('.col-note select')!;
+    expect(select).not.toBeNull();
+    expect(select.selectedIndex).toBe(0);
+    expect(select.options[select.selectedIndex].text).toBe('---');
+  });
+});
