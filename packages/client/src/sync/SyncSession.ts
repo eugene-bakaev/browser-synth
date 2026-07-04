@@ -27,6 +27,11 @@ export type WsClientFactory = (opts: WsClientOptions) => WsClient;
 export interface SyncAuth {
   accessToken: Ref<string | undefined>;
   session: Ref<{ user: { id: string } } | null>;
+  // Resolves once the initial getSession + auth listener are wired. connect()
+  // waits on this before the first hello so boot never handshakes as a guest
+  // milliseconds before auth resolves (the double-handshake that armed the
+  // reload-blank P0).
+  ready: Promise<void>;
 }
 
 export interface SyncSessionDeps {
@@ -77,7 +82,16 @@ export class SyncSession {
     // Force a full snapshot: the caller reset the local project before connecting,
     // so a resume delta (op replay) would apply onto an empty project and leave
     // the room blank. forceSnapshot keeps our identity but pulls the whole room.
-    this.wsClient!.connect({ forceSnapshot: true });
+    //
+    // Open only after auth has resolved: booting with a room URL used to send a
+    // guest hello milliseconds before getSession() landed, and the auth watcher
+    // then re-handshook mid-catch-up — the race behind the reload-blank P0. The
+    // identity check below aborts if disconnect()/a newer connect() replaced
+    // this connection while auth was resolving.
+    const client = this.wsClient!;
+    void this.deps.auth().ready.then(() => {
+      if (this.wsClient === client) client.connect({ forceSnapshot: true });
+    });
   }
 
   // Tear down the room connection; the session object persists (lobby state).
@@ -173,7 +187,13 @@ export class SyncSession {
       () => auth.session.value?.user.id ?? null,
       (next, prev) => {
         if (next === prev) return;
-        this.wsClient?.reconnect();
+        // A flip before the socket ever connected is boot-time getSession
+        // resolution, not a login: the pending first hello reads the token
+        // fresh (getToken), so there is nothing to re-derive. Only a socket
+        // that has started its handshake carries a possibly-stale identity.
+        const ws = this.wsClient;
+        if (!ws || ws.state === 'closed') return;
+        ws.reconnect();
       },
     );
   }

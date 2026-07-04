@@ -77,6 +77,7 @@ function makeFakeWsClient(opts: any) {
   return {
     _opts: opts,
     sent: [] as any[],
+    state: 'closed' as string,
     connect: vi.fn(),
     disconnect: vi.fn(),
     reconnect: vi.fn(),
@@ -554,6 +555,7 @@ describe('sync integration', () => {
     const { useAuth } = await import('../auth/useAuth');
     const auth = useAuth();
     expect(fake.reconnect).not.toHaveBeenCalled();
+    fake.state = 'live'; // simulate a connected socket for the reconnect guard
     auth.session.value = { user: { id: 'u-1' }, access_token: 'tok-1' } as any;
     await nextTick();
     expect(fake.reconnect).toHaveBeenCalled();
@@ -611,9 +613,10 @@ describe('session-scoped connection', () => {
     return makeCtx({ sync: true });
   }
 
-  it('connectToSession builds + connects a socket for the room and tracks currentRoomId', () => {
+  it('connectToSession builds + connects a socket for the room and tracks currentRoomId', async () => {
     const { ctx, built } = boot();
     ctx.connectToSession('room-a');
+    await Promise.resolve();
     expect(built).toHaveLength(1);
     expect(built[0]._opts.roomId).toBe('room-a');
     expect(built[0].connect).toHaveBeenCalledTimes(1);
