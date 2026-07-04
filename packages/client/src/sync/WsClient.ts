@@ -223,7 +223,7 @@ export class WsClient {
       // (re)entry the local project was reset to fresh, so omit resumeFromOpId
       // — the server then sends a full snapshot rather than a delta that would
       // apply onto an empty project and leave the room blank.
-      if (!this.snapshotRequired) {
+      if (!this.snapshotRequired && persisted.opIdLastSeen >= 0) {
         hello.resumeFromOpId = persisted.opIdLastSeen;
       }
     }
@@ -247,7 +247,13 @@ export class WsClient {
         const prev = this.getPersisted();
         const next: PersistedSyncState = {
           clientId: msg.clientId,
-          opIdLastSeen: msg.opIdHead,
+          // Carry the last APPLIED op forward — never adopt msg.opIdHead here.
+          // The head is a promise of content to come; recording it before the
+          // snapshot/replay arrives would make a connection that dies mid
+          // catch-up resume "from head" and skip the content entirely (the P0
+          // reload-blank bug). The watermark advances in the snapshot case
+          // below and per-op via recordOpIdSeen.
+          opIdLastSeen: prev?.opIdLastSeen ?? -1,
           // If clientId changed (fresh join OR unknown_client reissue), the
           // old clientSeq belongs to a different identity — start over.
           clientSeq: prev && prev.clientId === msg.clientId ? prev.clientSeq : 0,
@@ -282,6 +288,10 @@ export class WsClient {
         // The requested full snapshot is here — local state now holds room
         // content, so future hellos may resume again.
         this.snapshotRequired = false;
+        // The snapshot IS applied content up to its opId (dispatch applies it
+        // synchronously right after this handler) — advance the watermark now,
+        // replacing the welcome-time pre-advance.
+        this.recordOpIdSeen(msg.opId);
         break;
       }
       default:

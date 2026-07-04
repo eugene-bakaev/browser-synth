@@ -249,7 +249,7 @@ describe('WsClient', () => {
     expect(client.isLive()).toBe(true);
   });
 
-  it('persists clientId + opIdHead on welcome (resets clientSeq for new identity)', () => {
+  it('welcome persists clientId but NOT opIdHead — fresh identity starts at watermark -1', () => {
     const { client, storage } = makeClient();
     client.connect();
     const sock = MockWebSocket.instances[0];
@@ -270,9 +270,76 @@ describe('WsClient', () => {
     expect(raw).not.toBeNull();
     expect(JSON.parse(raw!)).toEqual({
       clientId: 'c_new',
-      opIdLastSeen: 100,
+      opIdLastSeen: -1, // a promise of content is not applied content
       clientSeq: 0,
     });
+  });
+
+  it('welcome preserves the applied watermark instead of adopting opIdHead', () => {
+    // opIdLastSeen means "applied up to here". welcome's opIdHead is content
+    // still in flight — recording it early made a mid-catch-up death resume
+    // "from head" and skip the snapshot entirely (P0 reload-blank).
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_old', opIdLastSeen: 42, clientSeq: 7 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    sock._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_old',
+        color: '#fff',
+        handle: 'kangaroo',
+        opIdHead: 100,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    expect(JSON.parse(storage.getItem('fiddle:sync:room')!).opIdLastSeen).toBe(42);
+  });
+
+  it('snapshot advances the watermark to its opId', () => {
+    const { client, storage } = makeClient();
+    client.connect({ forceSnapshot: true });
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    sock._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_new',
+        color: '#fff',
+        handle: 'kangaroo',
+        opIdHead: 100,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    sock._msg(JSON.stringify({ v: 1, type: 'snapshot', opId: 100, project: {} }));
+    expect(JSON.parse(storage.getItem('fiddle:sync:room')!).opIdLastSeen).toBe(100);
+  });
+
+  it('omits resumeFromOpId when the watermark is -1 (nothing applied yet)', () => {
+    // The hello schema requires resumeFromOpId >= 0; sending -1 would be a
+    // fatal validation error server-side. A -1 watermark means "never applied
+    // anything" — a fresh join, which omitting the field already expresses.
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_x', opIdLastSeen: -1, clientSeq: 0 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect();
+    const sock = MockWebSocket.instances[0];
+    sock._open();
+    const hello = JSON.parse(sock.sent[0]);
+    expect(hello.clientId).toBe('c_x');
+    expect('resumeFromOpId' in hello).toBe(false);
   });
 
   it('auto-responds to ping with pong', () => {
