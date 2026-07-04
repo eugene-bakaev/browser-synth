@@ -359,6 +359,7 @@ const {
   togglePlay,
   selectTrack,
   roomLoading,
+  loadError,
   addTrack,
   removeTrack,
 } = synth;
@@ -384,6 +385,16 @@ watch(
     if (!stillEnabled) selectTrack(null);
   },
 );
+
+// Surface a terminal bulk-load failure (nack/timeout on OPEN/NEW's atomic
+// `load` send): the session already rolled the local project back to the
+// pre-load state (bus.loadProject(prior) inside SyncSession), so this is
+// purely informational.
+watch(loadError, (msg) => {
+  if (!msg) return;
+  loadError.value = null;
+  void dialog.alert(`Could not sync the loaded project: ${msg}`);
+});
 
 // BPM editing mirrors the Tracker length field (Tracker.vue): bind a local draft
 // and commit on change. A direct v-model against the reactive project.bpm gets

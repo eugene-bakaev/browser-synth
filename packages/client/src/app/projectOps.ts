@@ -11,6 +11,7 @@
 // `replace` audio event), then enqueue the outbound leaf diff of live-vs-before
 // — identical wire behavior to the old syncWholeProjectDiff.
 
+import { toRaw } from 'vue';
 import { TRACK_POOL_SIZE, type Path, type Project } from '@fiddle/shared';
 import type { EngineType, Preset } from '../project';
 import {
@@ -34,6 +35,10 @@ export interface ProjectOpsDeps {
   isSyncLive: () => boolean;
   /** Outbound-only enqueue for the whole-project (New/Open) diff. */
   enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => void;
+  /** Bulk-load availability (live room + server capability). */
+  canBulkLoad: () => boolean;
+  /** Atomic whole-project send; `prior` is the pre-load clone for rollback. */
+  sendLoad: (project: Project, prior: Project) => void;
 }
 
 export interface ProjectSyncSnapshot {
@@ -192,9 +197,16 @@ export function createProjectOps(deps: ProjectOpsDeps) {
   }
 
   function loadAndSyncWholeProject(next: Project): void {
-    const before = deps.isSyncLive() ? snapshotProjectForSync() : null;
+    const live = deps.isSyncLive();
+    const bulk = live && deps.canBulkLoad();
+    // prior = full-Project deep clone of pre-load live state, for nack/timeout
+    // rollback. toRaw strips Vue proxies (same pattern as serializeProject).
+    const prior = bulk ? (structuredClone(toRaw(project)) as Project) : null;
+    const before = live && !bulk ? snapshotProjectForSync() : null;
     bus.loadProject(next);
-    if (before) enqueueWholeProjectDiff(before);
+    if (bulk) deps.sendLoad(next, prior!);            // one atomic message
+    else if (before) enqueueWholeProjectDiff(before); // fallback: old servers
+    // offline/solo (neither): unchanged local-only behavior
   }
 
   // ---- the public ops ----
