@@ -916,4 +916,126 @@ describe('ConnectionHandler', () => {
       }
     });
   });
+
+  describe('load message', () => {
+    async function helloOne(): Promise<{
+      socket: MockSocket;
+      pool: FakePool;
+      handler: ConnectionHandler;
+    }> {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handler.onMessage({
+        v: 1,
+        type: 'hello',
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+      });
+      // Drain hello-phase frames so subsequent assertions see only load output.
+      socket.sent.length = 0;
+      return { socket, pool, handler };
+    }
+
+    it('welcome advertises the load capability', async () => {
+      const socket = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', socket);
+      const handler = new ConnectionHandler('room1', socket, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+
+      const welcome = socket.sent.find((m) => m.type === 'welcome');
+      expect(welcome).toBeDefined();
+      if (!welcome || welcome.type !== 'welcome') throw new Error('unreachable');
+      expect(welcome.capabilities).toEqual(['load']);
+    });
+
+    it('valid load replaces the doc and broadcasts a snapshot to all sockets', async () => {
+      const sockA = makeMockSocket();
+      const sockB = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sockA);
+      pool.add('room1', sockB);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      await handlerB.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      sockA.sent.length = 0;
+      sockB.sent.length = 0;
+
+      const big = freshProject();
+      big.bpm = 63;
+      const replaceSpy = vi.spyOn(store, 'replaceProject');
+
+      await handlerA.onMessage({ v: 1, type: 'load', clientSeq: 1, project: big });
+
+      // The store was replaced with the NORMALIZED project (same object the
+      // handler broadcasts — freshProject() is already valid, so
+      // normalizeProject is a no-op passthrough here).
+      expect(replaceSpy).toHaveBeenCalledTimes(1);
+      expect(replaceSpy.mock.calls[0]![0]).toBe('room1');
+
+      const snapA = sockA.sent.find((m) => m.type === 'snapshot');
+      const snapB = sockB.sent.find((m) => m.type === 'snapshot');
+      expect(snapA).toBeDefined();
+      expect(snapB).toBeDefined();
+      if (!snapA || snapA.type !== 'snapshot' || !snapB || snapB.type !== 'snapshot') {
+        throw new Error('unreachable');
+      }
+      expect(replaceSpy.mock.calls[0]![1]).toBe(snapA.project);
+      expect(snapA.project.bpm).toBe(63);
+      expect(snapB.project).toBe(snapA.project);
+      expect(snapA.opId).toBe(snapB.opId);
+
+      const { opIdHead } = await store.getOrCreate('room1', freshProject);
+      expect(snapA.opId).toBe(opIdHead);
+
+      // No nack anywhere.
+      expect(sockA.sent.find((m) => m.type === 'nack')).toBeUndefined();
+      expect(sockB.sent.find((m) => m.type === 'nack')).toBeUndefined();
+    });
+
+    it('invalid project nacks value.invalid and does not touch the store', async () => {
+      const { socket, handler } = await helloOne();
+      const replaceSpy = vi.spyOn(store, 'replaceProject');
+
+      await handler.onMessage({ v: 1, type: 'load', clientSeq: 2, project: { bpm: 'NaN' } });
+
+      const nack = socket.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+      expect(nack.code).toBe('value.invalid');
+      expect(nack.clientSeq).toBe(2);
+      expect(replaceSpy).not.toHaveBeenCalled();
+      expect(socket.sent.find((m) => m.type === 'snapshot')).toBeUndefined();
+    });
+
+    it('second load within 2s nacks rate.limited', async () => {
+      const nowSpy = vi.spyOn(Date, 'now');
+      try {
+        nowSpy.mockReturnValue(1_000_000);
+        const { socket, handler } = await helloOne();
+        const replaceSpy = vi.spyOn(store, 'replaceProject');
+
+        const big = freshProject();
+        big.bpm = 63;
+        await handler.onMessage({ v: 1, type: 'load', clientSeq: 1, project: big });
+        expect(socket.sent.find((m) => m.type === 'nack')).toBeUndefined();
+
+        // 500ms later — well within the 2000ms budget window.
+        nowSpy.mockReturnValue(1_000_500);
+        await handler.onMessage({ v: 1, type: 'load', clientSeq: 2, project: big });
+
+        const nack = socket.sent.find((m) => m.type === 'nack');
+        expect(nack).toBeDefined();
+        if (!nack || nack.type !== 'nack') throw new Error('unreachable');
+        expect(nack.code).toBe('rate.limited');
+        expect(nack.clientSeq).toBe(2);
+        expect(replaceSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+  });
 });

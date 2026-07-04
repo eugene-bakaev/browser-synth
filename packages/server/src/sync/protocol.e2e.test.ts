@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AddressInfo } from 'node:net';
-import { PROJECT_SCHEMA_VERSION } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, freshProject, SYNTH2_DESCRIPTORS, isDiscrete } from '@fiddle/shared';
 import type { ServerMessage, ClientMessage } from '@fiddle/shared';
 import { buildServer } from '../server.js';
 
@@ -261,5 +261,77 @@ describe('protocol e2e', () => {
     expect(err.code).toBe('session.not_found');
     expect(err.fatal).toBe(true);
     c.close();
+  });
+
+  // Regression for the rate-limit data-loss bug: importing a big project used
+  // to be sent as hundreds of individual `set` ops, which blew through the
+  // per-connection TokenBucket and silently dropped random leaves (nacked ops
+  // the client's Outbox then rolled back). A `load` message replaces the whole
+  // doc atomically in one frame, so it can't be partially rate-limited.
+  it('bulk load: a large project replaces the room losslessly for both clients', async () => {
+    const room = await createSession();
+
+    const a = connect(room);
+    await a.opened;
+    a.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+    await a.waitFor((m) => m.type === 'sync.complete');
+
+    const b = connect(room);
+    await b.opened;
+    b.send({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+    await b.waitFor((m) => m.type === 'sync.complete');
+
+    // Build a big project: 8 enabled synth2 tracks, each with ~41 distinct
+    // continuous leaves set away from their defaults — 328 changed synth2
+    // leaves alone, comfortably past the 266-op burst that used to trip the
+    // rate limiter.
+    const big = freshProject();
+    big.bpm = 63;
+    let changedLeaves = 1; // bpm
+    for (let i = 0; i < 8; i++) {
+      const track = big.tracks[i]!;
+      track.enabled = true;
+      track.engineType = 'synth2';
+      changedLeaves += 2; // enabled + engineType
+      for (const d of SYNTH2_DESCRIPTORS) {
+        if (isDiscrete(d)) continue; // bool/enum fields aren't continuous
+        const [mod, field] = d.key.split('.') as [string, string];
+        (track.engines.synth2 as unknown as Record<string, Record<string, number>>)[mod]![field] =
+          (d.min + d.max) / 2;
+        changedLeaves += 1;
+      }
+    }
+    expect(changedLeaves).toBeGreaterThan(266);
+
+    a.send({ v: 1, type: 'load', clientSeq: 1, project: big });
+
+    // Both clients converge on a snapshot carrying the new bpm (not the
+    // hello-phase fresh-project snapshot, which is still bpm 120).
+    const snapA = await a.waitFor((m) => m.type === 'snapshot' && m.project.bpm === 63);
+    const snapB = await b.waitFor((m) => m.type === 'snapshot' && m.project.bpm === 63);
+    if (snapA.type !== 'snapshot' || snapB.type !== 'snapshot') throw new Error('unreachable');
+
+    expect(snapA.project.bpm).toBe(63);
+    expect(snapB.project.bpm).toBe(63);
+    for (let i = 0; i < 8; i++) {
+      expect(snapA.project.tracks[i]!.engineType).toBe('synth2');
+      expect(snapA.project.tracks[i]!.enabled).toBe(true);
+      expect(snapA.project.tracks[i]!.engines.synth2).toEqual(big.tracks[i]!.engines.synth2);
+      expect(snapB.project.tracks[i]!.engines.synth2).toEqual(big.tracks[i]!.engines.synth2);
+    }
+
+    // No nack of any kind reached the originator.
+    expect(a.recv.find((m) => m.type === 'nack')).toBeUndefined();
+
+    // Sequence continues past the load: a normal set op lands at opId + 1.
+    b.send({ v: 1, type: 'set', clientSeq: 1, path: ['bpm'], value: 140 });
+    const setA = await a.waitFor((m) => m.type === 'set');
+    const setB = await b.waitFor((m) => m.type === 'set');
+    if (setA.type !== 'set' || setB.type !== 'set') throw new Error('unreachable');
+    expect(setA.opId).toBe(snapA.opId + 1);
+    expect(setB.opId).toBe(snapA.opId + 1);
+
+    a.close();
+    b.close();
   });
 });
