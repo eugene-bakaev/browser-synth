@@ -78,12 +78,14 @@ export class WsClient {
   private readonly maxBackoff = MAX_BACKOFF_MS;
   private reconnectTimer: number | null = null;
   private intentionallyClosed = false;
-  // When true, the next hello keeps our clientId (identity/ownership) but omits
-  // resumeFromOpId so the server replies with a full snapshot instead of an
-  // op-replay delta. Set by a deliberate (re)entry where the caller has reset
-  // local project state; a delta applied onto an empty project would render the
-  // room blank. Auto-reconnect / auth-reconnect leave this false (resume).
-  private forceSnapshotNextHello = false;
+  // When true, the next hello omits resumeFromOpId so the server replies with a
+  // full snapshot instead of an op-replay delta. Set by a deliberate (re)entry
+  // where the caller has reset local project state; a delta applied onto an
+  // empty project would render the room blank. Cleared ONLY when a snapshot
+  // actually arrives: needing a snapshot is a fact about local state, not about
+  // any one connection attempt, so it must survive mid-handshake reconnects
+  // (auth re-handshake, transient drop) until satisfied.
+  private snapshotRequired = false;
 
   constructor(opts: WsClientOptions) {
     this.opts = opts;
@@ -99,7 +101,10 @@ export class WsClient {
   // delta would leave it blank. Defaults to false so auto-reconnect resumes.
   connect(opts?: { forceSnapshot?: boolean }): void {
     if (this.socket) return;
-    this.forceSnapshotNextHello = opts?.forceSnapshot ?? false;
+    // Only ever SET here — never clear. A reconnect between the request and the
+    // snapshot's arrival must keep requesting one, or the new hello would resume
+    // and leave the local placeholder in place (the reload-blank P0).
+    if (opts?.forceSnapshot) this.snapshotRequired = true;
     this.intentionallyClosed = false;
     this.setState('opening');
     const socket = new this.socketCtor(this.opts.url);
@@ -218,7 +223,7 @@ export class WsClient {
       // (re)entry the local project was reset to fresh, so omit resumeFromOpId
       // — the server then sends a full snapshot rather than a delta that would
       // apply onto an empty project and leave the room blank.
-      if (!this.forceSnapshotNextHello) {
+      if (!this.snapshotRequired && persisted.opIdLastSeen >= 0) {
         hello.resumeFromOpId = persisted.opIdLastSeen;
       }
     }
@@ -242,7 +247,13 @@ export class WsClient {
         const prev = this.getPersisted();
         const next: PersistedSyncState = {
           clientId: msg.clientId,
-          opIdLastSeen: msg.opIdHead,
+          // Carry the last APPLIED op forward — never adopt msg.opIdHead here.
+          // The head is a promise of content to come; recording it before the
+          // snapshot/replay arrives would make a connection that dies mid
+          // catch-up resume "from head" and skip the content entirely (the P0
+          // reload-blank bug). The watermark advances in the snapshot case
+          // below and per-op via recordOpIdSeen.
+          opIdLastSeen: prev?.opIdLastSeen ?? -1,
           // If clientId changed (fresh join OR unknown_client reissue), the
           // old clientSeq belongs to a different identity — start over.
           clientSeq: prev && prev.clientId === msg.clientId ? prev.clientSeq : 0,
@@ -271,6 +282,16 @@ export class WsClient {
         // Reply before notifying consumers so heartbeat liveness is honored
         // even if `opts.onMessage` is slow or throws.
         this.socket?.send(JSON.stringify({ v: 1, type: 'pong' }));
+        break;
+      }
+      case 'snapshot': {
+        // The requested full snapshot is here — local state now holds room
+        // content, so future hellos may resume again.
+        this.snapshotRequired = false;
+        // The snapshot IS applied content up to its opId (dispatch applies it
+        // synchronously right after this handler) — advance the watermark now,
+        // replacing the welcome-time pre-advance.
+        this.recordOpIdSeen(msg.opId);
         break;
       }
       default:

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { setDeep } from '@fiddle/shared';
 import { freshProject, replaceProject } from '../project';
 import { SyncSession, type SyncSessionDeps } from './SyncSession';
@@ -12,6 +12,7 @@ function makeFakeWsClient(opts: any) {
   return {
     _opts: opts,
     sent: [] as any[],
+    state: 'closed' as string,
     connect: vi.fn(),
     disconnect: vi.fn(),
     reconnect: vi.fn(),
@@ -45,7 +46,7 @@ function makeSession(overrides: Partial<SyncSessionDeps> = {}) {
     bus,
     wsClientFactory: () => (o: any) => { const f = makeFakeWsClient(o); built.push(f); return f as any; },
     syncEnabled: () => true,
-    auth: () => ({ accessToken: ref(undefined), session: ref(null) }),
+    auth: () => ({ accessToken: ref(undefined), session: ref(null), ready: Promise.resolve() }),
     ...overrides,
   };
   session = new SyncSession(deps);
@@ -63,10 +64,11 @@ describe('SyncSession', () => {
     expect(session.fatalError.value).toBeNull();
   });
 
-  it('connect(roomId) builds+opens a socket, sets currentRoomId, raises roomLoading', () => {
+  it('connect(roomId) builds+opens a socket, sets currentRoomId, raises roomLoading', async () => {
     stubEnv();
     const { session, built } = makeSession();
     session.connect('room-a');
+    await Promise.resolve();
     expect(built).toHaveLength(1);
     expect(built[0]._opts.roomId).toBe('room-a');
     expect(built[0].connect).toHaveBeenCalledWith({ forceSnapshot: true });
@@ -142,5 +144,62 @@ describe('SyncSession', () => {
     expect(bus.applyRemote({ v: 1, type: 'set', opId: 3, path: ['bpm'], value: 99, clientId: 'peer' } as never)).toBe(true);
     expect(project.bpm).toBe(99);
     expect(built).toHaveLength(2);
+  });
+
+  it('connect() opens the socket only after auth is ready (no guest hello before getSession)', async () => {
+    stubEnv();
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => { resolveReady = r; });
+    const authSession = ref(null);
+    const { session, built } = makeSession({
+      auth: () => ({ accessToken: ref(undefined), session: authSession, ready }),
+    });
+    session.connect('room-a');
+    expect(built).toHaveLength(1);                    // connection built eagerly
+    expect(built[0].connect).not.toHaveBeenCalled();  // …but not opened yet
+    resolveReady();
+    await Promise.resolve();
+    expect(built[0].connect).toHaveBeenCalledWith({ forceSnapshot: true });
+  });
+
+  it('a disconnect() while auth is resolving aborts the pending open', async () => {
+    stubEnv();
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => { resolveReady = r; });
+    const { session, built } = makeSession({
+      auth: () => ({ accessToken: ref(undefined), session: ref(null), ready }),
+    });
+    session.connect('room-a');
+    session.disconnect();
+    resolveReady();
+    await Promise.resolve();
+    expect(built[0].connect).not.toHaveBeenCalled();
+  });
+
+  it('an auth flip before the socket ever connected does not bounce it (boot getSession)', async () => {
+    stubEnv();
+    const authSession = ref<{ user: { id: string } } | null>(null);
+    const { session, built } = makeSession({
+      auth: () => ({ accessToken: ref(undefined), session: authSession, ready: Promise.resolve() }),
+    });
+    session.connect('room-a');
+    built[0].state = 'closed'; // never handshaken — nothing to re-derive
+    authSession.value = { user: { id: 'u1' } };
+    await nextTick();
+    expect(built[0].reconnect).not.toHaveBeenCalled();
+  });
+
+  it('an auth flip on a live socket reconnects (login/logout mid-session)', async () => {
+    stubEnv();
+    const authSession = ref<{ user: { id: string } } | null>(null);
+    const { session, built } = makeSession({
+      auth: () => ({ accessToken: ref(undefined), session: authSession, ready: Promise.resolve() }),
+    });
+    session.connect('room-a');
+    await Promise.resolve();
+    built[0].state = 'live';
+    authSession.value = { user: { id: 'u1' } };
+    await nextTick();
+    expect(built[0].reconnect).toHaveBeenCalledTimes(1);
   });
 });

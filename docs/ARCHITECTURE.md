@@ -663,6 +663,31 @@ every write (local, remote, rollback, replace) — no suppression flag, no
 watcher-flush coupling. Supersedes D8 and D10; revises D13/D14 (writes
 dispatch; reads still bind). Design: `docs/superpowers/specs/2026-07-02-phase5-appruntime-design.md`.
 
+### D18 — Sync-catch-up invariants: watermark = applied content; snapshot-required until satisfied (2026-07-04)
+
+Two invariants repaired after the reload-blank P0 (a signed-in reload showed a
+fresh default project with the outbound gate open — edits could clobber room
+data; the same mechanism most plausibly explains the June prod data-loss
+incident):
+
+- **`opIdLastSeen` records applied content, never a promise of it.** The
+  `welcome` handler must not adopt the server's `opIdHead`; the watermark
+  advances when content actually lands (the `snapshot` frame, each applied
+  `set`, and `sync.complete` as the replay-path finalizer). Consequence: a
+  connection that dies mid-catch-up resumes from what it truly applied, and
+  the server replays the difference — correct by construction.
+- **"I need a snapshot" is a fact about local state, not about a connection
+  attempt.** `WsClient.snapshotRequired` is set when the caller has blanked the
+  local project (room entry) and cleared only when a snapshot arrives. Any
+  number of reconnects in between (auth re-handshake, transient drop) keep
+  requesting a snapshot. A `connect()` call never clears it.
+
+Supporting rule: the first socket open of a room connection waits on
+`useAuth().ready`, and the auth-reconnect watcher ignores identity flips while
+the socket has never connected (`state === 'closed'`) — the pending hello reads
+the token fresh, so there is nothing to re-derive. This removes the boot-time
+guest-hello → auth-reconnect double handshake rather than merely surviving it.
+
 ---
 
 ## 13. The Project module
