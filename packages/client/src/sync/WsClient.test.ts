@@ -158,9 +158,11 @@ describe('WsClient', () => {
     expect('resumeFromOpId' in hello).toBe(false);
   });
 
-  it('resumes (does not force snapshot) on a plain auto-reconnect connect()', () => {
-    // The forceSnapshot flag is per-connect; an auto-reconnect calls connect()
-    // with no args and must keep resuming so transient blips don't re-snapshot.
+  it('keeps forcing a snapshot across reconnects until one actually arrives (P0 reload-blank)', () => {
+    // Boot race repro: forceSnapshot connect, welcome arrives, then the socket
+    // is superseded (auth re-handshake) BEFORE the snapshot lands. The next
+    // hello must still omit resumeFromOpId — resuming here would leave the
+    // local placeholder in place and open the outbound gate over blank state.
     const storage = memoryStorage();
     storage.setItem(
       'fiddle:sync:room',
@@ -168,12 +170,60 @@ describe('WsClient', () => {
     );
     const { client } = makeClient({ storage });
     client.connect({ forceSnapshot: true });
+    const sockA = MockWebSocket.instances[0];
+    sockA._open();
+    sockA._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_old',
+        color: '#fff',
+        handle: 'kangaroo',
+        opIdHead: 100,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    client.disconnect();
+    client.connect(); // bare reconnect — no opts
+    const sockB = MockWebSocket.instances.at(-1)!;
+    sockB._open();
+    const hello = JSON.parse(sockB.sent[0]);
+    expect(hello.clientId).toBe('c_old');
+    expect('resumeFromOpId' in hello).toBe(false);
+  });
+
+  it('resumes on a plain reconnect once the snapshot has arrived', () => {
+    // The flag clears when the snapshot lands, so transient blips during a
+    // stable session keep resuming (no gratuitous re-snapshots).
+    const storage = memoryStorage();
+    storage.setItem(
+      'fiddle:sync:room',
+      JSON.stringify({ clientId: 'c_old', opIdLastSeen: 42, clientSeq: 7 }),
+    );
+    const { client } = makeClient({ storage });
+    client.connect({ forceSnapshot: true });
+    const sockA = MockWebSocket.instances[0];
+    sockA._open();
+    sockA._msg(
+      JSON.stringify({
+        v: 1,
+        type: 'welcome',
+        clientId: 'c_old',
+        color: '#fff',
+        handle: 'kangaroo',
+        opIdHead: 100,
+        schemaVersion: PROJECT_SCHEMA_VERSION,
+        roster: [],
+      }),
+    );
+    sockA._msg(JSON.stringify({ v: 1, type: 'snapshot', opId: 100, project: {} }));
     client.disconnect();
     client.connect();
-    const sock = MockWebSocket.instances.at(-1)!;
-    sock._open();
-    const hello = JSON.parse(sock.sent[0]);
-    expect(hello.resumeFromOpId).toBe(42);
+    const sockB = MockWebSocket.instances.at(-1)!;
+    sockB._open();
+    const hello = JSON.parse(sockB.sent[0]);
+    expect(hello.resumeFromOpId).toBe(100);
   });
 
   it('transitions to live on sync.complete', () => {
