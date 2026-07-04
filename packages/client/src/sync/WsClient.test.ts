@@ -193,6 +193,25 @@ describe('WsClient', () => {
     expect('resumeFromOpId' in hello).toBe(false);
   });
 
+  it('requireSnapshot() forces the next hello to omit resumeFromOpId (called while a socket is live)', () => {
+    // Mirrors connect({ forceSnapshot: true }) but is callable without an
+    // open/close cycle — used by LoadTracker.onClosed() when a pending load
+    // is dropped by a socket close, so the resume path can't tell whether the
+    // server applied it before the drop.
+    const { client } = makeClient();
+    client.connect();
+    const sockA = MockWebSocket.instances[0];
+    driveLive(client, sockA); // welcome (clientId c_1) + sync.complete opId 0
+    client.requireSnapshot();
+    client.disconnect();
+    client.connect(); // bare reconnect — no opts
+    const sockB = MockWebSocket.instances.at(-1)!;
+    sockB._open();
+    const hello = JSON.parse(sockB.sent[0]);
+    expect(hello.clientId).toBe('c_1');
+    expect('resumeFromOpId' in hello).toBe(false);
+  });
+
   it('resumes on a plain reconnect once the snapshot has arrived', () => {
     // The flag clears when the snapshot lands, so transient blips during a
     // stable session keep resuming (no gratuitous re-snapshots).

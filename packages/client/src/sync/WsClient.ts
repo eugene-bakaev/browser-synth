@@ -132,6 +132,14 @@ export class WsClient {
     socket.onerror = () => {};
   }
 
+  // Force a full-snapshot catch-up on the next hello (same effect as
+  // connect({ forceSnapshot: true }) but callable while a socket is live or
+  // closing). D18 semantics: snapshotRequired persists until a snapshot
+  // actually arrives, surviving internal auto-reconnects of this instance.
+  requireSnapshot(): void {
+    this.snapshotRequired = true;
+  }
+
   // Force a fresh connection — used when auth state changes so the server
   // re-derives identity from the (now present/absent) token.
   reconnect(): void {

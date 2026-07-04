@@ -208,6 +208,7 @@ export class SyncSession {
       },
       rollback: (prior) => this.deps.bus.loadProject(prior),
       onError: (message) => { this.loadError.value = message; },
+      requireSnapshot: () => this.wsClient?.requireSnapshot(),
     });
   }
 

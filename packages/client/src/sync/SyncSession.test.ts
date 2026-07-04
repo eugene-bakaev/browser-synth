@@ -18,6 +18,7 @@ function makeFakeWsClient(opts: any) {
     connect: vi.fn(),
     disconnect: vi.fn(),
     reconnect: vi.fn(),
+    requireSnapshot: vi.fn(),
     send(op: any) { this.sent.push(op); },
     isLive: () => true,
     nextClientSeq: () => ++seq,
@@ -267,5 +268,23 @@ describe('bulk load', () => {
     expect(session.loadError.value).toContain('bad project');
     expect(onNackSpy).not.toHaveBeenCalledWith(load.clientSeq, expect.anything());
     onNackSpy.mockRestore();
+  });
+
+  it('a socket close while a load is pending forces a snapshot catch-up via wsClient.requireSnapshot', () => {
+    // The load frame may or may not have reached the server before the drop;
+    // only a forced snapshot on the next hello reconciles both cases (D19).
+    stubEnv();
+    const { session, built } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = ['load'];
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+
+    const draft = freshProject();
+    draft.bpm = 155;
+    const prior = freshProject();
+    session.sendProjectLoad(draft as any, prior as any);
+
+    built[0]._opts.onStateChange('closed');
+    expect(built[0].requireSnapshot).toHaveBeenCalledOnce();
   });
 });

@@ -15,6 +15,7 @@ describe('LoadTracker', () => {
       send: vi.fn(),
       rollback: vi.fn(),
       onError: vi.fn(),
+      requireSnapshot: vi.fn(),
       ackTimeoutMs: 5000,
     };
     return { deps, tracker: new LoadTracker(deps) };
@@ -29,6 +30,7 @@ describe('LoadTracker', () => {
     vi.advanceTimersByTime(20000);
     expect(deps.send).not.toHaveBeenCalled();
     expect(deps.rollback).not.toHaveBeenCalled();
+    expect(deps.requireSnapshot).not.toHaveBeenCalled();
   });
 
   it('matching nack rolls back to prior and reports the error', () => {
@@ -38,6 +40,7 @@ describe('LoadTracker', () => {
     expect(deps.rollback).toHaveBeenCalledWith(prior);
     expect(deps.onError).toHaveBeenCalledOnce();
     expect(tracker.hasPending).toBe(false);
+    expect(deps.requireSnapshot).not.toHaveBeenCalled();
   });
 
   it('non-matching nack is ignored (returns false, no rollback)', () => {
@@ -46,6 +49,7 @@ describe('LoadTracker', () => {
     expect(tracker.onNack(9, 'value.invalid', 'other op')).toBe(false);
     expect(deps.rollback).not.toHaveBeenCalled();
     expect(tracker.hasPending).toBe(true);
+    expect(deps.requireSnapshot).not.toHaveBeenCalled();
   });
 
   it('ack timeout resends once, then rolls back and errors', () => {
@@ -59,15 +63,25 @@ describe('LoadTracker', () => {
     expect(deps.rollback).toHaveBeenCalledWith(prior);
     expect(deps.onError).toHaveBeenCalledOnce();
     expect(tracker.hasPending).toBe(false);
+    expect(deps.requireSnapshot).not.toHaveBeenCalled();
   });
 
-  it('socket close drops the pending load without rollback (snapshot-on-resume settles it)', () => {
+  it('socket close with a pending load drops it (no rollback) and forces a snapshot catch-up', () => {
     const { deps, tracker } = make();
     tracker.begin(msg(1), prior);
     tracker.onClosed();
     expect(tracker.hasPending).toBe(false);
+    expect(deps.requireSnapshot).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(20000);
     expect(deps.send).not.toHaveBeenCalled();
     expect(deps.rollback).not.toHaveBeenCalled();
+  });
+
+  it('socket close with no pending load is a no-op (does not force a snapshot)', () => {
+    const { deps, tracker } = make();
+    expect(tracker.hasPending).toBe(false);
+    tracker.onClosed();
+    expect(tracker.hasPending).toBe(false);
+    expect(deps.requireSnapshot).not.toHaveBeenCalled();
   });
 });

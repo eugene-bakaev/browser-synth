@@ -711,7 +711,12 @@ copy doubles as the ack. Capability-gated: welcome advertises
   unambiguously: LoadTracker first, Outbox otherwise).
 - Loads are NOT deduped server-side; a resend re-applies identical content.
 - One in-flight load per client (LoadTracker), resend-once on ack timeout,
-  rollback-to-prior on nack/second timeout.
+  rollback-to-prior on nack/second timeout. A socket close while a load is
+  still pending drops it WITHOUT rollback but forces a full-snapshot catch-up
+  on the next hello (`WsClient.requireSnapshot`) — a resume delta alone can't
+  tell an applied load from one lost in transit (the load frame never reached
+  the server, so its op log wasn't cleared and `getOpsSince(watermark)` comes
+  back empty with no snapshot); only forcing a snapshot reconciles both cases.
 
 ---
 
