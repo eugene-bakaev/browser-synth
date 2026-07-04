@@ -46,6 +46,13 @@ export interface RoomStore {
   // evicted from the ring buffer (caller must send a snapshot instead).
   getOpsSince(roomId: string, fromOpId: number): Promise<AppliedOp[] | null>;
 
+  // Atomically replace the room's project (bulk load). Consumes one opId,
+  // CLEARS the op log (a load is a deliberate replay horizon: getOpsSince from
+  // any pre-load watermark returns null, pushing the caller onto the snapshot
+  // path — same contract as ring-buffer eviction), bumps roomVersion, and
+  // marks the room dirty for the autosave flusher. Room must already exist.
+  replaceProject(roomId: string, project: Project): Promise<{ opId: number }>;
+
   // Identity bookkeeping. Identities persist (beyond a socket's lifetime) so a
   // reconnecting client can resume the same color/handle within the grace window.
   setIdentity(roomId: string, identity: Identity): Promise<void>;
