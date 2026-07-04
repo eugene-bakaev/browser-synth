@@ -7,7 +7,9 @@ export type {
   HelloMessage,
   SetOpClient,
   PongMessage,
+  ResyncMessage,
   ClientMessage,
+  LoadMessage,
   WelcomeMessage,
   SnapshotMessage,
   SetOpBroadcast,
@@ -24,5 +26,7 @@ export {
   HelloSchema,
   SetOpClientSchema,
   PongSchema,
+  ResyncSchema,
+  LoadSchema,
   ClientMessageSchema,
 } from './schema.js';

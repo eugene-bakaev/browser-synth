@@ -56,7 +56,18 @@ export interface ResyncMessage {
   fromOpId: number; // last opId the client has applied; replay everything after it
 }
 
-export type ClientMessage = HelloMessage | SetOpClient | PongMessage | ResyncMessage;
+// Atomic whole-project replace (spec 2026-07-04-bulk-project-load-design).
+// Sent instead of a per-leaf diff on OPEN/NEW so a big import can't overflow
+// the op rate limit. `project` is untyped on the wire — the server validates
+// with Schemas.Project + normalizeProject before applying.
+export interface LoadMessage {
+  v: 1;
+  type: 'load';
+  clientSeq: number; // same counter as set ops — unique per connection
+  project: unknown;
+}
+
+export type ClientMessage = HelloMessage | SetOpClient | PongMessage | ResyncMessage | LoadMessage;
 
 // === Server → Client ===
 
@@ -71,6 +82,10 @@ export interface WelcomeMessage {
   opIdHead: number;
   schemaVersion: number;
   roster: Identity[];
+  // Server feature advertisement. Present servers send ['load']; the client
+  // must not send a LoadMessage unless this includes 'load' (older servers
+  // fatally close on unknown message types).
+  capabilities?: string[];
 }
 
 export interface SnapshotMessage {

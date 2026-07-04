@@ -32,9 +32,16 @@ export const ResyncSchema = VersionEnvelope.extend({
   fromOpId: z.number().int().nonnegative(),
 });
 
+export const LoadSchema = VersionEnvelope.extend({
+  type: z.literal('load'),
+  clientSeq: z.number().int().nonnegative(),
+  project: z.unknown(),
+});
+
 export const ClientMessageSchema = z.discriminatedUnion('type', [
   HelloSchema,
   SetOpClientSchema,
   PongSchema,
   ResyncSchema,
+  LoadSchema,
 ]);
