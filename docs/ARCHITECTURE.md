@@ -688,6 +688,31 @@ the socket has never connected (`state === 'closed'`) — the pending hello read
 the token fresh, so there is nothing to re-derive. This removes the boot-time
 guest-hello → auth-reconnect double handshake rather than merely surviving it.
 
+### D19 — Bulk project load is a protocol message, not an op storm (2026-07-04)
+
+OPEN/NEW in a live session used to sync via the whole-project leaf diff — one
+`set` op per changed leaf. Any import over the server's per-connection budget
+(TokenBucket: burst 200, 100 ops/sec) had its tail nacked `rate.limited`, and
+the Outbox rolls nacked leaves back to their priors — during an import, blank
+defaults. Silent, timing-dependent data loss (reproduced 2026-07-04 with a
+266-op project).
+
+Now: the client sends one `load` message (full project); the server validates
+(Schemas.Project + normalizeProject), atomically replaces the room doc via
+`RoomStore.replaceProject` (consumes one opId, CLEARS the op log so any
+pre-load watermark falls into the existing snapshot catch-up path), and
+broadcasts the existing `SnapshotMessage` to every socket — the originator's
+copy doubles as the ack. Capability-gated: welcome advertises
+`capabilities: ['load']`; without it the client falls back to the leaf diff
+(old servers fatally close on unknown message types). Invariants:
+
+- A load is a replay horizon: `getOpsSince(< load opId)` returns null.
+- Loads share the clientSeq counter with set ops (disjoint seqs ⇒ nacks route
+  unambiguously: LoadTracker first, Outbox otherwise).
+- Loads are NOT deduped server-side; a resend re-applies identical content.
+- One in-flight load per client (LoadTracker), resend-once on ack timeout,
+  rollback-to-prior on nack/second timeout.
+
 ---
 
 ## 13. The Project module
