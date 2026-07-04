@@ -18,12 +18,14 @@ import { normalizeProject } from '@fiddle/shared';
 import type { WsClient } from './WsClient.js';
 import type { Outbox } from './Outbox.js';
 import type { CommandBus } from './CommandBus.js';
+import type { LoadTracker } from './LoadTracker.js';
 import { roster, selfClientId, noteRemoteTouch } from './presence.js';
 
 export interface DispatchDeps {
   wsClient: WsClient;
   outbox: Outbox;
   commandBus: CommandBus;
+  loadTracker: LoadTracker;
   onFatalError: (code: string, message: string) => void;
   // Called when the room reaches the live / caught-up state (sync.complete).
   // Opens the outbound-sync gate in SyncSession so local edits can't leak into the
@@ -40,6 +42,8 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       roster.value = msg.roster;
       return;
     case 'snapshot':
+      // A snapshot confirms (ours) or supersedes (a peer's) any pending load.
+      deps.loadTracker.onSnapshot();
       // Normalize first so a snapshot from an older (pre-pool) server can't
       // under-fill the fixed 32-slot model or leave an out-of-range bpm.
       // Routed through the bus so the audio stream gets one `replace` event.
@@ -91,6 +95,9 @@ export function dispatchServerMessage(msg: ServerMessage, deps: DispatchDeps): v
       roster.value = msg.roster;
       return;
     case 'nack':
+      // A load nack matches here and never reaches the per-leaf Outbox path
+      // (loads and set ops share the clientSeq counter, so seqs are disjoint).
+      if (deps.loadTracker.onNack(msg.clientSeq, msg.code, msg.message)) return;
       deps.outbox.onNack(msg.clientSeq, msg.code);
       return;
     case 'error':

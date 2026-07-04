@@ -58,6 +58,10 @@ const RESYNC_TIMEOUT_MS = 5000;
 
 export class WsClient {
   state: WsState = 'closed';
+  // Server feature advertisement from the last welcome. Transport-level fact:
+  // consumers gate LoadMessage sends on this (old servers fatally close on
+  // unknown message types).
+  serverCapabilities: ReadonlyArray<string> = [];
 
   private readonly opts: WsClientOptions;
   private readonly socketCtor: typeof WebSocket;
@@ -259,6 +263,7 @@ export class WsClient {
           clientSeq: prev && prev.clientId === msg.clientId ? prev.clientSeq : 0,
         };
         this.savePersisted(next);
+        this.serverCapabilities = msg.capabilities ?? [];
         this.setState('catching-up');
         break;
       }
