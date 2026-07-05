@@ -6,7 +6,7 @@ import {
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -51,6 +51,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'env1.loop', 'env2.loop', 'env3.loop',
       'filter.morph', 'filter.model',
       'filter.drive',
+      'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div',
     ]);
   });
 

@@ -60,8 +60,8 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
   });
 
   it('defaults LFO1 to 5 Hz sine and LFO2 to 0.5 Hz triangle (I3b)', () => {
-    expect(DEFAULT_SYNTH2_PARAMS.lfo1).toEqual({ rate: 5, shape: 0 });
-    expect(DEFAULT_SYNTH2_PARAMS.lfo2).toEqual({ rate: 0.5, shape: 1 });
+    expect(DEFAULT_SYNTH2_PARAMS.lfo1).toEqual({ rate: 5, shape: 0, sync: false, div: '1/16' });
+    expect(DEFAULT_SYNTH2_PARAMS.lfo2).toEqual({ rate: 0.5, shape: 1, sync: false, div: '1/16' });
   });
 
   it('defaults env3 to a 0.2 / d 0.3 / s 0 / r 0.3, loop off (I3c)', () => {
