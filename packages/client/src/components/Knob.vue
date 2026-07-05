@@ -67,6 +67,7 @@ import { computed, onBeforeUnmount } from 'vue';
 import type { Path, KnobCurve } from '@fiddle/shared';
 import { touchedFor } from '../sync/presence';
 import { posToValue, valueToPos } from '../ui/knobTaper';
+import { formatKnobValue } from '../ui/knobFormat';
 
 const props = withDefaults(defineProps<{
   label: string;
@@ -76,6 +77,7 @@ const props = withDefaults(defineProps<{
   modelValue: number;
   defaultValue?: number;
   format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+  labels?: string[];
   curve?: KnobCurve;
   // The sync path this knob writes to, e.g. ['tracks',0,'engines','synth','filterCutoff'].
   // Optional: unsynced knobs (and, until the panels plumb it through, all knobs)
@@ -84,6 +86,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   defaultValue: undefined,
   format: undefined,
+  labels: undefined,
   curve: 'linear',
   syncPath: undefined,
 });
@@ -103,54 +106,7 @@ const instanceId = Math.random().toString(36).substring(2, 9);
 const gradientId = `knob-gradient-${instanceId}`;
 const filterId = `knob-filter-${instanceId}`;
 
-const formattedValue = computed(() => {
-  const val = props.modelValue;
-  // Defensive: a param leaf missing from an old/partial snapshot can arrive as
-  // undefined/null/NaN before heal — never let it throw and take down the panel.
-  if (val === undefined || val === null || Number.isNaN(val)) return '';
-  if (!props.format) return val.toString();
-  
-  switch (props.format) {
-    case 'hz':
-      if (val >= 1000) {
-        return (val / 1000).toFixed(1) + 'k';
-      }
-      return Math.round(val) + 'Hz';
-    case 'ms':
-      // Always render ms — switching to "s" past 1.0 looked like the value
-      // dropped ("990ms" → "1.00s") even though it went up. Max range here
-      // is 5s = "5000ms" (6 chars), still fits the 48px value cell.
-      return Math.round(val * 1000) + 'ms';
-    case 'percent':
-      return Math.round(val * 100) + '%';
-    case 'cents': {
-      const prefix = val > 0 ? '+' : '';
-      return `${prefix}${val}c`;
-    }
-    case 'octave': {
-      const rounded = Number(val.toFixed(1));
-      if (rounded === 0) return '0';
-      // Arrow shows sweep direction at a glance — ↑ filter opens, ↓ filter closes.
-      // Magnitude is in octaves, but the label already implies it; unit text omitted
-      // to keep the value cell narrow and stop layout shifts on knob turn.
-      return rounded > 0 ? `↑${rounded}` : `↓${Math.abs(rounded)}`;
-    }
-    case 'ratio':
-      return val.toFixed(1);
-    case 'db': {
-      // Knob value is the slider position 0..1; we render the perceptual dB
-      // it represents. -54..+6 dB throw with unity at slider 0.9. The audio-
-      // side linear gain conversion lives in useSynth.sliderToLinearGain —
-      // keep them in sync if the range changes.
-      if (val <= 0) return '-∞ dB';
-      const db = -54 + val * 60;
-      const prefix = db > 0 ? '+' : '';
-      return prefix + db.toFixed(1) + ' dB';
-    }
-    default:
-      return val.toString();
-  }
-});
+const formattedValue = computed(() => formatKnobValue(props.format, props.modelValue, props.labels));
 
 const currentAngle = computed(() => {
   const pos = valueToPos(props.curve, props.modelValue, props.min, props.max);
