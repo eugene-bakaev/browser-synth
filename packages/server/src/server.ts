@@ -77,7 +77,10 @@ export function buildServer(): FastifyInstance {
   // CORS first so its hooks apply to every route (incl. /api preflight). The
   // client and server are cross-origin in prod; see resolveCorsOrigin.
   app.register(cors, { origin: resolveCorsOrigin() });
-  app.register(websocket);
+  // maxPayload must admit a whole-project LoadMessage (a fully-populated
+  // 32-track project serializes to ~270 KB; @fastify/websocket's default cap
+  // is 1 MiB — set explicitly so the headroom is documented, not accidental).
+  app.register(websocket, { options: { maxPayload: 2 * 1024 * 1024 } });
   app.register(healthRoute);
   app.register(async (a) =>
     sessionsRoute(a, { sessions, verify, liveCounts: () => store.roomMemberCounts() }),

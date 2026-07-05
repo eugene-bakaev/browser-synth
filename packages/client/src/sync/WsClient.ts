@@ -58,6 +58,10 @@ const RESYNC_TIMEOUT_MS = 5000;
 
 export class WsClient {
   state: WsState = 'closed';
+  // Server feature advertisement from the last welcome. Transport-level fact:
+  // consumers gate LoadMessage sends on this (old servers fatally close on
+  // unknown message types).
+  serverCapabilities: ReadonlyArray<string> = [];
 
   private readonly opts: WsClientOptions;
   private readonly socketCtor: typeof WebSocket;
@@ -126,6 +130,14 @@ export class WsClient {
     // Errors fire before close; the close handler is where the real fallout
     // (reconnect, state transitions) lives, so onerror just absorbs.
     socket.onerror = () => {};
+  }
+
+  // Force a full-snapshot catch-up on the next hello (same effect as
+  // connect({ forceSnapshot: true }) but callable while a socket is live or
+  // closing). D18 semantics: snapshotRequired persists until a snapshot
+  // actually arrives, surviving internal auto-reconnects of this instance.
+  requireSnapshot(): void {
+    this.snapshotRequired = true;
   }
 
   // Force a fresh connection — used when auth state changes so the server
@@ -259,6 +271,7 @@ export class WsClient {
           clientSeq: prev && prev.clientId === msg.clientId ? prev.clientSeq : 0,
         };
         this.savePersisted(next);
+        this.serverCapabilities = msg.capabilities ?? [];
         this.setState('catching-up');
         break;
       }

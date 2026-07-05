@@ -12,10 +12,11 @@
 // so consumers are untouched.
 
 import { ref, watch, type Ref } from 'vue';
-import type { Path } from '@fiddle/shared';
+import type { Path, LoadMessage, Project } from '@fiddle/shared';
 import { WsClient, type WsClientOptions } from './WsClient';
 import { Outbox } from './Outbox';
 import type { CommandBus } from './CommandBus';
+import { LoadTracker } from './LoadTracker';
 import { dispatchServerMessage } from './messageDispatch';
 import { resetPresence } from './presence';
 
@@ -46,10 +47,12 @@ export class SyncSession {
   readonly currentRoomId: Ref<string | null> = ref(null);
   readonly roomLoading: Ref<boolean> = ref(false);
   readonly fatalError: Ref<{ code: string; message: string } | null> = ref(null);
+  readonly loadError: Ref<string | null> = ref(null);
 
   // Per-connection resources — built in connect(), nulled in disconnect().
   private wsClient: WsClient | null = null;
   private outbox: Outbox | null = null;
+  private loadTracker: LoadTracker | null = null;
 
   // True once the CURRENT room has caught up (sync.complete). Outbound sync is
   // gated on this so pre-load / stale content is never leaked into the room.
@@ -104,8 +107,10 @@ export class SyncSession {
       this.wsClient = null;
     }
     this.outbox = null;
+    this.loadTracker = null;
     this.syncReady = false;
     this.fatalError.value = null;
+    this.loadError.value = null;
     this.roomLoading.value = false;
     this.currentRoomId.value = null;
     resetPresence();
@@ -127,6 +132,23 @@ export class SyncSession {
   flushPath(path: Path): void { this.outbox?.flushPath(path); }
   flushAllPending(): void { this.outbox?.flushAllPending(); }
 
+  // Bulk-load path is available only when the room is live AND the server
+  // advertised the capability (old servers fatally close on unknown types).
+  get canBulkLoad(): boolean {
+    return this.isSyncLive && (this.wsClient?.serverCapabilities.includes('load') ?? false);
+  }
+
+  // Send the whole project atomically (OPEN/NEW). `prior` is a full deep clone
+  // of the pre-load project, held for nack/timeout rollback.
+  sendProjectLoad(project: Project, prior: Project): void {
+    if (!this.canBulkLoad || !this.wsClient || !this.loadTracker) return;
+    const msg: LoadMessage = {
+      v: 1, type: 'load', clientSeq: this.wsClient.nextClientSeq(), project,
+    };
+    this.loadTracker.begin(msg, prior);
+    this.wsClient.send(msg);
+  }
+
   // --- internals (verbatim relocation of buildSyncState) ---
 
   private buildConnection(roomId: string): void {
@@ -147,6 +169,7 @@ export class SyncSession {
         wsClient: this.wsClient!,
         outbox: this.outbox!,
         commandBus: this.deps.bus,
+        loadTracker: this.loadTracker!,
         onFatalError: (code, message) => {
           this.fatalError.value = { code, message };
           // The error overlay takes over; stop showing the loader behind it.
@@ -159,7 +182,10 @@ export class SyncSession {
         },
       }),
       onStateChange: (s) => {
-        if (s === 'closed' && this.outbox) this.outbox.onClosed();
+        if (s === 'closed') {
+          this.outbox?.onClosed();
+          this.loadTracker?.onClosed();
+        }
       },
     });
 
@@ -172,6 +198,17 @@ export class SyncSession {
         this.deps.bus.applyRollback(path, value);
       },
       isLive: () => !!this.wsClient?.isLive(),
+    });
+
+    this.loadTracker = new LoadTracker({
+      send: (msg) => {
+        // Best-effort resend; a dead socket surfaces via onStateChange('closed')
+        // → loadTracker.onClosed(), so a throw here is benign.
+        try { this.wsClient?.send(msg); } catch { /* settled by reconnect snapshot */ }
+      },
+      rollback: (prior) => this.deps.bus.loadProject(prior),
+      onError: (message) => { this.loadError.value = message; },
+      requireSnapshot: () => this.wsClient?.requireSnapshot(),
     });
   }
 

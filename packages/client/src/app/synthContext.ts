@@ -55,6 +55,8 @@ export function createSynthContext(runtime: AppRuntime) {
     bus,
     isSyncLive: () => session.isSyncLive,
     enqueue: (path, value, prior, gestureEnd) => session.enqueue(path, value, prior, gestureEnd),
+    canBulkLoad: () => session.canBulkLoad,
+    sendLoad: (next, prior) => session.sendProjectLoad(next, prior),
   });
 
   // Enter a session: bring up the room connection for `roomId` and reflect it in
@@ -200,6 +202,7 @@ export function createSynthContext(runtime: AppRuntime) {
     // --- Sync surface (read by Sidebar / AccountView / ErrorOverlay) ---
     fatalError: session.fatalError,       // ref<{code,message}|null> — set on a fatal server error
     roomLoading: session.roomLoading,     // ref<boolean> — true while the room's initial catch-up runs
+    loadError: session.loadError,         // ref<string|null> — set on a terminal bulk-load failure
     roster,           // ref<Identity[]> — everyone in the room
     selfClientId,     // ref<string|null> — which roster entry is us
     currentRoomId: session.currentRoomId,

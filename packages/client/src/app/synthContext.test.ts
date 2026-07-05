@@ -78,6 +78,7 @@ function makeFakeWsClient(opts: any) {
     _opts: opts,
     sent: [] as any[],
     state: 'closed' as string,
+    serverCapabilities: [] as string[],
     connect: vi.fn(),
     disconnect: vi.fn(),
     reconnect: vi.fn(),
@@ -595,6 +596,65 @@ describe('sync integration', () => {
     const ops = fake.sent.filter((o: any) => o.path.join('.') === 'tracks.0.engines.synth2.filter.cutoff');
     expect(ops).toHaveLength(1);
     expect(ops[0].value).toBe(3000);
+  });
+
+  describe('openProject bulk path', () => {
+    it('uses sendLoad (one call, zero enqueues) when canBulkLoad', async () => {
+      const { ctx, fake, runtime } = await bootWithFakeSocket();
+      fake.serverCapabilities = ['load']; // server advertises the capability
+      const sendSpy = vi.spyOn(runtime.session, 'sendProjectLoad');
+      const enqueueSpy = vi.spyOn(runtime.session, 'enqueue');
+
+      const preOpenSnapshot = freshProject(); // bootWithFakeSocket's snapshot === fresh
+      const distinctive = freshProject();
+      distinctive.bpm = 155;
+
+      ctx.projectOps.openProject(distinctive);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(enqueueSpy).not.toHaveBeenCalled();
+
+      const [sentNext, sentPrior] = sendSpy.mock.calls[0];
+      expect(sentNext).toBe(distinctive);
+      expect(sentPrior).not.toBe(ctx.project); // not the live reactive project
+      expect(sentPrior).toEqual(preOpenSnapshot); // deep-equals the pre-open state
+
+      // Independent clone, not a live alias: mutating the (now-replaced) live
+      // project after the load must not reach back into the captured prior.
+      ctx.project.tracks[0].mixer.volume = 0.02;
+      expect((sentPrior as any).tracks[0].mixer.volume).not.toBe(0.02);
+    });
+
+    it('falls back to the leaf diff when the capability is absent', async () => {
+      const { ctx, fake, runtime } = await bootWithFakeSocket();
+      // fake.serverCapabilities defaults to [] — canBulkLoad stays false.
+      const sendSpy = vi.spyOn(runtime.session, 'sendProjectLoad');
+      fake.sent.length = 0;
+
+      const next = freshProject();
+      next.bpm = 155;
+      ctx.projectOps.openProject(next);
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(50); // clear the bpm leaf's throttle window
+      const bpmOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['bpm']));
+      expect(bpmOp).toBeDefined();
+      expect(bpmOp!.value).toBe(155);
+    });
+
+    it('offline: neither sendLoad nor enqueue (local-only, unchanged)', () => {
+      const { ctx, runtime } = makeCtx({ sync: false });
+      const sendSpy = vi.spyOn(runtime.session, 'sendProjectLoad');
+      const enqueueSpy = vi.spyOn(runtime.session, 'enqueue');
+
+      const next = freshProject();
+      next.bpm = 155;
+      ctx.projectOps.openProject(next);
+
+      expect(ctx.project.bpm).toBe(155); // local state applied
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(enqueueSpy).not.toHaveBeenCalled();
+    });
   });
 });
 

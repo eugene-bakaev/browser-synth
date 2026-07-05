@@ -14,6 +14,7 @@ import {
   freshProject,
   normalizeProject,
   PROJECT_SCHEMA_VERSION,
+  Schemas,
   validatePathAndValue,
 } from '@fiddle/shared';
 import type {
@@ -55,6 +56,10 @@ export const SESSION_LOAD_TIMEOUT_MS = 8000;
 // the ~224 KB project is never grace-pruned. This bounds that leak.
 export const HELLO_DEADLINE_MS = 15_000;
 
+// Loads replace the whole doc — one message, whole-project blast radius — so
+// they get their own coarse budget instead of the per-op TokenBucket.
+const LOAD_MIN_INTERVAL_MS = 2000;
+
 // Lightweight log surface so tests can pass a noop and production can pipe to
 // Fastify's pino logger.
 export type Log = (message: string, ctx?: Record<string, unknown>) => void;
@@ -76,6 +81,9 @@ export class ConnectionHandler {
   private identity: Identity | null = null;
   private helloProcessed = false;
   private bucket = new TokenBucket();
+  // Loads replace the whole doc — one message, whole-project blast radius —
+  // so they get their own coarse budget instead of the per-op TokenBucket.
+  private lastLoadAtMs = 0;
   private readonly heartbeat: Heartbeat;
   private helloDeadline: ReturnType<typeof setTimeout> | null = null;
 
@@ -200,6 +208,36 @@ export class ConnectionHandler {
       if (!this.bucket.consume()) return; // drop spammy resync requests silently
       const { opIdHead } = await this.store.getOrCreate(this.roomId, freshProject);
       await this.sendCatchUp(msg.fromOpId, opIdHead);
+      return;
+    }
+
+    if (msg.type === 'load') {
+      if (!this.clientId) return;
+      const now = Date.now();
+      if (now - this.lastLoadAtMs < LOAD_MIN_INTERVAL_MS) {
+        this.nack(msg.clientSeq, 'rate.limited', 'load rate limit exceeded');
+        return;
+      }
+      // Consume the budget even when validation fails below: a client spamming
+      // oversized/garbage payloads should not get free validation passes.
+      this.lastLoadAtMs = now;
+      const parsed = Schemas.Project.safeParse(msg.project);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        this.nack(
+          msg.clientSeq,
+          'value.invalid',
+          issue ? `${issue.path.join('.') || '<root>'}: ${issue.message}` : 'invalid project',
+        );
+        return;
+      }
+      const normalized = normalizeProject(parsed.data as unknown as Project);
+      const { opId } = await this.store.replaceProject(this.roomId, normalized);
+      const snapshot: SnapshotMessage = { v: 1, type: 'snapshot', opId, project: normalized };
+      // Everyone converges on the new doc; the originator's copy doubles as the ack.
+      for (const sock of this.pool.all(this.roomId)) {
+        sock.send(snapshot);
+      }
       return;
     }
   }
@@ -371,6 +409,7 @@ export class ConnectionHandler {
       opIdHead,
       schemaVersion: PROJECT_SCHEMA_VERSION,
       roster,
+      capabilities: ['load'],
     };
     this.socket.send(welcome);
 

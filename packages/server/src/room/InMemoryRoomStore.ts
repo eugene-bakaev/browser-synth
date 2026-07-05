@@ -109,6 +109,20 @@ export class InMemoryRoomStore implements RoomStore {
     return room.opLog.filter((op) => op.opId > fromOpId);
   }
 
+  async replaceProject(roomId: string, project: Project): Promise<{ opId: number }> {
+    const room = this.requireRoom(roomId);
+    room.project = project;
+    // The log describes edits to the PREVIOUS doc — clear both structures so
+    // resume-from-before-the-load falls into getOpsSince's null → snapshot path.
+    room.opLog = [];
+    room.opIndex.clear();
+    const opId = room.nextOpId;
+    room.nextOpId += 1;
+    room.dirty = true;
+    room.version += 1;
+    return { opId };
+  }
+
   async setIdentity(roomId: string, identity: Identity): Promise<void> {
     const room = this.requireRoom(roomId);
     room.identities.set(identity.clientId, identity);

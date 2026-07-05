@@ -6,11 +6,15 @@ import { createProjectOps } from './projectOps';
 
 // Fake bus: records dispatches AND actually writes (so live state advances the
 // way the real bus's applySet does, and priors can be asserted against it).
-function makeHarness(syncLive = true) {
+// `canBulkLoad` defaults to false so pre-existing callers exercise the same
+// leaf-diff fallback path as before the bulk-load capability existed (the bulk
+// path itself is covered end-to-end in synthContext.test.ts).
+function makeHarness(syncLive = true, canBulkLoad = false) {
   const project = reactive(freshProject()) as Project;
   const dispatched: { path: Path; value: unknown; priorValue: unknown; gestureEnd: boolean }[] = [];
   const enqueued: { path: Path; value: unknown; prior: unknown; gestureEnd: boolean }[] = [];
   const loadProjectSpy = vi.fn((next: Project) => replaceProject(project, next));
+  const sendLoadSpy = vi.fn();
   const bus = {
     dispatchLocal(cmd: { path: Path; value: unknown; priorValue?: unknown; gestureEnd?: boolean }) {
       dispatched.push({ path: cmd.path, value: cmd.value, priorValue: cmd.priorValue, gestureEnd: cmd.gestureEnd ?? false });
@@ -23,8 +27,10 @@ function makeHarness(syncLive = true) {
     bus,
     isSyncLive: () => syncLive,
     enqueue: (path, value, prior, gestureEnd) => enqueued.push({ path, value, prior, gestureEnd }),
+    canBulkLoad: () => canBulkLoad,
+    sendLoad: sendLoadSpy,
   });
-  return { project, ops, dispatched, enqueued, loadProjectSpy };
+  return { project, ops, dispatched, enqueued, loadProjectSpy, sendLoadSpy };
 }
 
 describe('projectOps — steps window (Clear / Shift / Fill)', () => {

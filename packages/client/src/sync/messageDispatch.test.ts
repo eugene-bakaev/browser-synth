@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { dispatchServerMessage, type DispatchDeps } from './messageDispatch.js';
 import { createCommandBus } from './CommandBus.js';
+import { LoadTracker } from './LoadTracker.js';
 import { replaceProject } from '../project';
 import { freshProject, setDeep, TRACK_POOL_SIZE, type Project, type ServerMessage } from '@fiddle/shared';
 
@@ -11,6 +12,7 @@ function deps(project: Project): DispatchDeps {
       onLive: vi.fn(), onEcho: vi.fn(), onNack: vi.fn(), reassertPending: vi.fn(),
       hasPendingForPath: vi.fn(() => false),
     } as unknown as DispatchDeps['outbox'],
+    loadTracker: new LoadTracker({ send: vi.fn(), rollback: vi.fn(), onError: vi.fn(), requireSnapshot: vi.fn() }),
     onFatalError: vi.fn(),
     commandBus: createCommandBus({
       applySet: (path, value) => setDeep(project as unknown as Record<string, unknown>, path, value),

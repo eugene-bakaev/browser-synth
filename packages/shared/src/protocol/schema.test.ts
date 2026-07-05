@@ -90,3 +90,22 @@ describe('HelloSchema token field', () => {
     expect(r.success).toBe(false);
   });
 });
+
+describe('LoadMessage', () => {
+  it('accepts a well-formed load message', () => {
+    const r = ClientMessageSchema.safeParse({
+      v: 1, type: 'load', clientSeq: 7, project: { anything: true },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects load without clientSeq', () => {
+    const r = ClientMessageSchema.safeParse({ v: 1, type: 'load', project: {} });
+    expect(r.success).toBe(false);
+  });
+
+  it('still rejects unknown message types', () => {
+    const r = ClientMessageSchema.safeParse({ v: 1, type: 'bulk', project: {} });
+    expect(r.success).toBe(false);
+  });
+});

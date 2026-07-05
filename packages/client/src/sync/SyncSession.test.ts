@@ -4,6 +4,7 @@ import { setDeep } from '@fiddle/shared';
 import { freshProject, replaceProject } from '../project';
 import { SyncSession, type SyncSessionDeps } from './SyncSession';
 import { createCommandBus } from './CommandBus';
+import { Outbox } from './Outbox';
 
 // A fake WsClient matching the surface SyncSession/messageDispatch touch. The
 // factory captures opts so the test can push server messages via opts.onMessage.
@@ -13,9 +14,11 @@ function makeFakeWsClient(opts: any) {
     _opts: opts,
     sent: [] as any[],
     state: 'closed' as string,
+    serverCapabilities: [] as string[],
     connect: vi.fn(),
     disconnect: vi.fn(),
     reconnect: vi.fn(),
+    requireSnapshot: vi.fn(),
     send(op: any) { this.sent.push(op); },
     isLive: () => true,
     nextClientSeq: () => ++seq,
@@ -201,5 +204,87 @@ describe('SyncSession', () => {
     authSession.value = { user: { id: 'u1' } };
     await nextTick();
     expect(built[0].reconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('bulk load', () => {
+  it('canBulkLoad is false before live, true once live with the capability', () => {
+    stubEnv();
+    const { session, built } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = ['load'];
+    expect(session.canBulkLoad).toBe(false); // not live yet
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+    expect(session.canBulkLoad).toBe(true);
+  });
+
+  it('canBulkLoad is false when the server lacks the capability', () => {
+    stubEnv();
+    const { session, built } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = [];
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+    expect(session.canBulkLoad).toBe(false);
+  });
+
+  it('sendProjectLoad sends one load message with a minted clientSeq', () => {
+    stubEnv();
+    const { session, built } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = ['load'];
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+
+    const draft = freshProject();
+    draft.bpm = 155;
+    const prior = freshProject();
+    session.sendProjectLoad(draft as any, prior as any);
+
+    const loads = built[0].sent.filter((m: any) => m.type === 'load');
+    expect(loads).toHaveLength(1);
+    expect(loads[0]).toMatchObject({ v: 1, type: 'load', project: draft });
+    expect(typeof loads[0].clientSeq).toBe('number');
+  });
+
+  it('load nack routes to rollback via bus.loadProject and sets loadError', () => {
+    stubEnv();
+    const onNackSpy = vi.spyOn(Outbox.prototype, 'onNack');
+    const { session, built, project } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = ['load'];
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+
+    const prior = freshProject();
+    prior.bpm = 111;
+    const draft = freshProject();
+    draft.bpm = 222;
+    session.sendProjectLoad(draft as any, prior as any);
+    const load = built[0].sent.find((m: any) => m.type === 'load');
+
+    built[0]._opts.onMessage({
+      v: 1, type: 'nack', clientSeq: load.clientSeq, code: 'value.invalid', message: 'bad project',
+    });
+
+    expect(project.bpm).toBe(111); // rolled back to prior via bus.loadProject
+    expect(session.loadError.value).toContain('bad project');
+    expect(onNackSpy).not.toHaveBeenCalledWith(load.clientSeq, expect.anything());
+    onNackSpy.mockRestore();
+  });
+
+  it('a socket close while a load is pending forces a snapshot catch-up via wsClient.requireSnapshot', () => {
+    // The load frame may or may not have reached the server before the drop;
+    // only a forced snapshot on the next hello reconciles both cases (D19).
+    stubEnv();
+    const { session, built } = makeSession();
+    session.connect('room-a');
+    built[0].serverCapabilities = ['load'];
+    built[0]._opts.onMessage({ v: 1, type: 'sync.complete', opId: 0 });
+
+    const draft = freshProject();
+    draft.bpm = 155;
+    const prior = freshProject();
+    session.sendProjectLoad(draft as any, prior as any);
+
+    built[0]._opts.onStateChange('closed');
+    expect(built[0].requireSnapshot).toHaveBeenCalledOnce();
   });
 });

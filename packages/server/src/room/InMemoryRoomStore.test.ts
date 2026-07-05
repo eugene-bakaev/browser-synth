@@ -211,6 +211,47 @@ describe('InMemoryRoomStore version-gated clearDirty', () => {
   });
 });
 
+describe('InMemoryRoomStore.replaceProject', () => {
+  it('swaps the doc, advances head, and clears replayability', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r1', freshProject);
+    await store.appendOp('r1', { clientId: 'c1', clientSeq: 1, path: ['bpm'], value: 97 });
+    const headBefore = (await store.getOrCreate('r1', freshProject)).opIdHead;
+
+    const next = freshProject();
+    next.bpm = 63;
+    const { opId } = await store.replaceProject('r1', next);
+
+    expect(opId).toBe(headBefore + 1);
+    const { project, opIdHead } = await store.getOrCreate('r1', freshProject);
+    expect(project.bpm).toBe(63);
+    expect(opIdHead).toBe(opId);
+    // Pre-load watermarks must take the snapshot path…
+    expect(await store.getOpsSince('r1', headBefore)).toBeNull();
+    expect(await store.getOpsSince('r1', 0)).toBeNull();
+    // …but a client already at the new head needs nothing.
+    expect(await store.getOpsSince('r1', opId)).toEqual([]);
+  });
+
+  it('marks the room dirty and bumps version (autosave contract)', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r1', freshProject);
+    const v0 = await store.roomVersion('r1');
+    await store.clearDirty('r1');
+    await store.replaceProject('r1', freshProject());
+    expect(await store.listDirtyRoomIds()).toContain('r1');
+    expect(await store.roomVersion('r1')).toBe((v0 ?? 0) + 1);
+  });
+
+  it('appendOp after a load continues the opId sequence', async () => {
+    const store = new InMemoryRoomStore();
+    await store.getOrCreate('r1', freshProject);
+    const { opId } = await store.replaceProject('r1', freshProject());
+    const r = await store.appendOp('r1', { clientId: 'c1', clientSeq: 2, path: ['bpm'], value: 80 });
+    expect(r.ok && r.op.opId).toBe(opId + 1);
+  });
+});
+
 describe('InMemoryRoomStore grace lifecycle (M3a)', () => {
   let store: InMemoryRoomStore;
   beforeEach(() => {

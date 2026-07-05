@@ -265,6 +265,24 @@ DB (fold supabase/migrations/0005_presets.sql into packages/server/db/local-init
 Pre-existing env gap found during Phase 5 (`feat/phase5-appruntime`) browser-verification
 checkpoints, unrelated to the Phase 5 code changes.
 
+### Outbox treats `rate.limited` as authoritative
+**Reported:** 2026-07-04 · **Status:** open · **Area:** `packages/client/src/sync/Outbox.ts`, `packages/client/src/app/projectOps.ts`
+
+Any >200-op burst of regular set ops (e.g. FILL/CLEAR across several long tracks)
+still loses leaves: the tail is nacked `rate.limited` and rolled back with no retry
+(`packages/client/src/sync/Outbox.ts` onNack ignores the code). The bulk load (D19)
+removed the biggest source (whole-project import storms), not the class. Fix
+direction: re-queue `rate.limited` nacks with backoff instead of rolling back.
+
+### Remove the whole-project diff fallback
+**Reported:** 2026-07-04 · **Status:** open (blocked) · **Area:** `packages/client/src/app/projectOps.ts`, `packages/client/src/sync/WsClient.ts`
+
+Once prod is verified on the D19 load path, delete `snapshotProjectForSync` /
+`enqueueWholeProjectDiff` / `enqueueLeafDiff` / `enqueueMatrixDiff` from
+`packages/client/src/app/projectOps.ts` and the `capabilities` gate check (keep
+the welcome field for old-server fallback detection). Blocked on: prod deploy +
+browser sign-off.
+
 ## Resolved
 
 ### P0 — Reload showed a blank default project (auth-reconnect raced the initial snapshot) — FIXED
