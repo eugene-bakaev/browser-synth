@@ -29,6 +29,9 @@ export function formatKnobValue(
       if (value < 10) return `${parseFloat(value.toFixed(2))}Hz`;
       return Math.round(value) + 'Hz';
     case 'ms':
+      // Always render ms — switching to "s" past 1.0 looked like the value
+      // dropped ("990ms" → "1.00s") even though it went up. Max range here
+      // is 5s = "5000ms" (6 chars), still fits the 48px value cell.
       return Math.round(value * 1000) + 'ms';
     case 'percent':
       return Math.round(value * 100) + '%';
@@ -39,11 +42,18 @@ export function formatKnobValue(
     case 'octave': {
       const rounded = Number(value.toFixed(1));
       if (rounded === 0) return '0';
+      // Arrow shows sweep direction at a glance — ↑ filter opens, ↓ filter closes.
+      // Magnitude is in octaves, but the label already implies it; unit text omitted
+      // to keep the value cell narrow and stop layout shifts on knob turn.
       return rounded > 0 ? `↑${rounded}` : `↓${Math.abs(rounded)}`;
     }
     case 'ratio':
       return value.toFixed(1);
     case 'db': {
+      // Knob value is the slider position 0..1; we render the perceptual dB
+      // it represents. -54..+6 dB throw with unity at slider 0.9. The audio-
+      // side linear gain conversion lives in useSynth.sliderToLinearGain —
+      // keep them in sync if the range changes.
       if (value <= 0) return '-∞ dB';
       const db = -54 + value * 60;
       const prefix = db > 0 ? '+' : '';

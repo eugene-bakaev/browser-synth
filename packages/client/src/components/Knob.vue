@@ -67,7 +67,7 @@ import { computed, onBeforeUnmount } from 'vue';
 import type { Path, KnobCurve } from '@fiddle/shared';
 import { touchedFor } from '../sync/presence';
 import { posToValue, valueToPos } from '../ui/knobTaper';
-import { formatKnobValue } from '../ui/knobFormat';
+import { formatKnobValue, type KnobFormat } from '../ui/knobFormat';
 
 const props = withDefaults(defineProps<{
   label: string;
@@ -76,7 +76,7 @@ const props = withDefaults(defineProps<{
   step: number;
   modelValue: number;
   defaultValue?: number;
-  format?: 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+  format?: KnobFormat;
   labels?: string[];
   curve?: KnobCurve;
   // The sync path this knob writes to, e.g. ['tracks',0,'engines','synth','filterCutoff'].
