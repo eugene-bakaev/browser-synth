@@ -1,5 +1,5 @@
 import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 'vue';
-import { TRACK_POOL_SIZE, divisionToHz } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, divisionToHz, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
@@ -74,7 +74,7 @@ function snapshot<T>(slice: T): T {
 // A synced LFO's rate is derived on the main thread from its note division and
 // the project BPM (the kernel is tempo-agnostic); a free LFO uses its stored Hz.
 function effectiveLfoRate(lfo: { sync?: boolean; div?: string; rate: number }, bpm: number): number {
-  return lfo.sync ? divisionToHz(lfo.div ?? '1/16', bpm) : lfo.rate;
+  return lfo.sync ? divisionToHz(lfo.div ?? LFO_SYNC_DEFAULT_LABEL, bpm) : lfo.rate;
 }
 
 export interface AudioState {
