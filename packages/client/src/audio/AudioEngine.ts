@@ -1,5 +1,5 @@
 import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 'vue';
-import { TRACK_POOL_SIZE } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, divisionToHz } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
@@ -69,6 +69,12 @@ function sliderToLinearGain(slider: number): number {
 // no NaN/Infinity, no functions.
 function snapshot<T>(slice: T): T {
   return JSON.parse(JSON.stringify(slice));
+}
+
+// A synced LFO's rate is derived on the main thread from its note division and
+// the project BPM (the kernel is tempo-agnostic); a free LFO uses its stored Hz.
+function effectiveLfoRate(lfo: { sync?: boolean; div?: string; rate: number }, bpm: number): number {
+  return lfo.sync ? divisionToHz(lfo.div ?? '1/16', bpm) : lfo.rate;
 }
 
 export interface AudioState {
@@ -208,7 +214,17 @@ export class AudioEngine {
         engines[i] = engineFactories[targetType](ctx, trackGains[i]);
       }
 
-      engines[i]!.applyParams(track.engines[targetType] as Record<string, any>);
+      const params = track.engines[targetType] as Record<string, any>;
+      if (targetType === 'synth2') {
+        const s2 = params as unknown as { lfo1: any; lfo2: any };
+        engines[i]!.applyParams({
+          ...params,
+          lfo1: { ...s2.lfo1, rate: effectiveLfoRate(s2.lfo1, project.bpm) },
+          lfo2: { ...s2.lfo2, rate: effectiveLfoRate(s2.lfo2, project.bpm) },
+        });
+      } else {
+        engines[i]!.applyParams(params);
+      }
     };
 
     const updateMixerGains = () => {
@@ -247,6 +263,22 @@ export class AudioEngine {
         return;
       }
       const p = cmd.path;
+      // A synced LFO derives its rate from BPM on the main thread, so a tempo
+      // change must re-push the derived Hz to every synth2 engine that has one.
+      // Everything else still "pulls bpm per tick" (the guard below).
+      if (p[0] === 'bpm') {
+        for (let i = 0; i < TRACK_POOL_SIZE; i++) {
+          if (project.tracks[i].engineType !== 'synth2') continue;
+          const engine = engines[i];
+          if (!engine) continue;
+          for (const key of ['lfo1', 'lfo2'] as const) {
+            const lfo = project.tracks[i].engines.synth2[key];
+            if (!lfo.sync) continue;
+            engine.applyParams({ [key]: { ...snapshot(lfo), rate: effectiveLfoRate(lfo, project.bpm) } });
+          }
+        }
+        return;
+      }
       if (p[0] !== 'tracks' || typeof p[1] !== 'number') return; // bpm etc.: sequencer pulls per tick
       const i = p[1];
       switch (p[2]) {
@@ -271,6 +303,11 @@ export class AudioEngine {
           // applies its whole sub-object (superset — applyParams setters are
           // idempotent per param); a matrix slot edit applies the whole matrix.
           const liveSlice = project.tracks[i].engines[slice] as unknown as Record<string, unknown>;
+          if (slice === 'synth2' && (key === 'lfo1' || key === 'lfo2')) {
+            const lfo = liveSlice[key] as { sync?: boolean; div?: string; rate: number };
+            engine.applyParams({ [key]: { ...snapshot(lfo), rate: effectiveLfoRate(lfo, project.bpm) } });
+            return;
+          }
           engine.applyParams({ [key]: snapshot(liveSlice[key]) } as Record<string, any>);
           return;
         }

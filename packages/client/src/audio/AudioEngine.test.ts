@@ -30,6 +30,10 @@ class MockAudioWorkletNode extends MockAudioNode {
   parameters = new Map<string, MockAudioParam>([
     ['frequency', new MockAudioParam()], ['detune', new MockAudioParam()], ['pulseWidth', new MockAudioParam()],
   ]);
+  // synth2/kick2/etc. engines post param/trigger/dispose messages over the
+  // worklet port (see Synth2Engine.applyParams) — needed once a test drives
+  // one of those engines through AudioEngine, not just the default 'synth'.
+  port = { postMessage: vi.fn() };
 }
 let audioContextCtorCalls = 0;
 class MockAudioContext {
@@ -185,5 +189,48 @@ describe('AudioEngine', () => {
 
     engine.dispose();                        // second call: no-op
     expect(closeSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AudioEngine — LFO tempo-sync rate derivation', () => {
+  async function synth2Engine(lfo1: Partial<{ sync: boolean; div: string; rate: number }>) {
+    const h = makeEngine();
+    h.project.bpm = 120;
+    h.project.tracks[0].engineType = 'synth2';
+    Object.assign(h.project.tracks[0].engines.synth2.lfo1, lfo1);
+    const state = await h.engine.ensureAudio();
+    const spy = vi.spyOn(state.engines[0]!, 'applyParams');
+    spy.mockClear();
+    return { ...h, state, spy };
+  }
+
+  it('re-pushes a derived Hz to a synced LFO on BPM change', async () => {
+    const { set, spy } = await synth2Engine({ sync: true, div: '1/16' });
+    set(['bpm'], 120);
+    expect(spy).toHaveBeenCalledWith({ lfo1: expect.objectContaining({ rate: 8 }) }); // 1/16 @ 120
+  });
+
+  it('does NOT re-push a free-mode LFO on BPM change', async () => {
+    const { set, spy } = await synth2Engine({ sync: false });
+    set(['bpm'], 120);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('derives the rate when a synced LFO div changes', async () => {
+    const { set, spy } = await synth2Engine({ sync: true, div: '1/16' });
+    set(['tracks', 0, 'engines', 'synth2', 'lfo1', 'div'], '1/8'); // 0.5 beat @120 → 4 Hz
+    expect(spy).toHaveBeenCalledWith({ lfo1: expect.objectContaining({ rate: 4 }) });
+  });
+
+  it('derives the rate when SYNC is turned on', async () => {
+    const { set, spy } = await synth2Engine({ sync: false, div: '1/4' });
+    set(['tracks', 0, 'engines', 'synth2', 'lfo1', 'sync'], true); // 1 beat @120 → 2 Hz
+    expect(spy).toHaveBeenCalledWith({ lfo1: expect.objectContaining({ rate: 2 }) });
+  });
+
+  it('passes the raw Hz through for a free-mode rate edit', async () => {
+    const { set, spy } = await synth2Engine({ sync: false });
+    set(['tracks', 0, 'engines', 'synth2', 'lfo1', 'rate'], 3);
+    expect(spy).toHaveBeenCalledWith({ lfo1: expect.objectContaining({ rate: 3 }) });
   });
 });
