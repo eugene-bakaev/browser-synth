@@ -36,8 +36,11 @@ export interface Synth2FmParams {
 }
 
 export interface Synth2LfoParams {
-  rate: number;   // Hz (0.01..2000)
+  rate: number;   // Hz — free-mode rate; when sync is on the kernel receives a
+                  // main-thread-derived Hz instead (this leaf is never overwritten)
   shape: number;  // 0..4 morph: sine → tri → saw-up → saw-down → square
+  sync: boolean;  // tempo-sync on/off (rate derived from div × bpm on the main thread)
+  div: string;    // note-division label from LFO_SYNC_DIVISIONS (used when sync is on)
 }
 
 export interface Synth2FilterParams {

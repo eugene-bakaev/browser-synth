@@ -287,3 +287,30 @@ describe('Synth2Panel wave previews (2026-06-19)', () => {
     expect(headingsWithPreview).toEqual(['LFO 1', 'LFO 2', 'OSC 1', 'OSC 2', 'OSC 3']);
   });
 });
+
+describe('Synth2Panel LFO tempo-sync', () => {
+  it('renders a SYNC toggle on lfo1 and lfo2', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const lfoSyncBtns = el.querySelectorAll<HTMLButtonElement>('.lfo-sync-btn');
+    expect(lfoSyncBtns.length).toBe(2);
+  });
+
+  it('dispatches lfo1.sync toggled true on click', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const btn = el.querySelectorAll<HTMLButtonElement>('.lfo-sync-btn')[0];
+    expect(params.lfo1.sync).toBe(false);
+    btn.click();
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('lfo1', 'sync'), true);
+  });
+
+  it('shows the division label on the Rate knob when synced', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.lfo1.sync = true;
+    params.lfo1.div = '1/8';
+    const el = mountPanel(params);
+    // The synced LFO1 Rate knob readout shows the division, not a Hz value.
+    expect(el.textContent).toContain('1/8');
+  });
+});

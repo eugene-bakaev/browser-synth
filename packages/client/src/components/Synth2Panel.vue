@@ -169,17 +169,21 @@
         <h3>LFO 1</h3>
         <WavePreview kind="lfo" :shape="params.lfo1.shape" :color="color" />
         <div class="knob-row">
-          <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo1.rate" :modelValue="params.lfo1.rate" @update:modelValue="ks.set(['lfo1', 'rate'], $event)" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
+          <Knob v-if="!params.lfo1.sync" label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo1.rate" :modelValue="params.lfo1.rate" @update:modelValue="ks.set(['lfo1', 'rate'], $event)" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
+          <Knob v-else label="Rate" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.lfo1.div)" :modelValue="divisionLabelToIndex(params.lfo1.div)" @update:modelValue="ks.set(['lfo1', 'div'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['lfo1', 'div'])" @gesture-end="ks.end(['lfo1', 'div'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" :modelValue="params.lfo1.shape" @update:modelValue="ks.set(['lfo1', 'shape'], $event)" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
         </div>
+        <button type="button" class="lfo-sync-btn" :class="{ active: params.lfo1.sync }" @click="ks.set(['lfo1', 'sync'], !params.lfo1.sync)">SYNC</button>
       </div>
       <div class="module-group">
         <h3>LFO 2</h3>
         <WavePreview kind="lfo" :shape="params.lfo2.shape" :color="color" />
         <div class="knob-row">
-          <Knob label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo2.rate" :modelValue="params.lfo2.rate" @update:modelValue="ks.set(['lfo2', 'rate'], $event)" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
+          <Knob v-if="!params.lfo2.sync" label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo2.rate" :modelValue="params.lfo2.rate" @update:modelValue="ks.set(['lfo2', 'rate'], $event)" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
+          <Knob v-else label="Rate" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.lfo2.div)" :modelValue="divisionLabelToIndex(params.lfo2.div)" @update:modelValue="ks.set(['lfo2', 'div'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['lfo2', 'div'])" @gesture-end="ks.end(['lfo2', 'div'])" />
           <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" :modelValue="params.lfo2.shape" @update:modelValue="ks.set(['lfo2', 'shape'], $event)" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
         </div>
+        <button type="button" class="lfo-sync-btn" :class="{ active: params.lfo2.sync }" @click="ks.set(['lfo2', 'sync'], !params.lfo2.sync)">SYNC</button>
       </div>
     </div>
 
@@ -213,7 +217,7 @@ import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
 import WavePreview from './WavePreview.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
-import { MOD_SOURCES, MOD_DESTS } from '@fiddle/shared';
+import { MOD_SOURCES, MOD_DESTS, LFO_SYNC_LABELS, divisionLabelToIndex } from '@fiddle/shared';
 import { useKnobSync } from '../sync/knobSync';
 import type { EngineParamsMap } from '../project';
 
@@ -259,7 +263,8 @@ defineProps<{
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 .sync-btn,
-.loop-btn {
+.loop-btn,
+.lfo-sync-btn {
   width: 100%;
   margin-top: 6px;
   background: #181818;
@@ -275,9 +280,11 @@ defineProps<{
   transition: all 0.2s ease;
 }
 .sync-btn:hover,
-.loop-btn:hover { color: #aaa; border-color: #444; }
+.loop-btn:hover,
+.lfo-sync-btn:hover { color: #aaa; border-color: #444; }
 .sync-btn.active,
-.loop-btn.active { background: #222; color: #fff; border-color: #555; }
+.loop-btn.active,
+.lfo-sync-btn.active { background: #222; color: #fff; border-color: #555; }
 .filter-type-selector {
   display: flex;
   gap: 6px;

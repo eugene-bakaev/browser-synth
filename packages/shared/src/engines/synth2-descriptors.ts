@@ -9,6 +9,7 @@
 // inserting/reordering would silently scramble every older client's params.
 
 import type { KnobCurve } from './knob-curve.js';
+import { LFO_SYNC_LABELS, LFO_SYNC_DEFAULT_INDEX } from './lfo-sync.js';
 
 export type Synth2Taper = 'linear' | 'expOctaves';
 
@@ -154,6 +155,16 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // (auto-joins MOD_DESTS) so an LFO/env can sweep it. The self-oscillation itself
   // lives at the top of filter.resonance (>0.9), needing no new param.
   { key: 'filter.drive', min: 0, max: 1, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
+  // --- LFO tempo-sync (2026-07-05, append-only). Opt-in per LFO. When sync is
+  // on, the effective rate is derived on the MAIN THREAD (AudioEngine) from the
+  // note division × project bpm and written into lfoN.rate before it reaches the
+  // kernel — the kernel never reads these two rows, so they are dead block slots
+  // kept only so the leaves auto-derive (schema / accept-list / defaults). Not
+  // mod dests (modulatable:false, modScale:0), like osc sync bools / filter enums.
+  { key: 'lfo1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'lfo1.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'lfo2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'lfo2.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel
