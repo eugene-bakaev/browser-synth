@@ -864,7 +864,14 @@ input[type=number] {
 }
 /* The header row sits outside the scroll container, so reserve the same 8px the
    gutter consumes (see ::-webkit-scrollbar width) to keep its columns aligned
-   with the step rows below it. */
+   with the step rows below it. The compact columns are 16-28px wide, so the
+   labels also shrink below the default 0.75rem or they overlap (STEP alone
+   needs ~29px at 0.75rem monospace bold). */
+.tracker-container:not(.focused) .tracker-header,
+.tracker-container:not(.focused) .tracker-header .col-step,
+.tracker-container:not(.focused) .tracker-header .col-vel {
+  font-size: 0.55rem;
+}
 .tracker-container:not(.focused) .tracker-header {
   padding-right: 8px;
 }
