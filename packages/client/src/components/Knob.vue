@@ -77,7 +77,7 @@ const props = withDefaults(defineProps<{
   modelValue: number;
   defaultValue?: number;
   format?: KnobFormat;
-  labels?: string[];
+  labels?: readonly string[];
   curve?: KnobCurve;
   // The sync path this knob writes to, e.g. ['tracks',0,'engines','synth','filterCutoff'].
   // Optional: unsynced knobs (and, until the panels plumb it through, all knobs)
