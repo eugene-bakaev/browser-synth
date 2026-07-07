@@ -234,3 +234,60 @@ describe('AudioEngine — LFO tempo-sync rate derivation', () => {
     expect(spy).toHaveBeenCalledWith({ lfo1: expect.objectContaining({ rate: 3 }) });
   });
 });
+
+describe('AudioEngine — envelope tempo-sync time derivation', () => {
+  async function synth2EnvEngine(env1: Partial<{ sync: boolean; aDiv: string; dDiv: string; rDiv: string; a: number; d: number; r: number }>) {
+    const h = makeEngine();
+    h.project.bpm = 120;
+    h.project.tracks[0].engineType = 'synth2';
+    Object.assign(h.project.tracks[0].engines.synth2.env1, env1);
+    const state = await h.engine.ensureAudio();
+    const spy = vi.spyOn(state.engines[0]!, 'applyParams');
+    spy.mockClear();
+    return { ...h, state, spy };
+  }
+
+  it('re-pushes derived A/D/R seconds to a synced envelope on BPM change', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: true }); // divs at defaults 1/32, 1/8, 1/4
+    set(['bpm'], 120);
+    // @120: 1/32 = 62.5ms, 1/8 = 250ms, 1/4 = 500ms
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ a: 0.0625, d: 0.25, r: 0.5 }) });
+  });
+
+  it('does NOT re-push a free-mode envelope on BPM change', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: false });
+    set(['bpm'], 120);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('derives times when a synced envelope div changes', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: true });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 'dDiv'], '1/4'); // 1 beat @120 → 0.5s
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.5 }) });
+  });
+
+  it('derives times when SYNC is turned on', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: false });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 'sync'], true);
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ a: 0.0625, d: 0.25, r: 0.5 }) });
+  });
+
+  it('passes raw seconds through for a free-mode a/d/r edit', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: false });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 'd'], 1.5);
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 1.5 }) });
+  });
+
+  it('a raw a/d/r write on a SYNCED envelope still reaches audio derived (leaf preserved, derived wins)', async () => {
+    const { set, spy, project } = await synth2EnvEngine({ sync: true });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 'd'], 5);
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.25 }) }); // derived, not 5
+    expect(project.tracks[0].engines.synth2.env1.d).toBe(5); // persisted leaf untouched
+  });
+
+  it('sustain and loop ride through unchanged when synced', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: true, dDiv: '1/8' });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 's'], 0.7);
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ s: 0.7, d: 0.25 }) });
+  });
+});
