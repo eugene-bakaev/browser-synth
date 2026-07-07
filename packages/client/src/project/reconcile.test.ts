@@ -147,7 +147,10 @@ describe('reconcileWithDefaults', () => {
     expect(s2.filter.type).toBe('lp');
     expect(s2.filter.cutoff).toBe(2000);
     expect(s2.filter.envAmount).toBeCloseTo(2.4, 6);
-    expect(s2.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
+    expect(s2.env2).toEqual({
+      a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false,
+      sync: false, aDiv: '1/32', dDiv: '1/8', rDiv: '1/4',
+    });
   });
 
   it('heals a synth2 slice missing filter.morph/filter.model to defaults (I3d)', () => {

@@ -138,7 +138,7 @@ describe('synth2 schema (generated from descriptors)', () => {
 
   it('accepts an env3 ADSR + loop and the env1/env2 loop booleans (I3c)', () => {
     const base = structuredClone(DEFAULT_SYNTH2_PARAMS) as any;
-    base.env3 = { a: 1, d: 2, s: 0.3, r: 1.5, loop: true };
+    base.env3 = { a: 1, d: 2, s: 0.3, r: 1.5, loop: true, sync: false, aDiv: '1/32', dDiv: '1/8', rDiv: '1/4' };
     base.env1.loop = true;
     base.env2.loop = false;
     expect(() => Schemas.Synth2Params.parse(base)).not.toThrow();

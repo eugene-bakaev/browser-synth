@@ -3,10 +3,11 @@ import {
   SYNTH2_DESCRIPTORS, isDiscrete, encodeBool, decodeBool, encodeEnum, decodeEnum,
   MOD_SOURCES, MOD_DESTS, SYNTH2_ENUM_VALUES,
 } from './synth2-descriptors.js';
+import { LFO_SYNC_LABELS } from './lfo-sync.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div', 'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv', 'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv', 'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -52,6 +53,9 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'filter.morph', 'filter.model',
       'filter.drive',
       'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div',
+      'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv',
+      'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv',
+      'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv',
     ]);
   });
 
@@ -246,5 +250,26 @@ describe('morph filter descriptor rows (I3d)', () => {
     });
     expect(byKey['filter.drive'].kind).toBeUndefined();
     expect(MOD_DESTS).toContain('filter.drive');
+  });
+});
+
+describe('envelope tempo-sync descriptor rows (2026-07-06)', () => {
+  it('envelope tempo-sync rows: bool + three LFO_SYNC_LABELS enums per envelope, defaults 1/32 / 1/8 / 1/4 (2026-07-06)', () => {
+    for (const env of ['env1', 'env2', 'env3']) {
+      const sync = SYNTH2_DESCRIPTORS.find(d => d.key === `${env}.sync`)!;
+      expect(sync.kind, sync.key).toBe('bool');
+      expect(sync.default, sync.key).toBe(0); // off
+      expect(sync.modulatable, sync.key).toBe(false);
+      const stageDefaults = { aDiv: '1/32', dDiv: '1/8', rDiv: '1/4' } as const;
+      for (const [field, label] of Object.entries(stageDefaults)) {
+        const d = SYNTH2_DESCRIPTORS.find(x => x.key === `${env}.${field}`)!;
+        expect(d.kind, d.key).toBe('enum');
+        expect(d.enumValues, d.key).toBe(LFO_SYNC_LABELS);
+        expect(d.min, d.key).toBe(0);
+        expect(d.max, d.key).toBe(LFO_SYNC_LABELS.length - 1);
+        expect(d.default, d.key).toBe(LFO_SYNC_LABELS.indexOf(label));
+        expect(d.modulatable, d.key).toBe(false);
+      }
+    }
   });
 });

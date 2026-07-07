@@ -314,3 +314,41 @@ describe('Synth2Panel LFO tempo-sync', () => {
     expect(el.textContent).toContain('1/8');
   });
 });
+
+describe('Synth2Panel envelope tempo-sync', () => {
+  it('renders one SYNC toggle per envelope, distinct from LFO and osc sync buttons', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect(el.querySelectorAll<HTMLButtonElement>('.env-sync-btn').length).toBe(3);
+    expect(el.querySelectorAll<HTMLButtonElement>('.lfo-sync-btn').length).toBe(2); // unchanged
+    expect(el.querySelectorAll<HTMLButtonElement>('.sync-btn').length).toBe(2);     // unchanged
+  });
+
+  it('dispatches env1.sync toggled true on click', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const btn = el.querySelectorAll<HTMLButtonElement>('.env-sync-btn')[0];
+    expect(params.env1.sync).toBe(false);
+    btn.click();
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('env1', 'sync'), true);
+  });
+
+  it('shows division labels on A/D/R when synced while S stays a percent knob', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.env1.sync = true;
+    params.env1.aDiv = '1/1T';  // distinctive labels that appear nowhere else
+    params.env1.dDiv = '1/2.';
+    params.env1.rDiv = '1/16T';
+    const el = mountPanel(params);
+    expect(el.textContent).toContain('1/1T');
+    expect(el.textContent).toContain('1/2.');
+    expect(el.textContent).toContain('1/16T');
+    expect(el.textContent).toContain('50%'); // env1.s default 0.5 still renders as percent
+  });
+
+  it('free mode still shows time readouts (no division labels)', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    expect(el.textContent).not.toContain('1/32'); // aDiv default hidden while free
+  });
+});

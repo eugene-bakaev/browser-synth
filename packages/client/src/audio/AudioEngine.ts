@@ -1,5 +1,5 @@
 import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 'vue';
-import { TRACK_POOL_SIZE, divisionToHz, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, divisionToHz, divisionToSeconds, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
@@ -75,6 +75,20 @@ function snapshot<T>(slice: T): T {
 // the project BPM (the kernel is tempo-agnostic); a free LFO uses its stored Hz.
 function effectiveLfoRate(lfo: { sync?: boolean; div?: string; rate: number }, bpm: number): number {
   return lfo.sync ? divisionToHz(lfo.div ?? LFO_SYNC_DEFAULT_LABEL, bpm) : lfo.rate;
+}
+
+// A synced envelope's A/D/R times are derived on the main thread from its note
+// divisions and the project BPM (the kernel is tempo-agnostic); a free envelope
+// uses its stored seconds. The clamp is defensive: within BPM 40–240 the
+// derived range is 20.8ms–9s, already inside the descriptor's [0.001, 10].
+function effectiveEnvTimes(
+  env: { sync?: boolean; aDiv?: string; dDiv?: string; rDiv?: string; a: number; d: number; r: number },
+  bpm: number,
+): { a: number; d: number; r: number } {
+  if (!env.sync) return { a: env.a, d: env.d, r: env.r };
+  const t = (label: string | undefined) =>
+    Math.min(10, Math.max(0.001, divisionToSeconds(label ?? LFO_SYNC_DEFAULT_LABEL, bpm)));
+  return { a: t(env.aDiv), d: t(env.dDiv), r: t(env.rDiv) };
 }
 
 export interface AudioState {
@@ -216,11 +230,14 @@ export class AudioEngine {
 
       const params = track.engines[targetType] as Record<string, any>;
       if (targetType === 'synth2') {
-        const s2 = params as unknown as { lfo1: any; lfo2: any };
+        const s2 = params as unknown as { lfo1: any; lfo2: any; env1: any; env2: any; env3: any };
         engines[i]!.applyParams({
           ...params,
           lfo1: { ...s2.lfo1, rate: effectiveLfoRate(s2.lfo1, project.bpm) },
           lfo2: { ...s2.lfo2, rate: effectiveLfoRate(s2.lfo2, project.bpm) },
+          env1: { ...s2.env1, ...effectiveEnvTimes(s2.env1, project.bpm) },
+          env2: { ...s2.env2, ...effectiveEnvTimes(s2.env2, project.bpm) },
+          env3: { ...s2.env3, ...effectiveEnvTimes(s2.env3, project.bpm) },
         });
       } else {
         engines[i]!.applyParams(params);
@@ -276,6 +293,11 @@ export class AudioEngine {
             if (!lfo.sync) continue;
             engine.applyParams({ [key]: { ...snapshot(lfo), rate: effectiveLfoRate(lfo, project.bpm) } });
           }
+          for (const key of ['env1', 'env2', 'env3'] as const) {
+            const env = project.tracks[i].engines.synth2[key];
+            if (!env.sync) continue;
+            engine.applyParams({ [key]: { ...snapshot(env), ...effectiveEnvTimes(env, project.bpm) } });
+          }
         }
         return;
       }
@@ -306,6 +328,11 @@ export class AudioEngine {
           if (slice === 'synth2' && (key === 'lfo1' || key === 'lfo2')) {
             const lfo = liveSlice[key] as { sync?: boolean; div?: string; rate: number };
             engine.applyParams({ [key]: { ...snapshot(lfo), rate: effectiveLfoRate(lfo, project.bpm) } });
+            return;
+          }
+          if (slice === 'synth2' && (key === 'env1' || key === 'env2' || key === 'env3')) {
+            const env = liveSlice[key] as { sync?: boolean; aDiv?: string; dDiv?: string; rDiv?: string; a: number; d: number; r: number };
+            engine.applyParams({ [key]: { ...snapshot(env), ...effectiveEnvTimes(env, project.bpm) } });
             return;
           }
           engine.applyParams({ [key]: snapshot(liveSlice[key]) } as Record<string, any>);
