@@ -165,6 +165,25 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'lfo1.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
   { key: 'lfo2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
   { key: 'lfo2.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  // --- Envelope tempo-sync (2026-07-06, append-only). Opt-in per ENVELOPE:
+  // one sync toggle switches that envelope's A/D/R to note divisions (each
+  // stage keeps its own division). Derived SECONDS are computed on the MAIN
+  // THREAD (AudioEngine, divisionToSeconds) and written into env*.a/d/r before
+  // reaching the kernel — these 12 rows are dead block slots exactly like
+  // lfo*.sync/div, kept so the leaves auto-derive (schema/accept-list/defaults).
+  // Per-stage defaults ≈ the free-mode defaults at 120 BPM (62ms/250ms/500ms).
+  { key: 'env1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env1.aDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/32'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env1.dDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/8'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env1.rDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/4'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env2.aDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/32'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env2.dDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/8'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env2.rDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/4'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env3.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env3.aDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/32'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env3.dDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/8'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'env3.rDiv', min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_LABELS.indexOf('1/4'),  taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel

@@ -49,7 +49,7 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
   });
 
   it('defaults env2 to the same a/d/s/r as env1, loop off', () => {
-    expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false });
+    expect(DEFAULT_SYNTH2_PARAMS.env2).toEqual({ a: 0.01, d: 0.2, s: 0.5, r: 0.5, loop: false, sync: false, aDiv: '1/32', dDiv: '1/8', rDiv: '1/4' });
   });
 
   it('default matrix is 8 inert slots (I3a)', () => {
@@ -65,12 +65,21 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
   });
 
   it('defaults env3 to a 0.2 / d 0.3 / s 0 / r 0.3, loop off (I3c)', () => {
-    expect(DEFAULT_SYNTH2_PARAMS.env3).toEqual({ a: 0.2, d: 0.3, s: 0, r: 0.3, loop: false });
+    expect(DEFAULT_SYNTH2_PARAMS.env3).toEqual({ a: 0.2, d: 0.3, s: 0, r: 0.3, loop: false, sync: false, aDiv: '1/32', dDiv: '1/8', rDiv: '1/4' });
   });
 
   it('defaults env1.loop and env2.loop to false (boolean, not number) (I3c)', () => {
     expect(DEFAULT_SYNTH2_PARAMS.env1.loop).toBe(false);
     expect(DEFAULT_SYNTH2_PARAMS.env2.loop).toBe(false);
     expect(typeof DEFAULT_SYNTH2_PARAMS.env3.loop).toBe('boolean');
+  });
+
+  it('defaults each envelope tempo-sync off with 1/32 / 1/8 / 1/4 divisions (2026-07-06)', () => {
+    for (const env of [DEFAULT_SYNTH2_PARAMS.env1, DEFAULT_SYNTH2_PARAMS.env2, DEFAULT_SYNTH2_PARAMS.env3]) {
+      expect(env.sync).toBe(false);
+      expect(env.aDiv).toBe('1/32');
+      expect(env.dDiv).toBe('1/8');
+      expect(env.rDiv).toBe('1/4');
+    }
   });
 });
