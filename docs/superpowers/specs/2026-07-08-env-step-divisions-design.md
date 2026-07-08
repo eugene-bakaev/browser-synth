@@ -168,6 +168,11 @@ vocabulary. After this change:
   the window only contains this project's own test experiments. Accepted as
   part of the no-shim decision; a permanent leniency carve-out for 9 leaves
   is not worth it.
+- **Preset-apply of window-era synth2 presets partially nacks online.**
+  `applyPreset` dispatches per-leaf ops; the server accept-list validates each
+  against the new enum, so the 9 legacy div leaves get `value.invalid` nacks
+  and roll back while the rest of the preset applies. Same population as the
+  bullet above (this project's own window-era test experiments); accepted.
 - The synth2 old-session sync gap does **not** grow: no rows are added.
 
 ## Testing
