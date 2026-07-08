@@ -50,12 +50,3 @@ export function divisionLabelToIndex(label: string): number {
   const i = LFO_SYNC_LABELS.indexOf(label);
   return i < 0 ? LFO_SYNC_DEFAULT_INDEX : i;
 }
-
-/** Note-division label + BPM → duration in seconds (envelope tempo-sync,
- *  spec 2026-07-06). Reciprocal of divisionToHz; same unknown-label fallback
- *  so a corrupt/old value can never yield NaN. */
-export function divisionToSeconds(label: string, bpm: number): number {
-  const entry = LFO_SYNC_DIVISIONS.find(d => d.label === label)
-    ?? LFO_SYNC_DIVISIONS[LFO_SYNC_DEFAULT_INDEX];
-  return (60 * entry.beats) / bpm;
-}

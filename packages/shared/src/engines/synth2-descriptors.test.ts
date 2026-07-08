@@ -4,6 +4,7 @@ import {
   MOD_SOURCES, MOD_DESTS, SYNTH2_ENUM_VALUES,
 } from './synth2-descriptors.js';
 import { LFO_SYNC_LABELS } from './lfo-sync.js';
+import { ENV_SYNC_LABELS } from './env-sync.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
@@ -253,23 +254,29 @@ describe('morph filter descriptor rows (I3d)', () => {
   });
 });
 
-describe('envelope tempo-sync descriptor rows (2026-07-06)', () => {
-  it('envelope tempo-sync rows: bool + three LFO_SYNC_LABELS enums per envelope, defaults 1/32 / 1/8 / 1/4 (2026-07-06)', () => {
+describe('envelope tempo-sync descriptor rows (step divisions, 2026-07-08)', () => {
+  it('envelope div rows: bool + three ENV_SYNC_LABELS enums per envelope, defaults 1/2 / 2 / 4 steps', () => {
     for (const env of ['env1', 'env2', 'env3']) {
       const sync = SYNTH2_DESCRIPTORS.find(d => d.key === `${env}.sync`)!;
       expect(sync.kind, sync.key).toBe('bool');
       expect(sync.default, sync.key).toBe(0); // off
       expect(sync.modulatable, sync.key).toBe(false);
-      const stageDefaults = { aDiv: '1/32', dDiv: '1/8', rDiv: '1/4' } as const;
+      const stageDefaults = { aDiv: '1/2', dDiv: '2', rDiv: '4' } as const;
       for (const [field, label] of Object.entries(stageDefaults)) {
         const d = SYNTH2_DESCRIPTORS.find(x => x.key === `${env}.${field}`)!;
         expect(d.kind, d.key).toBe('enum');
-        expect(d.enumValues, d.key).toBe(LFO_SYNC_LABELS);
+        expect(d.enumValues, d.key).toBe(ENV_SYNC_LABELS);
         expect(d.min, d.key).toBe(0);
-        expect(d.max, d.key).toBe(LFO_SYNC_LABELS.length - 1);
-        expect(d.default, d.key).toBe(LFO_SYNC_LABELS.indexOf(label));
+        expect(d.max, d.key).toBe(ENV_SYNC_LABELS.length - 1);
+        expect(d.default, d.key).toBe(ENV_SYNC_LABELS.indexOf(label));
         expect(d.modulatable, d.key).toBe(false);
       }
+    }
+  });
+
+  it('LFO div rows keep the note-division vocabulary (two vocabularies stay separate)', () => {
+    for (const key of ['lfo1.div', 'lfo2.div']) {
+      expect(SYNTH2_DESCRIPTORS.find(d => d.key === key)!.enumValues).toBe(LFO_SYNC_LABELS);
     }
   });
 });

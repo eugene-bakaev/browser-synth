@@ -1,5 +1,5 @@
 import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 'vue';
-import { TRACK_POOL_SIZE, divisionToHz, divisionToSeconds, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, divisionToHz, envDivisionToSeconds, ENV_SYNC_DEFAULT_LABEL, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
 import { SynthEngine } from '../engine/SynthEngine';
@@ -77,17 +77,18 @@ function effectiveLfoRate(lfo: { sync?: boolean; div?: string; rate: number }, b
   return lfo.sync ? divisionToHz(lfo.div ?? LFO_SYNC_DEFAULT_LABEL, bpm) : lfo.rate;
 }
 
-// A synced envelope's A/D/R times are derived on the main thread from its note
-// divisions and the project BPM (the kernel is tempo-agnostic); a free envelope
-// uses its stored seconds. The clamp is defensive: within BPM 40–240 the
-// derived range is 20.8ms–9s, already inside the descriptor's [0.001, 10].
+// A synced envelope's A/D/R times are derived on the main thread from its
+// step divisions and the project BPM (the kernel is tempo-agnostic); a free
+// envelope uses its stored seconds. Within BPM 40–240 the derived range is
+// 3.9ms (1/16 step @240) – 12s (32 steps @40), so the 10s ceiling is
+// load-bearing at the slow extreme; the floor is defensive.
 function effectiveEnvTimes(
   env: { sync?: boolean; aDiv?: string; dDiv?: string; rDiv?: string; a: number; d: number; r: number },
   bpm: number,
 ): { a: number; d: number; r: number } {
   if (!env.sync) return { a: env.a, d: env.d, r: env.r };
   const t = (label: string | undefined) =>
-    Math.min(10, Math.max(0.001, divisionToSeconds(label ?? LFO_SYNC_DEFAULT_LABEL, bpm)));
+    Math.min(10, Math.max(0.001, envDivisionToSeconds(label ?? ENV_SYNC_DEFAULT_LABEL, bpm)));
   return { a: t(env.aDiv), d: t(env.dDiv), r: t(env.rDiv) };
 }
 
