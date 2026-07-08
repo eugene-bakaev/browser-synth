@@ -333,22 +333,34 @@ describe('Synth2Panel envelope tempo-sync', () => {
     expect(dispatchLocal).toHaveBeenCalledWith(SYN2('env1', 'sync'), true);
   });
 
-  it('shows division labels on A/D/R when synced while S stays a percent knob', () => {
+  it('shows step-division labels on A/D/R when synced while S stays a percent knob', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     params.env1.sync = true;
-    params.env1.aDiv = '1/1T';  // distinctive labels that appear nowhere else
-    params.env1.dDiv = '1/2.';
-    params.env1.rDiv = '1/16T';
+    params.env1.aDiv = '2/3';  // distinctive step labels that appear nowhere else
+    params.env1.dDiv = '1/6';
+    params.env1.rDiv = '3/4';
     const el = mountPanel(params);
-    expect(el.textContent).toContain('1/1T');
-    expect(el.textContent).toContain('1/2.');
-    expect(el.textContent).toContain('1/16T');
+    expect(el.textContent).toContain('2/3');
+    expect(el.textContent).toContain('1/6');
+    expect(el.textContent).toContain('3/4');
     expect(el.textContent).toContain('50%'); // env1.s default 0.5 still renders as percent
   });
 
   it('free mode still shows time readouts (no division labels)', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.env1.aDiv = '2/3'; // distinctive; must stay hidden while free
     const el = mountPanel(params);
-    expect(el.textContent).not.toContain('1/32'); // aDiv default hidden while free
+    expect(el.textContent).not.toContain('2/3');
+  });
+
+  it('env knobs use step labels while LFO Rate keeps note-division labels', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.env1.sync = true;
+    params.env1.aDiv = '1/6';   // step label — not in the LFO vocabulary
+    params.lfo1.sync = true;
+    params.lfo1.div = '1/8.';   // dotted note label — not in the env vocabulary
+    const el = mountPanel(params);
+    expect(el.textContent).toContain('1/6');
+    expect(el.textContent).toContain('1/8.');
   });
 });
