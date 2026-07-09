@@ -207,14 +207,15 @@ h1 {
 }
 
 /* Knob layout row — used by every engine/drum/envelope panel.
-   Wraps by default; uniform fixed-width cells + fixed gap keep wrapped lines
-   column-aligned. Sized so the widest real row (5 knobs × 48px + 4 × 10px
-   gap = 280px) fits a rack-column at its 320px minimum (290px content). */
+   Wraps by default. space-evenly spreads leftover width between the knobs;
+   when a row is tight the extra space collapses, so the fit guarantee is
+   pure cell math: the widest real row (5 knobs × 48px + 4 × 10px gap =
+   280px) fits a rack-column at its 320px minimum (290px content). */
 .knob-row {
   display: flex;
   flex-wrap: wrap;
   gap: 12px 10px;
-  justify-content: flex-start;
+  justify-content: space-evenly;
   padding: 10px 0;
 }
 
