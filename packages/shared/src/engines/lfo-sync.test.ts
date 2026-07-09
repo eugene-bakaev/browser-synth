@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   LFO_SYNC_DIVISIONS, LFO_SYNC_LABELS, LFO_SYNC_DEFAULT_LABEL,
-  LFO_SYNC_DEFAULT_INDEX, divisionToHz, divisionLabelToIndex, divisionToSeconds,
+  LFO_SYNC_DEFAULT_INDEX, divisionToHz, divisionLabelToIndex,
 } from './lfo-sync.js';
 
 describe('LFO_SYNC_DIVISIONS', () => {
@@ -51,28 +51,5 @@ describe('divisionLabelToIndex', () => {
   });
   it('maps an unknown label to the default index', () => {
     expect(divisionLabelToIndex('bogus')).toBe(LFO_SYNC_DEFAULT_INDEX);
-  });
-});
-
-describe('divisionToSeconds', () => {
-  it('derives seconds = (60 * beats) / bpm at 120 BPM', () => {
-    expect(divisionToSeconds('1/4', 120)).toBeCloseTo(0.5, 10);    // 1 beat
-    expect(divisionToSeconds('1/8', 120)).toBeCloseTo(0.25, 10);   // 0.5 beat
-    expect(divisionToSeconds('1/32', 120)).toBeCloseTo(0.0625, 10);
-  });
-
-  it('spans 20.8ms (1/32T @ 240) to 9s (1/1. @ 40) across the BPM range', () => {
-    expect(divisionToSeconds('1/32T', 240)).toBeCloseTo((60 * (1 / 12)) / 240, 10);
-    expect(divisionToSeconds('1/1.', 40)).toBeCloseTo(9, 10);
-  });
-
-  it('is the reciprocal of divisionToHz for every division', () => {
-    for (const d of LFO_SYNC_DIVISIONS) {
-      expect(divisionToSeconds(d.label, 97)).toBeCloseTo(1 / divisionToHz(d.label, 97), 10);
-    }
-  });
-
-  it('falls back to the default division for an unknown label (never NaN)', () => {
-    expect(divisionToSeconds('nope', 120)).toBeCloseTo(divisionToSeconds('1/16', 120), 10);
   });
 });

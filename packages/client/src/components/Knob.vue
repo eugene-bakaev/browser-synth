@@ -241,7 +241,9 @@ const resetToDefault = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 2px;
+  /* No margin: the parent row's gap owns all spacing, keeping row-width math
+     a pure sum of cell widths (see .knob-row in App.vue). */
+  margin: 0;
   user-select: none;
 }
 
@@ -289,9 +291,14 @@ const resetToDefault = () => {
   border: 1px solid #222;
   padding: 1px 4px;
   border-radius: 3px;
-  /* Fixed width fits every formatter's widest output (~6 chars) so the cell
-     doesn't grow as the user drags and shift the surrounding row. */
-  width: 48px;
+  /* Row-constant width, never content-driven, so a drag sweep can't shift
+     the surrounding row. The 48px default fits every ≤6-char formatter
+     output and is what the 5-knob rows are sized to (5 × 48 + 4 × 10 gap =
+     280px inside a 320px rack-column); rows whose readouts run wider set
+     --knob-value-width on the row container — custom properties inherit
+     through Vue style scoping, no :deep needed. */
+  width: var(--knob-value-width, 48px);
+  white-space: nowrap;
   box-sizing: border-box;
   text-align: center;
 }

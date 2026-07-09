@@ -82,7 +82,6 @@ const warningTitle = (kind: 'filter' | 'amp') => {
 </script>
 
 <style scoped>
-.knob-row { display: flex; gap: 10px; flex-wrap: nowrap; }
 .env-warning {
   color: #fb923c;
   margin-left: 8px;

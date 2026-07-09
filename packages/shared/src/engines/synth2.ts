@@ -25,7 +25,7 @@ export interface Synth2EnvParams {
   r: number;
   loop: boolean; // I3c: cycle attack→decay→attack while gated (shared by env1/env2/env3)
   sync: boolean;  // tempo-sync on/off (a/d/r derived from divs × bpm on the main thread)
-  aDiv: string;   // note-division labels from LFO_SYNC_DIVISIONS (used when sync is on)
+  aDiv: string;   // step-division labels from ENV_SYNC_DIVISIONS (used when sync is on)
   dDiv: string;
   rDiv: string;
 }

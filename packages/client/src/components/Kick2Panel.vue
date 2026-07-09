@@ -45,15 +45,3 @@ defineProps<{
   color: string;
 }>();
 </script>
-
-<style scoped>
-/* kick2 has 8 knobs — more than the 3-knob analog drum panels — so wrap them
-   into rows instead of overflowing the rack column (the default .knob-row is
-   flex-nowrap). Scoped, so only this panel is affected. */
-.knob-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 10px;
-  justify-content: flex-start;
-}
-</style>

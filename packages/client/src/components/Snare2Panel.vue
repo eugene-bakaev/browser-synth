@@ -45,15 +45,3 @@ defineProps<{
   color: string;
 }>();
 </script>
-
-<style scoped>
-/* snare2 has 7 knobs — more than the 3-knob analog drum panels (like kick2's 8) —
-   so wrap them into rows instead of overflowing the rack column (the default
-   .knob-row is flex-nowrap). Scoped, so only this panel is affected. */
-.knob-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 10px;
-  justify-content: flex-start;
-}
-</style>

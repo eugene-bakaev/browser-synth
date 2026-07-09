@@ -102,6 +102,9 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   border: 1px solid #0f172a;
   border-radius: 4px;
+  /* border-box: with content-box, 100% + 2px of border overflowed the card
+     by 2px (invisible until .module-group gained its overflow guard). */
+  box-sizing: border-box;
   overflow: hidden;
   position: relative;
 }

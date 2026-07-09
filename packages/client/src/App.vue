@@ -190,6 +190,10 @@ h1 {
   padding: 15px;
   border-radius: 8px;
   box-sizing: border-box;
+  min-width: 0;
+  /* Guard rail: content that can't wrap scrolls inside the card instead of
+     bleeding over its border. Normal content never triggers it. */
+  overflow-x: auto;
 }
 .module-group h3 {
   margin-top: 0;
@@ -202,11 +206,16 @@ h1 {
   letter-spacing: 0.05em;
 }
 
-/* Knob layout row — used by every engine/drum/envelope panel */
+/* Knob layout row — used by every engine/drum/envelope panel.
+   Wraps by default. space-evenly spreads leftover width between the knobs;
+   when a row is tight the extra space collapses, so the fit guarantee is
+   pure cell math: the widest real row (5 knobs × 48px + 4 × 10px gap =
+   280px) fits a rack-column at its 320px minimum (290px content). */
 .knob-row {
   display: flex;
-  gap: 20px;
-  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 12px 10px;
+  justify-content: space-evenly;
   padding: 10px 0;
 }
 
@@ -221,10 +230,42 @@ h1 {
 }
 .rack-column {
   flex: 1;
-  min-width: 280px;
+  min-width: 320px; /* must hold a 5-knob row (280px) + 30px card padding */
   display: flex;
   flex-direction: column;
   gap: 15px;
+}
+
+/* Mono/Poly mode toggle — rendered by SynthPanel and Synth2Panel */
+.synth-mode-selector {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 5px;
+}
+.synth-mode-selector .mode-btn {
+  flex: 1;
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.synth-mode-selector .mode-btn:hover {
+  color: #aaa;
+  border-color: #444;
+}
+.synth-mode-selector .mode-btn.active {
+  background: #222;
+  color: #fff;
+  border-color: #555;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 /* Cross-component interaction: when a panel sits inside the focused engine
@@ -282,7 +323,9 @@ h1 {
 }
 .app-main {
   min-width: 0;
-  overflow-x: hidden;
+  /* auto, not hidden: a systemic overflow must surface as a visible
+     scrollbar, never as a silent clip that hides layout breakage. */
+  overflow-x: auto;
 }
 
 .hamburger {

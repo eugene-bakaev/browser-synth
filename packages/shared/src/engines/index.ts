@@ -10,5 +10,6 @@ export * from './snare2.js';
 export * from './hat2.js';
 export * from './clap2.js';
 export * from './lfo-sync.js';
+export * from './env-sync.js';
 export * from './synth2-descriptors.js';
 export * from './synth2.js';

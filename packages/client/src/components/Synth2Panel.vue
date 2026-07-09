@@ -35,14 +35,14 @@
       </div>
       <div class="module-group">
         <h3>AMP ENV</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env1.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env1.a" :modelValue="params.env1.a" @update:modelValue="ks.set(['env1', 'a'], $event)" :syncPath="ks.pathFor(['env1', 'a'])" @gesture-end="ks.end(['env1', 'a'])" />
-          <Knob v-else label="A" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env1.aDiv)" :modelValue="divisionLabelToIndex(params.env1.aDiv)" @update:modelValue="ks.set(['env1', 'aDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'aDiv'])" @gesture-end="ks.end(['env1', 'aDiv'])" />
+          <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env1.aDiv)" :modelValue="envDivisionLabelToIndex(params.env1.aDiv)" @update:modelValue="ks.set(['env1', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'aDiv'])" @gesture-end="ks.end(['env1', 'aDiv'])" />
           <Knob v-if="!params.env1.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env1.d" :modelValue="params.env1.d" @update:modelValue="ks.set(['env1', 'd'], $event)" :syncPath="ks.pathFor(['env1', 'd'])" @gesture-end="ks.end(['env1', 'd'])" />
-          <Knob v-else label="D" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env1.dDiv)" :modelValue="divisionLabelToIndex(params.env1.dDiv)" @update:modelValue="ks.set(['env1', 'dDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'dDiv'])" @gesture-end="ks.end(['env1', 'dDiv'])" />
+          <Knob v-else label="D" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env1.dDiv)" :modelValue="envDivisionLabelToIndex(params.env1.dDiv)" @update:modelValue="ks.set(['env1', 'dDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'dDiv'])" @gesture-end="ks.end(['env1', 'dDiv'])" />
           <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env1.s" :modelValue="params.env1.s" @update:modelValue="ks.set(['env1', 's'], $event)" :syncPath="ks.pathFor(['env1', 's'])" @gesture-end="ks.end(['env1', 's'])" />
           <Knob v-if="!params.env1.sync" label="R" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env1.r" :modelValue="params.env1.r" @update:modelValue="ks.set(['env1', 'r'], $event)" :syncPath="ks.pathFor(['env1', 'r'])" @gesture-end="ks.end(['env1', 'r'])" />
-          <Knob v-else label="R" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env1.rDiv)" :modelValue="divisionLabelToIndex(params.env1.rDiv)" @update:modelValue="ks.set(['env1', 'rDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'rDiv'])" @gesture-end="ks.end(['env1', 'rDiv'])" />
+          <Knob v-else label="R" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env1.rDiv)" :modelValue="envDivisionLabelToIndex(params.env1.rDiv)" @update:modelValue="ks.set(['env1', 'rDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'rDiv'])" @gesture-end="ks.end(['env1', 'rDiv'])" />
         </div>
         <button type="button" class="loop-btn" :class="{ active: params.env1.loop }" @click="ks.set(['env1', 'loop'], !params.env1.loop)">LOOP</button>
         <button type="button" class="env-sync-btn" :class="{ active: params.env1.sync }" @click="ks.set(['env1', 'sync'], !params.env1.sync)">SYNC</button>
@@ -143,14 +143,14 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>FILTER ENV</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env2.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env2.a" :modelValue="params.env2.a" @update:modelValue="ks.set(['env2', 'a'], $event)" :syncPath="ks.pathFor(['env2', 'a'])" @gesture-end="ks.end(['env2', 'a'])" />
-          <Knob v-else label="A" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env2.aDiv)" :modelValue="divisionLabelToIndex(params.env2.aDiv)" @update:modelValue="ks.set(['env2', 'aDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'aDiv'])" @gesture-end="ks.end(['env2', 'aDiv'])" />
+          <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env2.aDiv)" :modelValue="envDivisionLabelToIndex(params.env2.aDiv)" @update:modelValue="ks.set(['env2', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'aDiv'])" @gesture-end="ks.end(['env2', 'aDiv'])" />
           <Knob v-if="!params.env2.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env2.d" :modelValue="params.env2.d" @update:modelValue="ks.set(['env2', 'd'], $event)" :syncPath="ks.pathFor(['env2', 'd'])" @gesture-end="ks.end(['env2', 'd'])" />
-          <Knob v-else label="D" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env2.dDiv)" :modelValue="divisionLabelToIndex(params.env2.dDiv)" @update:modelValue="ks.set(['env2', 'dDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'dDiv'])" @gesture-end="ks.end(['env2', 'dDiv'])" />
+          <Knob v-else label="D" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env2.dDiv)" :modelValue="envDivisionLabelToIndex(params.env2.dDiv)" @update:modelValue="ks.set(['env2', 'dDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'dDiv'])" @gesture-end="ks.end(['env2', 'dDiv'])" />
           <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env2.s" :modelValue="params.env2.s" @update:modelValue="ks.set(['env2', 's'], $event)" :syncPath="ks.pathFor(['env2', 's'])" @gesture-end="ks.end(['env2', 's'])" />
           <Knob v-if="!params.env2.sync" label="R" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env2.r" :modelValue="params.env2.r" @update:modelValue="ks.set(['env2', 'r'], $event)" :syncPath="ks.pathFor(['env2', 'r'])" @gesture-end="ks.end(['env2', 'r'])" />
-          <Knob v-else label="R" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env2.rDiv)" :modelValue="divisionLabelToIndex(params.env2.rDiv)" @update:modelValue="ks.set(['env2', 'rDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'rDiv'])" @gesture-end="ks.end(['env2', 'rDiv'])" />
+          <Knob v-else label="R" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env2.rDiv)" :modelValue="envDivisionLabelToIndex(params.env2.rDiv)" @update:modelValue="ks.set(['env2', 'rDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'rDiv'])" @gesture-end="ks.end(['env2', 'rDiv'])" />
         </div>
         <button type="button" class="loop-btn" :class="{ active: params.env2.loop }" @click="ks.set(['env2', 'loop'], !params.env2.loop)">LOOP</button>
         <button type="button" class="env-sync-btn" :class="{ active: params.env2.sync }" @click="ks.set(['env2', 'sync'], !params.env2.sync)">SYNC</button>
@@ -161,14 +161,14 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>ENV 3</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env3.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env3.a" :modelValue="params.env3.a" @update:modelValue="ks.set(['env3', 'a'], $event)" :syncPath="ks.pathFor(['env3', 'a'])" @gesture-end="ks.end(['env3', 'a'])" />
-          <Knob v-else label="A" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env3.aDiv)" :modelValue="divisionLabelToIndex(params.env3.aDiv)" @update:modelValue="ks.set(['env3', 'aDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'aDiv'])" @gesture-end="ks.end(['env3', 'aDiv'])" />
+          <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env3.aDiv)" :modelValue="envDivisionLabelToIndex(params.env3.aDiv)" @update:modelValue="ks.set(['env3', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'aDiv'])" @gesture-end="ks.end(['env3', 'aDiv'])" />
           <Knob v-if="!params.env3.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env3.d" :modelValue="params.env3.d" @update:modelValue="ks.set(['env3', 'd'], $event)" :syncPath="ks.pathFor(['env3', 'd'])" @gesture-end="ks.end(['env3', 'd'])" />
-          <Knob v-else label="D" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env3.dDiv)" :modelValue="divisionLabelToIndex(params.env3.dDiv)" @update:modelValue="ks.set(['env3', 'dDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'dDiv'])" @gesture-end="ks.end(['env3', 'dDiv'])" />
+          <Knob v-else label="D" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env3.dDiv)" :modelValue="envDivisionLabelToIndex(params.env3.dDiv)" @update:modelValue="ks.set(['env3', 'dDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'dDiv'])" @gesture-end="ks.end(['env3', 'dDiv'])" />
           <Knob label="S" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.env3.s" :modelValue="params.env3.s" @update:modelValue="ks.set(['env3', 's'], $event)" :syncPath="ks.pathFor(['env3', 's'])" @gesture-end="ks.end(['env3', 's'])" />
           <Knob v-if="!params.env3.sync" label="R" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env3.r" :modelValue="params.env3.r" @update:modelValue="ks.set(['env3', 'r'], $event)" :syncPath="ks.pathFor(['env3', 'r'])" @gesture-end="ks.end(['env3', 'r'])" />
-          <Knob v-else label="R" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.env3.rDiv)" :modelValue="divisionLabelToIndex(params.env3.rDiv)" @update:modelValue="ks.set(['env3', 'rDiv'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'rDiv'])" @gesture-end="ks.end(['env3', 'rDiv'])" />
+          <Knob v-else label="R" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env3.rDiv)" :modelValue="envDivisionLabelToIndex(params.env3.rDiv)" @update:modelValue="ks.set(['env3', 'rDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'rDiv'])" @gesture-end="ks.end(['env3', 'rDiv'])" />
         </div>
         <button type="button" class="loop-btn" :class="{ active: params.env3.loop }" @click="ks.set(['env3', 'loop'], !params.env3.loop)">LOOP</button>
         <button type="button" class="env-sync-btn" :class="{ active: params.env3.sync }" @click="ks.set(['env3', 'sync'], !params.env3.sync)">SYNC</button>
@@ -229,7 +229,7 @@ import Knob from './Knob.vue';
 import Visualizer from './Visualizer.vue';
 import WavePreview from './WavePreview.vue';
 import { Synth2Engine } from '../engine/Synth2Engine';
-import { MOD_SOURCES, MOD_DESTS, LFO_SYNC_LABELS, divisionLabelToIndex } from '@fiddle/shared';
+import { MOD_SOURCES, MOD_DESTS, LFO_SYNC_LABELS, divisionLabelToIndex, ENV_SYNC_LABELS, ENV_SYNC_KNOB_LABELS, envDivisionLabelToIndex } from '@fiddle/shared';
 import { useKnobSync } from '../sync/knobSync';
 import type { EngineParamsMap } from '../project';
 
@@ -244,36 +244,17 @@ defineProps<{
 </script>
 
 <style scoped>
-.synth-mode-selector {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  margin-bottom: 5px;
+/* .synth-mode-selector styling is global (App.vue), shared with SynthPanel. */
+
+/* Env A/D/R readouts show step labels up to 7 chars ("1/16 st"), one more
+   than the Knob default box fits. These rows have only 4 knobs, so the wider
+   readout still fits the card (4 × 56 + 3 × 10 gap = 254px); the Knob default
+   stays 48px because the 5-knob osc/filter rows are sized to it. The custom
+   property inherits into Knob.vue through Vue style scoping. */
+.env-knob-row {
+  --knob-value-width: 56px;
 }
-.synth-mode-selector .mode-btn {
-  flex: 1;
-  background: #181818;
-  color: #666;
-  border: 1px solid #2a2a2a;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-family: monospace;
-  font-size: 0.75rem;
-  font-weight: bold;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.synth-mode-selector .mode-btn:hover {
-  color: #aaa;
-  border-color: #444;
-}
-.synth-mode-selector .mode-btn.active {
-  background: #222;
-  color: #fff;
-  border-color: #555;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-}
+
 .sync-btn,
 .loop-btn,
 .lfo-sync-btn,

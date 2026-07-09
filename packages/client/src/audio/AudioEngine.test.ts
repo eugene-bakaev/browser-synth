@@ -248,9 +248,9 @@ describe('AudioEngine — envelope tempo-sync time derivation', () => {
   }
 
   it('re-pushes derived A/D/R seconds to a synced envelope on BPM change', async () => {
-    const { set, spy } = await synth2EnvEngine({ sync: true }); // divs at defaults 1/32, 1/8, 1/4
+    const { set, spy } = await synth2EnvEngine({ sync: true }); // divs at defaults 1/2, 2, 4 steps
     set(['bpm'], 120);
-    // @120: 1/32 = 62.5ms, 1/8 = 250ms, 1/4 = 500ms
+    // @120 (step = 125ms): 1/2 step = 62.5ms, 2 steps = 250ms, 4 steps = 500ms
     expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ a: 0.0625, d: 0.25, r: 0.5 }) });
   });
 
@@ -262,8 +262,8 @@ describe('AudioEngine — envelope tempo-sync time derivation', () => {
 
   it('derives times when a synced envelope div changes', async () => {
     const { set, spy } = await synth2EnvEngine({ sync: true });
-    set(['tracks', 0, 'engines', 'synth2', 'env1', 'dDiv'], '1/4'); // 1 beat @120 → 0.5s
-    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.5 }) });
+    set(['tracks', 0, 'engines', 'synth2', 'env1', 'dDiv'], '1/4'); // quarter step @120 → 31.25ms
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.03125 }) });
   });
 
   it('derives times when SYNC is turned on', async () => {
@@ -286,8 +286,20 @@ describe('AudioEngine — envelope tempo-sync time derivation', () => {
   });
 
   it('sustain and loop ride through unchanged when synced', async () => {
-    const { set, spy } = await synth2EnvEngine({ sync: true, dDiv: '1/8' });
+    const { set, spy } = await synth2EnvEngine({ sync: true, dDiv: '2' });
     set(['tracks', 0, 'engines', 'synth2', 'env1', 's'], 0.7);
     expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ s: 0.7, d: 0.25 }) });
+  });
+
+  it('clamps the slow extreme: 32 steps @ 40 BPM → 10s ceiling', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: true, aDiv: '32' });
+    set(['bpm'], 40); // 32 steps @40 = 12s pre-clamp
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ a: 10 }) });
+  });
+
+  it('falls back to one step for a legacy note-division label', async () => {
+    const { set, spy } = await synth2EnvEngine({ sync: true, dDiv: '1/32T' }); // pre-2026-07-08 label
+    set(['bpm'], 120);
+    expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.125 }) }); // 1 step @120
   });
 });

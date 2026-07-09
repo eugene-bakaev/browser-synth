@@ -45,14 +45,3 @@ defineProps<{
   color: string;
 }>();
 </script>
-
-<style scoped>
-/* clap2 has 7 knobs — wrap them into rows instead of overflowing the rack column
-   (the default .knob-row is flex-nowrap). Scoped, so only this panel is affected. */
-.knob-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 10px;
-  justify-content: flex-start;
-}
-</style>
