@@ -29,3 +29,7 @@ it('freshTrack carries an independent synth2 slice at defaults', () => {
   expect(t.engines.synth2).toEqual(DEFAULT_SYNTH2_PARAMS);
   expect(t.engines.synth2).not.toBe(DEFAULT_SYNTH2_PARAMS); // structuredClone, D7
 });
+
+it('fresh tracks are unnamed (name is the empty string)', () => {
+  expect(freshTrack().name).toBe('');
+});

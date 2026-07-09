@@ -38,6 +38,7 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
 
   const reconciled: ProjectTrack = {
     engineType: (t.engineType as ProjectTrack['engineType']) ?? fresh.engineType,
+    name: typeof t.name === 'string' ? t.name : fresh.name,
     engines: {
       synth:  deepMerge(SynthEngine.DEFAULT_PARAMS,  loadedEngines.synth),
       kick:   deepMerge(KickEngine.DEFAULT_PARAMS,   loadedEngines.kick),

@@ -37,6 +37,7 @@ export function freshStep(): Step {
 export function freshTrack(enabled = true): ProjectTrack {
   return {
     engineType: 'synth',
+    name: '',
     engines: {
       synth:  structuredClone(DEFAULT_SYNTH_PARAMS),
       kick:   structuredClone(DEFAULT_KICK_PARAMS),

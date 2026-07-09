@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { freshProject } from './factory.js';
+import { freshProject, freshTrack } from './factory.js';
 import { ProjectSchema, Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
 import { SYNTH2_DESCRIPTORS, DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
+import { TRACK_NAME_MAX_LENGTH } from './constants.js';
 
 describe('ProjectSchema', () => {
   it('accepts freshProject()', () => {
@@ -275,5 +276,23 @@ describe('synth2 morph filter schema (I3d)', () => {
     expect(() => Schemas.Synth2Params.parse(p1)).toThrow();
     const p2 = structuredClone(DEFAULT_SYNTH2_PARAMS); (p2.filter as any).model = 'lp';
     expect(() => Schemas.Synth2Params.parse(p2)).toThrow();
+  });
+});
+
+describe('track name schema', () => {
+  it('accepts a fresh track and a named track', () => {
+    expect(Schemas.Track.safeParse(freshTrack()).success).toBe(true);
+    expect(Schemas.Track.safeParse({ ...freshTrack(), name: 'Bassline' }).success).toBe(true);
+  });
+
+  it('rejects a name over TRACK_NAME_MAX_LENGTH', () => {
+    const over = { ...freshTrack(), name: 'x'.repeat(TRACK_NAME_MAX_LENGTH + 1) };
+    expect(Schemas.Track.safeParse(over).success).toBe(false);
+  });
+
+  it('rejects a non-string / missing name', () => {
+    expect(Schemas.Track.safeParse({ ...freshTrack(), name: 42 }).success).toBe(false);
+    const { name: _n, ...noName } = freshTrack();
+    expect(Schemas.Track.safeParse(noName).success).toBe(false);
   });
 });

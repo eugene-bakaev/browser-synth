@@ -40,6 +40,10 @@ export interface EngineParamsMap {
 
 export interface ProjectTrack {
   engineType: EngineType;
+  // Custom track name. '' = unnamed — the UI falls back to the live default
+  // `Track ${index + 1}` (see trackDisplayName in display.ts). Max length is
+  // TRACK_NAME_MAX_LENGTH, enforced by TrackSchema on the wire.
+  name: string;
   engines: EngineParamsMap;
   mixer: MixerState;
   // `steps` is always a fixed 64-element buffer. `patternLength` (1..64) is the

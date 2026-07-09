@@ -304,6 +304,30 @@ describe('engine param-leaf deep heal (old-snapshot regression — descriptor ap
   });
 });
 
+describe('track name healing', () => {
+  it('fills a missing name with the empty string (old sessions)', () => {
+    const p = freshProject();
+    delete (p.tracks[0] as { name?: string }).name;
+    const out = normalizeProject(p);
+    expect(out).not.toBe(p); // fast path must reject a name-less track
+    expect(out.tracks[0].name).toBe('');
+  });
+
+  it('keeps present names untouched and passes the fast path', () => {
+    const p = freshProject();
+    p.tracks[2].name = 'Lead';
+    const out = normalizeProject(p);
+    expect(out).toBe(p); // still valid → by-reference fast path
+    expect(out.tracks[2].name).toBe('Lead');
+  });
+
+  it('replaces a non-string name with the empty string', () => {
+    const p = freshProject();
+    (p.tracks[1] as unknown as { name: unknown }).name = 42;
+    expect(normalizeProject(p).tracks[1].name).toBe('');
+  });
+});
+
 describe('coerceBpm', () => {
   it('returns DEFAULT_BPM for non-finite / non-number values', () => {
     expect(coerceBpm(undefined)).toBe(DEFAULT_BPM);

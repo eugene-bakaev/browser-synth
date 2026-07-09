@@ -150,6 +150,7 @@ function isAlreadyValid(project: Project, tracks: ProjectTrack[]): boolean {
 
 function isValidTrack(t: ProjectTrack): boolean {
   return (
+    typeof t.name === 'string' &&
     typeof t.enabled === 'boolean' &&
     Number.isInteger(t.patternLength) &&
     t.patternLength >= 1 && t.patternLength <= STEP_BUFFER_SIZE &&
@@ -190,6 +191,7 @@ function repairTrack(t: ProjectTrack): ProjectTrack {
 
   return {
     ...t, // forward-compat: keep unknown extras
+    name: typeof t.name === 'string' ? t.name : '',
     engines: engines as unknown as EngineParamsMap,
     mixer: isObject(t.mixer) ? t.mixer : fresh.mixer,
     patternLength,

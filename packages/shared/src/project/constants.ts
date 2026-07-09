@@ -27,3 +27,7 @@ export const DEFAULT_PATTERN_LENGTH = 16;
 export const DEFAULT_BPM = 120;
 export const BPM_MIN = 40;
 export const BPM_MAX = 240;
+
+// Custom track name length cap (chars). '' = unnamed — every label site
+// falls back to the live default `Track ${index + 1}` (trackDisplayName).
+export const TRACK_NAME_MAX_LENGTH = 24;

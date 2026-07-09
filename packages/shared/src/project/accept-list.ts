@@ -33,6 +33,7 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ['tracks', '*', 'engineType'],
   ['tracks', '*', 'patternLength'],
   ['tracks', '*', 'enabled'],
+  ['tracks', '*', 'name'],
   // Synth params (leaves only — no whole-object writes).
   ['tracks', '*', 'engines', 'synth', 'osc1Type'],
   ['tracks', '*', 'engines', 'synth', 'osc2Type'],
@@ -193,6 +194,10 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
 
   if (trackKey === 'enabled' && tokens.length === 3) {
     return trackShape.enabled;
+  }
+
+  if (trackKey === 'name' && tokens.length === 3) {
+    return trackShape.name;
   }
 
   if (trackKey === 'mixer' && tokens.length === 4) {
