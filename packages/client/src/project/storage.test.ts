@@ -199,3 +199,28 @@ describe('track pool reconcile', () => {
     expect(target.tracks[0].enabled).toBe(false);
   });
 });
+
+describe('track name at the offline boundary', () => {
+  it('reconcileWithDefaults fills a missing name with the empty string', () => {
+    const p = freshProject();
+    delete (p.tracks[0] as { name?: string }).name;
+    const out = reconcileWithDefaults(JSON.parse(JSON.stringify(p)));
+    expect(out.tracks[0].name).toBe('');
+  });
+
+  it('reconcileWithDefaults keeps a stored name', () => {
+    const p = freshProject();
+    p.tracks[1].name = 'Bassline';
+    const out = reconcileWithDefaults(JSON.parse(JSON.stringify(p)));
+    expect(out.tracks[1].name).toBe('Bassline');
+  });
+
+  it('replaceProject copies name across slots', () => {
+    const target = freshProject();
+    const source = freshProject();
+    source.tracks[3].name = 'Perc';
+    replaceProject(target, source);
+    expect(target.tracks[3].name).toBe('Perc');
+    expect(target.tracks[0].name).toBe('');
+  });
+});
