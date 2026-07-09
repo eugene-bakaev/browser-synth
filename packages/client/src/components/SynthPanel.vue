@@ -73,39 +73,9 @@ defineProps<{
 </script>
 
 <style scoped>
-/* Scoped layout styles for SynthPanel if any additional micro-spacing is needed */
+/* Scoped layout styles for SynthPanel if any additional micro-spacing is needed.
+   .synth-mode-selector styling is global (App.vue), shared with Synth2Panel. */
 .rack-column > :not(:last-child) {
   margin-bottom: 15px;
-}
-
-.synth-mode-selector {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  margin-bottom: 5px;
-}
-.synth-mode-selector .mode-btn {
-  flex: 1;
-  background: #181818;
-  color: #666;
-  border: 1px solid #2a2a2a;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-family: monospace;
-  font-size: 0.75rem;
-  font-weight: bold;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.synth-mode-selector .mode-btn:hover {
-  color: #aaa;
-  border-color: #444;
-}
-.synth-mode-selector .mode-btn.active {
-  background: #222;
-  color: #fff;
-  border-color: #555;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 </style>

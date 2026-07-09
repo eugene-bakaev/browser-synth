@@ -35,7 +35,7 @@
       </div>
       <div class="module-group">
         <h3>AMP ENV</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env1.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env1.a" :modelValue="params.env1.a" @update:modelValue="ks.set(['env1', 'a'], $event)" :syncPath="ks.pathFor(['env1', 'a'])" @gesture-end="ks.end(['env1', 'a'])" />
           <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env1.aDiv)" :modelValue="envDivisionLabelToIndex(params.env1.aDiv)" @update:modelValue="ks.set(['env1', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env1', 'aDiv'])" @gesture-end="ks.end(['env1', 'aDiv'])" />
           <Knob v-if="!params.env1.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env1.d" :modelValue="params.env1.d" @update:modelValue="ks.set(['env1', 'd'], $event)" :syncPath="ks.pathFor(['env1', 'd'])" @gesture-end="ks.end(['env1', 'd'])" />
@@ -143,7 +143,7 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>FILTER ENV</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env2.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env2.a" :modelValue="params.env2.a" @update:modelValue="ks.set(['env2', 'a'], $event)" :syncPath="ks.pathFor(['env2', 'a'])" @gesture-end="ks.end(['env2', 'a'])" />
           <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env2.aDiv)" :modelValue="envDivisionLabelToIndex(params.env2.aDiv)" @update:modelValue="ks.set(['env2', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env2', 'aDiv'])" @gesture-end="ks.end(['env2', 'aDiv'])" />
           <Knob v-if="!params.env2.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env2.d" :modelValue="params.env2.d" @update:modelValue="ks.set(['env2', 'd'], $event)" :syncPath="ks.pathFor(['env2', 'd'])" @gesture-end="ks.end(['env2', 'd'])" />
@@ -161,7 +161,7 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>ENV 3</h3>
-        <div class="knob-row">
+        <div class="knob-row env-knob-row">
           <Knob v-if="!params.env3.sync" label="A" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env3.a" :modelValue="params.env3.a" @update:modelValue="ks.set(['env3', 'a'], $event)" :syncPath="ks.pathFor(['env3', 'a'])" @gesture-end="ks.end(['env3', 'a'])" />
           <Knob v-else label="A" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.env3.aDiv)" :modelValue="envDivisionLabelToIndex(params.env3.aDiv)" @update:modelValue="ks.set(['env3', 'aDiv'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['env3', 'aDiv'])" @gesture-end="ks.end(['env3', 'aDiv'])" />
           <Knob v-if="!params.env3.sync" label="D" :min="0.001" :max="10" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.env3.d" :modelValue="params.env3.d" @update:modelValue="ks.set(['env3', 'd'], $event)" :syncPath="ks.pathFor(['env3', 'd'])" @gesture-end="ks.end(['env3', 'd'])" />
@@ -244,36 +244,17 @@ defineProps<{
 </script>
 
 <style scoped>
-.synth-mode-selector {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  margin-bottom: 5px;
+/* .synth-mode-selector styling is global (App.vue), shared with SynthPanel. */
+
+/* Env A/D/R readouts show step labels up to 7 chars ("1/16 st"), one more
+   than the Knob default box fits. These rows have only 4 knobs, so the wider
+   readout still fits the card (4 × 56 + 3 × 10 gap = 254px); the Knob default
+   stays 48px because the 5-knob osc/filter rows are sized to it. The custom
+   property inherits into Knob.vue through Vue style scoping. */
+.env-knob-row {
+  --knob-value-width: 56px;
 }
-.synth-mode-selector .mode-btn {
-  flex: 1;
-  background: #181818;
-  color: #666;
-  border: 1px solid #2a2a2a;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-family: monospace;
-  font-size: 0.75rem;
-  font-weight: bold;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.synth-mode-selector .mode-btn:hover {
-  color: #aaa;
-  border-color: #444;
-}
-.synth-mode-selector .mode-btn.active {
-  background: #222;
-  color: #fff;
-  border-color: #555;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-}
+
 .sync-btn,
 .loop-btn,
 .lfo-sync-btn,
