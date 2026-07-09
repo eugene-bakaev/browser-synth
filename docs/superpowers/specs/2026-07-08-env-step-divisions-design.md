@@ -202,6 +202,19 @@ vocabulary. After this change:
   restores free values; UI shows step labels on A/D/R and note labels on LFO
   Rate. Clean console; close the browser session when done.
 
+## Amendments (2026-07-09, user feedback)
+
+- **Table order REVERSED to shortest → longest** (`1/16` first, `32` last;
+  default `'1'` now index 8). The original slowest-first order copied the LFO
+  table, but that ordering is only right for a RATE knob (right = faster =
+  matches free-mode Hz). Env A/D/R are TIME knobs: right must = longer to
+  match the free-mode seconds knobs they replace. Safe reorder: persisted
+  values are label strings, defaults use `indexOf`, block enum encodings are
+  runtime-derived and dead to the kernel.
+- **Knob readout gains a unit**: new display-only `ENV_SYNC_KNOB_LABELS`
+  (`"2 st"`, `"1/2 st"`) used for the panel `:labels`; persisted enum values
+  and wire ops remain the bare `ENV_SYNC_LABELS` strings.
+
 ## Rollout
 
 One branch (`feat/env-step-divisions`), shared + client change only, no server

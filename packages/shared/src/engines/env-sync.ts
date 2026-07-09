@@ -12,31 +12,37 @@ export interface EnvSyncDivision {
   readonly steps: number;
 }
 
-// Ordered slowest → fastest so the knob sweeps left(slow)→right(fast),
-// matching the free-mode seconds knob and the LFO sync knob.
+// Ordered shortest → longest so the knob sweeps left(short)→right(long) —
+// these are TIME knobs, so the direction must match the free-mode seconds
+// knobs they replace when SYNC is on. (The LFO sync table runs the other way
+// because a RATE knob's right is faster; each matches its own free mode.)
 export const ENV_SYNC_DIVISIONS: readonly EnvSyncDivision[] = [
-  { label: '32',   steps: 32 },
-  { label: '24',   steps: 24 },
-  { label: '16',   steps: 16 },
-  { label: '12',   steps: 12 },
-  { label: '8',    steps: 8 },
-  { label: '6',    steps: 6 },
-  { label: '4',    steps: 4 },
-  { label: '3',    steps: 3 },
-  { label: '2',    steps: 2 },
-  { label: '1.5',  steps: 1.5 },
-  { label: '1',    steps: 1 },
-  { label: '3/4',  steps: 3 / 4 },
-  { label: '2/3',  steps: 2 / 3 },
-  { label: '1/2',  steps: 1 / 2 },
-  { label: '1/3',  steps: 1 / 3 },
-  { label: '1/4',  steps: 1 / 4 },
-  { label: '1/6',  steps: 1 / 6 },
-  { label: '1/8',  steps: 1 / 8 },
   { label: '1/16', steps: 1 / 16 },
+  { label: '1/8',  steps: 1 / 8 },
+  { label: '1/6',  steps: 1 / 6 },
+  { label: '1/4',  steps: 1 / 4 },
+  { label: '1/3',  steps: 1 / 3 },
+  { label: '1/2',  steps: 1 / 2 },
+  { label: '2/3',  steps: 2 / 3 },
+  { label: '3/4',  steps: 3 / 4 },
+  { label: '1',    steps: 1 },
+  { label: '1.5',  steps: 1.5 },
+  { label: '2',    steps: 2 },
+  { label: '3',    steps: 3 },
+  { label: '4',    steps: 4 },
+  { label: '6',    steps: 6 },
+  { label: '8',    steps: 8 },
+  { label: '12',   steps: 12 },
+  { label: '16',   steps: 16 },
+  { label: '24',   steps: 24 },
+  { label: '32',   steps: 32 },
 ];
 
 export const ENV_SYNC_LABELS: readonly string[] = ENV_SYNC_DIVISIONS.map(d => d.label);
+// Knob readout variant with the unit spelled out ("2 st" = two sequencer
+// steps). Display-only: persisted enum values and wire ops stay the bare
+// ENV_SYNC_LABELS strings.
+export const ENV_SYNC_KNOB_LABELS: readonly string[] = ENV_SYNC_DIVISIONS.map(d => `${d.label} st`);
 export const ENV_SYNC_DEFAULT_LABEL = '1';
 export const ENV_SYNC_DEFAULT_INDEX = ENV_SYNC_LABELS.indexOf(ENV_SYNC_DEFAULT_LABEL);
 

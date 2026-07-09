@@ -1,19 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import {
-  ENV_SYNC_DIVISIONS, ENV_SYNC_LABELS, ENV_SYNC_DEFAULT_LABEL,
+  ENV_SYNC_DIVISIONS, ENV_SYNC_LABELS, ENV_SYNC_KNOB_LABELS, ENV_SYNC_DEFAULT_LABEL,
   ENV_SYNC_DEFAULT_INDEX, envDivisionToSeconds, envDivisionLabelToIndex,
 } from './env-sync.js';
 
 describe('ENV_SYNC_DIVISIONS', () => {
-  it('is exactly the 19 step divisions, slowest → fastest', () => {
+  it('is exactly the 19 step divisions, shortest → longest', () => {
     expect(ENV_SYNC_LABELS).toEqual([
-      '32', '24', '16', '12', '8', '6', '4', '3', '2', '1.5', '1',
-      '3/4', '2/3', '1/2', '1/3', '1/4', '1/6', '1/8', '1/16',
+      '1/16', '1/8', '1/6', '1/4', '1/3', '1/2', '2/3', '3/4',
+      '1', '1.5', '2', '3', '4', '6', '8', '12', '16', '24', '32',
     ]);
-    // Strictly decreasing steps guards the knob sweep direction.
+    // Strictly increasing steps guards the knob sweep direction: right = longer,
+    // matching the free-mode seconds knobs the synced knobs replace.
     for (let i = 1; i < ENV_SYNC_DIVISIONS.length; i++) {
-      expect(ENV_SYNC_DIVISIONS[i].steps).toBeLessThan(ENV_SYNC_DIVISIONS[i - 1].steps);
+      expect(ENV_SYNC_DIVISIONS[i].steps).toBeGreaterThan(ENV_SYNC_DIVISIONS[i - 1].steps);
     }
+  });
+
+  it('knob labels carry the step unit', () => {
+    expect(ENV_SYNC_KNOB_LABELS).toEqual(ENV_SYNC_LABELS.map(l => `${l} st`));
+    expect(ENV_SYNC_KNOB_LABELS[ENV_SYNC_DEFAULT_INDEX]).toBe('1 st');
   });
 
   it('defaults to one step', () => {
@@ -46,8 +52,8 @@ describe('envDivisionToSeconds', () => {
 
 describe('envDivisionLabelToIndex', () => {
   it('maps labels to their index', () => {
-    expect(envDivisionLabelToIndex('32')).toBe(0);
-    expect(envDivisionLabelToIndex('1/16')).toBe(18);
+    expect(envDivisionLabelToIndex('1/16')).toBe(0);
+    expect(envDivisionLabelToIndex('32')).toBe(18);
   });
   it('maps an unknown label to the default index', () => {
     expect(envDivisionLabelToIndex('1/32.')).toBe(ENV_SYNC_DEFAULT_INDEX); // legacy note label

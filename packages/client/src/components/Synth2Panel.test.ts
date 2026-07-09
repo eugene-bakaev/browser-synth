@@ -340,9 +340,9 @@ describe('Synth2Panel envelope tempo-sync', () => {
     params.env1.dDiv = '1/6';
     params.env1.rDiv = '3/4';
     const el = mountPanel(params);
-    expect(el.textContent).toContain('2/3');
-    expect(el.textContent).toContain('1/6');
-    expect(el.textContent).toContain('3/4');
+    expect(el.textContent).toContain('2/3 st');
+    expect(el.textContent).toContain('1/6 st');
+    expect(el.textContent).toContain('3/4 st');
     expect(el.textContent).toContain('50%'); // env1.s default 0.5 still renders as percent
   });
 
@@ -360,7 +360,7 @@ describe('Synth2Panel envelope tempo-sync', () => {
     params.lfo1.sync = true;
     params.lfo1.div = '1/8.';   // dotted note label — not in the env vocabulary
     const el = mountPanel(params);
-    expect(el.textContent).toContain('1/6');
+    expect(el.textContent).toContain('1/6 st');
     expect(el.textContent).toContain('1/8.');
   });
 });
