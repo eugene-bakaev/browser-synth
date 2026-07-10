@@ -214,15 +214,83 @@ describe('note select empty placeholder', () => {
 });
 
 describe('step selection UI', () => {
-  it('click on a step-number cell places the selection; shift+click extends it', async () => {
+  // jsdom has no PointerEvent; a MouseEvent with the pointer type name and a
+  // defined pointerId is what the component's handlers actually read.
+  function ptr(type: string, init: MouseEventInit & { pointerId?: number } = {}): MouseEvent {
+    const e = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+    Object.defineProperty(e, 'pointerId', { value: init.pointerId ?? 1 });
+    return e;
+  }
+
+  // jsdom has no layout: pin the container rect and the first row's height so
+  // the geometry row lookup (clientY → row) has real numbers to work with.
+  // rect spans rows 0..15 (16 rows × 20px), top at y=0.
+  function mockStepsGeometry(el: HTMLElement, rowHeight = 20, visibleRows = 16): HTMLElement {
+    const steps = el.querySelector('.tracker-steps') as HTMLElement;
+    vi.spyOn(steps, 'getBoundingClientRect').mockReturnValue({
+      top: 0, bottom: rowHeight * visibleRows, left: 0, right: 100,
+      width: 100, height: rowHeight * visibleRows, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    Object.defineProperty(steps.children[0], 'offsetHeight', { value: rowHeight, configurable: true });
+    return steps;
+  }
+
+  it('pointerdown on a step-number cell places the selection; shift+pointerdown extends it', async () => {
     const { el, selection } = mountTrackerWithPinia({ trackId: 2 });
     const cells = el.querySelectorAll('.step-row .col-step');
-    cells[3].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    cells[3].dispatchEvent(ptr('pointerdown'));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 3, head: 3 });
-    cells[6].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    cells[6].dispatchEvent(ptr('pointerdown', { shiftKey: true }));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 6, head: 6 });
+  });
+
+  it('non-primary-button pointerdown does not touch the selection', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    el.querySelectorAll('.step-row .col-step')[3].dispatchEvent(ptr('pointerdown', { button: 2 }));
+    await nextTick();
+    expect(selection.validSelection).toBeNull();
+  });
+
+  it('dragging from row 2 down over row 6 extends the selection to 2–6', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 20 + 10 })); // middle of row 6
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 6, head: 6 });
+  });
+
+  it('drag clamps to the edge rows when the pointer leaves the container vertically', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[4].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 9999 })); // far below → bottom visible row
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 15, head: 15 });
+    steps.dispatchEvent(ptr('pointermove', { clientY: -50 })); // far above → top row
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 0, end: 4, head: 0 });
+  });
+
+  it('pointermove with a different pointerId does not extend', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown', { pointerId: 1 }));
+    steps.dispatchEvent(ptr('pointermove', { pointerId: 99, clientY: 6 * 20 + 10 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
+  });
+
+  it('after pointerup, further pointermoves do not extend', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointerup'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 20 + 10 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
   });
 
   it('selected rows get .selected and the head row gets .sel-cursor', async () => {
