@@ -5,7 +5,7 @@
         <span
           class="track-name"
           :class="{ 'custom-name': titleIsCustom, renameable: isFocused }"
-          :title="isFocused ? 'Click to rename' : undefined"
+          :title="isFocused ? `${title} — click to rename` : title"
           @click="onTitleClick"
         >{{ title }}</span>
         <div class="title-actions" v-if="!isFocused">
@@ -418,6 +418,13 @@ const toggleDrumTrigger = (step: Step, i: number) => {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  /* Long custom names stay on one line and ellipsize inside the 24px title
+     row; the native title tooltip carries the full name. min-width lets the
+     flex item actually shrink below its content width. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* Custom names display as typed; default TRACK N keeps its uppercase look. */
@@ -435,6 +442,7 @@ const toggleDrumTrigger = (step: Step, i: number) => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0; /* EDIT/DEL badges keep their size; the name ellipsizes */
 }
 
 /* One badge box shared by the EDIT hint and the DEL button so they are
