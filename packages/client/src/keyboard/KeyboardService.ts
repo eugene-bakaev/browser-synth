@@ -1,4 +1,10 @@
-// The app's keyboard dispatcher — owns the ONLY window keydown listener.
+// The app's keyboard dispatcher — owns the app's single COMMAND-DISPATCH
+// window keydown listener. Two legacy window Escape listeners coexist for
+// now, outside this service: App.vue's sidebar-close handler and
+// BaseModal.vue's dialog-close handler. Migrating them into the keyboard
+// system as a higher-priority overlay/modal context is backlogged
+// (docs/BACKLOG.md); see the modal guard below in handleKeydown for how the
+// two worlds interact meanwhile.
 // Commands are declarative data registered at runtime; bindings come from
 // the KEY_BINDINGS table (or an injected one in tests). Created once per
 // page by AppRuntime and disposed in its shutdown().
@@ -50,6 +56,14 @@ export function isEditableTarget(t: EventTarget | null): boolean {
   return t.isContentEditable || t.contentEditable === 'true';
 }
 
+// Guarded with typeof document !== 'undefined' because the service is
+// constructible without a DOM (e.g. bindings-hygiene tests build one with
+// target: null and never touch a real document).
+function isModalOpen(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.querySelector('[aria-modal="true"]') !== null;
+}
+
 export class KeyboardService {
   private registrations: Registration[] = [];
   private readonly bindings: Record<string, string | readonly string[]>;
@@ -96,6 +110,17 @@ export class KeyboardService {
     // No opt-out by design (spec). Component-local key handling (e.g. Enter
     // in TrackNameEditor) is untouched: we listen in the bubble phase.
     if (isEditableTarget(e.target)) return;
+    // Guard 1b — modal dialog open: modal/overlay dialogs (BaseModal.vue)
+    // are not yet a keyboard context, so while one is open the command
+    // system stands down ENTIRELY (event left completely untouched — no
+    // preventDefault). Without this, e.g. Escape would both close the modal
+    // (BaseModal's own listener) AND run tracker.deselect behind it, and
+    // Delete/Backspace/mod+v with an active selection would clear/paste
+    // steps invisibly behind the open dialog. Detected semantically via
+    // aria-modal, which BaseModal's dialog carries. When modal/overlay
+    // commands are migrated into this service as a higher-priority context
+    // (backlogged, docs/BACKLOG.md), this guard is replaced by that context.
+    if (isModalOpen()) return;
     const matches = this.registrations.filter((r) =>
       // Guard 2 — key auto-repeat, unless the command opted in.
       (!e.repeat || r.cmd.allowRepeat === true)

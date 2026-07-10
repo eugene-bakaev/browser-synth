@@ -246,6 +246,23 @@ clamped range is what gets copied.
    from "full framework" C only the durable ideas: commands as named,
    described, queryable data; bindings readable in one table; matcher
    internals swappable for future chords.
+7. **Final review addendum (2026-07-10):** the whole-branch review found that
+   `KeyboardService` does not, as its header comment claimed, own the app's
+   only window keydown listener — two pre-existing ones coexist: `App.vue`'s
+   sidebar-close-on-Escape and `BaseModal.vue`'s dialog-close-on-Escape.
+   Decision: `KeyboardService` **stands down entirely** (no command runs, no
+   `preventDefault`) while a modal dialog is open, detected via an
+   `[aria-modal="true"]` probe against `document` — semantic and
+   framework-agnostic, and BaseModal's dialog already carries that attribute.
+   The remaining overlap — Escape closing the nav sidebar (`App.vue`) *and*
+   `tracker.deselect` firing at the same keystroke, since the sidebar isn't a
+   modal — is explicitly **ACCEPTED** for now: it's a non-modal nav drawer, so
+   the harm is low (clearing a selection alongside closing the sidebar is not
+   destructive). The correct long-term fix is to migrate both the modal and
+   the sidebar's Escape handling into the keyboard command system as a
+   higher-priority overlay/context, at which point today's aria-modal
+   stand-down guard is replaced by that context (tracked in
+   `docs/BACKLOG.md`).
 
 ## Testing
 

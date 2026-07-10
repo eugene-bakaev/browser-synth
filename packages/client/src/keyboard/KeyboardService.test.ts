@@ -127,6 +127,26 @@ describe('KeyboardService dispatch', () => {
   });
 });
 
+describe('KeyboardService modal guard', () => {
+  it('stands down (no dispatch, no preventDefault) while a [aria-modal="true"] element is in the document', () => {
+    const s = svc();
+    const c = cmd({ id: 'test.copy' });
+    s.register(c);
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(modal);
+    const e = kev('c', { ctrlKey: true });
+    s.handleKeydown(e);
+    expect(c.run).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+    modal.remove();
+    const e2 = kev('c', { ctrlKey: true });
+    s.handleKeydown(e2);
+    expect(c.run).toHaveBeenCalledTimes(1);
+    expect(e2.defaultPrevented).toBe(true);
+  });
+});
+
 describe('KeyboardService window listener', () => {
   let s: KeyboardService | null = null;
   afterEach(() => { s?.dispose(); s = null; });
