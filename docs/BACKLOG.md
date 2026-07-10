@@ -337,6 +337,35 @@ range is valid, just meaningless post-load. Consider calling
 project load, room switch / `replaceProject`) rather than relying on
 `validSelection`'s clamping to make the old range harmless.
 
+### Drag-select: mousedown + drag over steps should extend the selection
+**Reported:** 2026-07-10 · **Status:** open · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/stores/selection.ts`
+
+User request after `feat/keyboard-step-selection` landed. Selection currently
+starts only from discrete clicks on the step-number cell (`.col-step`): click
+places, shift+click extends. A regular mouse press on a step cell followed by
+dragging over neighboring rows in the same track should live-extend the
+selection over the dragged range (the familiar text/DAW selection gesture),
+committing on mouseup. Needs the usual drag mechanics: `mousedown` on
+`.col-step` → `place`, `mouseover`/`mousemove` while the button is held →
+`extendTo` on that row, listener teardown on `mouseup` (including mouseup
+outside the track/window), and no interference with the existing click and
+shift+click paths or with text `user-select` in neighboring cells. Same-track
+only, matching the single-track selection model.
+
+### Click outside a track with selected steps should cancel the selection
+**Reported:** 2026-07-10 · **Status:** open · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/views/StudioView.vue`, `packages/client/src/stores/selection.ts`
+
+User request after `feat/keyboard-step-selection` landed. Today a selection is
+cleared only by Escape (`tracker.deselect`) or by placing a new one; clicking
+empty page space leaves the old range highlighted. A click outside any
+tracker's step area, while a selection exists, should call `selection.clear()`.
+Needs a definition of "outside" (clicks on other step cells re-place the
+selection already; clicks on knobs/buttons/inputs inside a Tracker card
+arguably should NOT clear) and a document-level click listener that does not
+swallow or race the `.col-step` click handlers — likely a capture-phase or
+composedPath()-based check. Design it together with the drag-select entry
+above so the two gestures share one mouse-interaction model.
+
 ## Resolved
 
 ### P0 — Reload showed a blank default project (auth-reconnect raced the initial snapshot) — FIXED
