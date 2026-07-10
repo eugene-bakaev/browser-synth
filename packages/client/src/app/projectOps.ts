@@ -12,10 +12,10 @@
 // — identical wire behavior to the old syncWholeProjectDiff.
 
 import { toRaw } from 'vue';
-import { TRACK_POOL_SIZE, type Path, type Project } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, type Path, type Project, type Step } from '@fiddle/shared';
 import type { EngineType, Preset } from '../project';
 import {
-  clearTrackDraft, shiftTrackDraft, fillTrackDraft,
+  clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft,
   applyPresetDraft, resetEnginePatchDraft, freshProject,
 } from '../project';
 import { diffParams, cloneEngineSlice } from '../project/paramDiff';
@@ -103,15 +103,20 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     }
   }
 
-  function dispatchStepsWindow(trackId: number, draft: readonly Record<string, unknown>[]): void {
+  // Diff-and-dispatch `draft` against live steps starting at `startRow`.
+  function dispatchStepsRange(trackId: number, startRow: number, draft: readonly Record<string, unknown>[]): void {
     const live = project.tracks[trackId].steps;
     for (let j = 0; j < draft.length; j++) {
       dispatchDiff(
-        ['tracks', trackId, 'steps', j],
+        ['tracks', trackId, 'steps', startRow + j],
         draft[j],
-        live[j] as unknown as Record<string, unknown>,
+        live[startRow + j] as unknown as Record<string, unknown>,
       );
     }
+  }
+
+  function dispatchStepsWindow(trackId: number, draft: readonly Record<string, unknown>[]): void {
+    dispatchStepsRange(trackId, 0, draft);
   }
 
   // ---- whole-project outbound diff (New/Open) — moved from useSynth ----
@@ -222,6 +227,18 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     fillTrack(trackId: number, interval: number): void {
       const t = project.tracks[trackId];
       dispatchStepsWindow(trackId, fillTrackDraft(t.steps, interval, t.patternLength) as unknown as Record<string, unknown>[]);
+    },
+    // Selection ops (keyboard copy/cut/clear/paste). Same draft-diff-dispatch
+    // discipline as clearTrack/fillTrack — every leaf carries its prior, so
+    // sync rollback and future undo are preserved.
+    clearStepRange(trackId: number, start: number, end: number): void {
+      dispatchStepsRange(trackId, start, clearRangeDraft(start, end) as unknown as Record<string, unknown>[]);
+    },
+    /** Writes clipboard rows at `cursor`, clipped at the pattern window. Returns the number of rows written. */
+    pasteSteps(trackId: number, cursor: number, rows: readonly Step[]): number {
+      const draft = pasteStepsDraft(rows, cursor, project.tracks[trackId].patternLength);
+      dispatchStepsRange(trackId, cursor, draft as unknown as Record<string, unknown>[]);
+      return draft.length;
     },
     applyPreset(trackId: number, preset: Preset): void {
       const t = project.tracks[trackId];

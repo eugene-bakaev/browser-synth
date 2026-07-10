@@ -347,6 +347,10 @@ import { useAuth } from '../auth/useAuth';
 import { useDialog } from '../dialogs/useDialog';
 import { createPreset } from '../sync/presetsApi';
 import { useProjectStore } from '../stores/project';
+import { useSelectionStore } from '../stores/selection';
+import { useStepClipboardStore } from '../stores/stepClipboard';
+import { createTrackerCommands } from '../keyboard/trackerCommands';
+import { useKeyboardCommand } from '../keyboard/useKeyboardCommand';
 
 const dialog = useDialog();
 
@@ -373,6 +377,18 @@ const {
   addTrack,
   removeTrack,
 } = synth;
+
+// Tracker keyboard commands (selection + copy/cut/clear/paste). Registered
+// for this view's lifetime; the service lives on the runtime (via synth ctx).
+const selectionStore = useSelectionStore();
+const stepClipboard = useStepClipboardStore();
+useKeyboardCommand(synth.keyboard, createTrackerCommands({
+  selection: selectionStore,
+  clipboard: stepClipboard,
+  project,
+  ops: projectOps,
+  focusedTrackId: () => activeTrackIndex.value,
+}));
 
 // Read-only project selectors now come from the canonical ProjectStore
 // (Phase 1). Writes and write-entangled reads still use `synth` (Phase 2).

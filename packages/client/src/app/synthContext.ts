@@ -213,5 +213,6 @@ export function createSynthContext(runtime: AppRuntime) {
     dispatchLocal,
     endGesture,
     projectOps,
+    keyboard: runtime.keyboard,
   };
 }

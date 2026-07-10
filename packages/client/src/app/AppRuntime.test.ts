@@ -68,9 +68,10 @@ function makeFakeWsClient(opts: any) {
 }
 
 // window/location stubs: connect() computes a ws URL from `location` and installs
-// a beforeunload handler on `window`.
+// a beforeunload handler on `window`. removeEventListener is needed too: shutdown()
+// now disposes a KeyboardService, which removes its window keydown listener.
 function stubEnv() {
-  vi.stubGlobal('window', { addEventListener: vi.fn() });
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
   vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173' });
 }
 

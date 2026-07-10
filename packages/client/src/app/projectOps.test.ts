@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { reactive } from 'vue';
-import { setDeep, type Path } from '@fiddle/shared';
+import { setDeep, freshStep, type Path } from '@fiddle/shared';
 import { freshProject, replaceProject, type Project } from '../project';
 import { createProjectOps } from './projectOps';
 
@@ -154,5 +154,47 @@ describe('projectOps — whole-project (New / Open)', () => {
     expect(project.tracks[0].engines.synth.filterCutoff).toBe(1234);
     expect(enqueued.some((e) => String(e.path[4]) === 'filterCutoff' && e.value === 1234)).toBe(true);
     expect(enqueued.some((e) => e.path[4] === 'matrix' && e.value === 0.42)).toBe(true);
+  });
+});
+
+describe('step range ops', () => {
+  it('clearStepRange dispatches only the leaves that differ from an empty step, with priors', () => {
+    const { project, ops, dispatched } = makeHarness();
+    project.tracks[0].steps[2].note = 'C';
+    project.tracks[0].steps[2].velocity = 0.5;
+    project.tracks[0].steps[3].note = 'D';
+    ops.clearStepRange(0, 2, 3);
+    const paths = dispatched.map((d) => d.path.join('.'));
+    expect(paths).toContain('tracks.0.steps.2.note');
+    expect(paths).toContain('tracks.0.steps.2.velocity');
+    expect(paths).toContain('tracks.0.steps.3.note');
+    // untouched rows emit nothing
+    expect(paths.every((p) => p.startsWith('tracks.0.steps.2') || p.startsWith('tracks.0.steps.3'))).toBe(true);
+    const note2 = dispatched.find((d) => d.path.join('.') === 'tracks.0.steps.2.note')!;
+    expect(note2.value).toBeNull();
+    expect(note2.priorValue).toBe('C');
+  });
+
+  it('pasteSteps writes rows at the cursor, clips at patternLength, and returns the written count', () => {
+    const { project, ops, dispatched } = makeHarness();
+    project.tracks[1].patternLength = 16;
+    const rows = [
+      { ...freshStep(), note: 'C' },
+      { ...freshStep(), note: 'D' },
+      { ...freshStep(), note: 'E' },
+    ];
+    const written = ops.pasteSteps(1, 14, rows);
+    expect(written).toBe(2);
+    const notePaths = dispatched.filter((d) => String(d.path[d.path.length - 1]) === 'note');
+    expect(notePaths.map((d) => d.path.join('.'))).toEqual(['tracks.1.steps.14.note', 'tracks.1.steps.15.note']);
+    expect(notePaths.map((d) => d.value)).toEqual(['C', 'D']);
+  });
+
+  it('pasteSteps of identical content dispatches nothing (diff-based)', () => {
+    const { project, ops, dispatched } = makeHarness();
+    project.tracks[0].steps[0].note = 'C';
+    const written = ops.pasteSteps(0, 0, [{ ...freshStep(), note: 'C' }]);
+    expect(written).toBe(1); // row was in range and processed…
+    expect(dispatched).toHaveLength(0); // …but no leaf differed
   });
 });

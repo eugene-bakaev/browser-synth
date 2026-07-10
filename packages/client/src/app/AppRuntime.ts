@@ -11,6 +11,7 @@ import { SyncSession, type WsClientFactory } from '../sync/SyncSession';
 import { WsClient } from '../sync/WsClient';
 import { AudioEngine } from '../audio/AudioEngine';
 import { useAuth } from '../auth/useAuth';
+import { KeyboardService } from '../keyboard/KeyboardService';
 
 export interface AppRuntimeOptions {
   /** Test seam: hand back a fake WsClient instead of opening real sockets. */
@@ -25,6 +26,7 @@ export interface AppRuntime {
   bus: CommandBus;
   session: SyncSession;
   audio: AudioEngine;
+  keyboard: KeyboardService;
   /** Idempotent full teardown: audio (ctx/engines/transport) then sync (socket). */
   shutdown(): void;
 }
@@ -54,11 +56,13 @@ export function createAppRuntime(opts: AppRuntimeOptions = {}): AppRuntime {
     auth: () => useAuth(),
   });
   const audio = new AudioEngine({ project, subscribe: bus.subscribe });
+  const keyboard = new KeyboardService();
 
   function shutdown(): void {
+    keyboard.dispose();
     audio.dispose();
     session.dispose();
   }
 
-  return { pinia, store, bus, session, audio, shutdown };
+  return { pinia, store, bus, session, audio, keyboard, shutdown };
 }

@@ -96,7 +96,7 @@
           isMelodic
             ? (isPoly ? 'chord-row' : 'synth-row')
             : 'drum-row',
-          { active: currentStep >= 0 && (currentStep % patternLength) === i, 'step-muted': step.muted, 'with-vel': isFocused && isMelodic }
+          { active: currentStep >= 0 && (currentStep % patternLength) === i, 'step-muted': step.muted, 'with-vel': isFocused && isMelodic, selected: selection.isSelected(trackId, i), 'sel-cursor': cursorRow === i }
         ]"
       >
         <!-- Step Mute Column -->
@@ -111,7 +111,7 @@
           </button>
         </div>
 
-        <div class="col-step">{{ i.toString().padStart(2, '0') }}</div>
+        <div class="col-step" @click="onStepCellClick($event, i)">{{ i.toString().padStart(2, '0') }}</div>
 
         <!-- Synth Layout -->
         <template v-if="isMelodic">
@@ -240,6 +240,7 @@ import { DEFAULT_MIXER_STATE } from '../project';
 import type { MixerState } from '../project';
 import { SYNTH_CONTEXT } from '../app/synthContext';
 import { useCommandModel } from '../sync/commandModel';
+import { useSelectionStore } from '../stores/selection';
 
 // Writes route through the injected context's command-bus entry points (was a
 // module-scope import from useSynth before Phase 5).
@@ -299,6 +300,22 @@ const engineLabelText = computed(() => engineLabel(props.engineType, props.mode)
 const isMelodic = computed(() => props.engineType === 'synth' || props.engineType === 'synth2');
 const isPoly = computed(() => isMelodic.value && props.mode === 'poly');
 
+// Row selection (keyboard copy/cut/clear/paste). The step-number cell is the
+// selection handle: click places, shift+click extends. Local UI state only.
+const selection = useSelectionStore();
+
+function onStepCellClick(e: MouseEvent, row: number): void {
+  if (e.shiftKey) selection.extendTo(props.trackId, row);
+  else selection.place(props.trackId, row);
+}
+
+// This track's cursor row (selection head), or null when the selection is
+// elsewhere/invalid.
+const cursorRow = computed(() => {
+  const s = selection.validSelection;
+  return s && s.trackId === props.trackId ? s.head : null;
+});
+
 // The length field is v-model'd to a local draft (not the prop directly) so that the
 // ~8/sec re-renders during playback — which re-apply value bindings on every patch —
 // can't clobber what the user is mid-typing: the draft tracks the DOM value keystroke
@@ -328,19 +345,31 @@ const onStepsActive = () => { editingInSteps = true; };
 const onStepsBlur = () => { editingInSteps = false; };
 const markManualScroll = () => { lastManualScrollAt = Date.now(); };
 
+// Contained scrollTop adjustment (never scrollIntoView, which can scroll the window).
+function scrollRowIntoView(row: number): void {
+  const el = stepsEl.value;
+  if (!el) return;
+  const rowEl = el.children[row] as HTMLElement | undefined;
+  if (!rowEl) return;
+  const e = el.getBoundingClientRect();
+  const r = rowEl.getBoundingClientRect();
+  if (r.top < e.top) el.scrollTop -= (e.top - r.top);
+  else if (r.bottom > e.bottom) el.scrollTop += (r.bottom - e.bottom);
+}
+
 watch(() => props.currentStep, (cs) => {
   if (cs < 0 || props.patternLength <= 16) return; // not playing / no overflow → 0 cost
   if (editingInSteps) return;
   if (Date.now() - lastManualScrollAt < FOLLOW_GRACE_MS) return;
-  const el = stepsEl.value;
-  if (!el) return;
-  const row = el.children[cs % props.patternLength] as HTMLElement | undefined;
-  if (!row) return;
-  // Contained scrollTop adjustment (never scrollIntoView, which can scroll the window).
-  const e = el.getBoundingClientRect();
-  const r = row.getBoundingClientRect();
-  if (r.top < e.top) el.scrollTop -= (e.top - r.top);
-  else if (r.bottom > e.bottom) el.scrollTop += (r.bottom - e.bottom);
+  scrollRowIntoView(cs % props.patternLength);
+});
+
+// Keyboard cursor follow: unconditional — the user just pressed a key and
+// wants to see the cursor. (The manual-scroll grace only protects against
+// the PLAYHEAD fighting the user.)
+watch(cursorRow, (row) => {
+  if (row === null || props.patternLength <= 16) return;
+  scrollRowIntoView(row);
 });
 
 const onFillChange = (event: Event) => {
@@ -654,6 +683,25 @@ const toggleDrumTrigger = (step: Step, i: number) => {
      steps), so a scrolling 32-step track renders shorter rows than a 16-step
      one. Pin the height and let the container scroll instead. */
   flex-shrink: 0;
+}
+
+/* Row selection: translucent track-color tint; distinct from the playhead's
+   solid .active and from .step-muted's opacity. */
+.step-row.selected {
+  background: color-mix(in srgb, var(--track-color) 18%, #1a1a1a);
+  border-color: color-mix(in srgb, var(--track-color) 45%, #282828);
+}
+/* The cursor (selection head): a solid track-color left edge. */
+.step-row.sel-cursor {
+  box-shadow: inset 3px 0 0 var(--track-color);
+}
+/* The step-number cell is the selection handle. */
+.step-row .col-step {
+  cursor: pointer;
+  user-select: none; /* shift+click must not smear text selection */
+}
+.step-row .col-step:hover {
+  color: var(--track-color);
 }
 
 .step-row.active {
