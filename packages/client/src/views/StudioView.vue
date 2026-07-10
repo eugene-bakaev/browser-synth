@@ -85,11 +85,11 @@
         <h2 :style="{ color: trackColor(activeTrackIndex) }">
           Editing:
           <TrackNameEditor
+            ref="nameEditor"
             :name="focusedTrack!.name"
             :displayName="trackDisplayName(focusedTrack!, activeTrackIndex)"
             @commit="renameTrack"
           />
-          ({{ focusedTrack!.engineType.toUpperCase() }})
         </h2>
 
         <div class="engine-selector">
@@ -189,6 +189,7 @@
               :engineType="focusedTrack!.engineType"
               :mode="trackMode(focusedTrack!)"
               :patternLength="focusedTrack!.patternLength"
+              @rename="nameEditor?.beginEdit()"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
@@ -432,6 +433,10 @@ function setEngineType(t: EngineType) {
   if (activeTrackIndex.value === null) return;
   dispatchLocal(['tracks', activeTrackIndex.value, 'engineType'], t);
 }
+
+// The focused Tracker's title click also starts renaming (via the exposed
+// beginEdit) — the input itself always lives in the header editor.
+const nameEditor = ref<InstanceType<typeof TrackNameEditor> | null>(null);
 
 function renameTrack(value: string): void {
   if (activeTrackIndex.value === null) return;

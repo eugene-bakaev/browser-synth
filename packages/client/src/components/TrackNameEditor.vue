@@ -6,12 +6,20 @@
   component only emits.
 -->
 <template>
-  <span
-    v-if="!editing"
-    class="track-name-label"
-    title="Click to rename"
-    @click="beginEdit"
-  >{{ displayName }}</span>
+  <span v-if="!editing" class="track-name-idle">
+    <span
+      class="track-name-label"
+      title="Click to rename"
+      @click="beginEdit"
+    >{{ displayName }}</span>
+    <button
+      class="rename-btn"
+      type="button"
+      title="Rename track"
+      aria-label="Rename track"
+      @click="beginEdit"
+    >✎</button>
+  </span>
   <input
     v-else
     ref="inputEl"
@@ -65,16 +73,31 @@ function commit(): void {
 function cancel(): void {
   editing.value = false; // no emit; the commit() guard swallows the blur
 }
+
+// Lets the parent start editing from other affordances (e.g. clicking the
+// focused Tracker's title).
+defineExpose({ beginEdit });
 </script>
 
 <style scoped>
 .track-name-label {
   cursor: text;
-  border-bottom: 1px dotted transparent;
+  /* Always-visible affordance: the dotted underline marks the name editable. */
+  border-bottom: 1px dotted currentColor;
   text-transform: none; /* Shield custom name from inherited header uppercase */
 }
-.track-name-label:hover {
-  border-bottom-color: currentColor;
+.rename-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8em;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+.rename-btn:hover {
+  opacity: 1;
 }
 .track-name-input {
   background: rgba(0, 0, 0, 0.4);

@@ -111,4 +111,14 @@ describe('TrackNameEditor', () => {
     expect(onCommit).not.toHaveBeenCalled();
     expect(input(el)).toBeNull();
   });
+
+  it('idle shows a pencil button that also begins editing', async () => {
+    const el = mountEditor({ name: '', displayName: 'Track 1', onCommit: vi.fn() });
+    const pencil = el.querySelector<HTMLButtonElement>('.rename-btn');
+    expect(pencil).not.toBeNull();
+    pencil!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(input(el)).not.toBeNull();
+    expect(el.querySelector('.rename-btn')).toBeNull(); // pencil hides while editing
+  });
 });

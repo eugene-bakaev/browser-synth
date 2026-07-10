@@ -2,7 +2,12 @@
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
     <div class="tracker-header-bar">
       <div class="tracker-title-row" @click="$emit('select-track')">
-        <span class="track-name" :class="{ 'custom-name': titleIsCustom }">{{ title }}</span>
+        <span
+          class="track-name"
+          :class="{ 'custom-name': titleIsCustom, renameable: isFocused }"
+          :title="isFocused ? 'Click to rename' : undefined"
+          @click="onTitleClick"
+        >{{ title }}</span>
         <div class="title-actions" v-if="!isFocused">
           <span class="title-badge focus-hint">EDIT</span>
           <button
@@ -262,6 +267,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'select-track'): void;
+  (e: 'rename'): void;
   (e: 'remove'): void;
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
@@ -270,6 +276,15 @@ const emit = defineEmits<{
 }>();
 
 const fillSelectRef = ref<HTMLSelectElement | null>(null);
+
+// In the focused view the title is a rename affordance; in the overview a
+// title click keeps bubbling to the row's select-track.
+function onTitleClick(e: MouseEvent): void {
+  if (props.isFocused) {
+    e.stopPropagation();
+    emit('rename');
+  }
+}
 
 // Only the [0, patternLength) window plays/renders. slice() keeps the underlying
 // reactive Step references, so in-place edits still write through to `project`.
@@ -408,6 +423,12 @@ const toggleDrumTrigger = (step: Step, i: number) => {
 /* Custom names display as typed; default TRACK N keeps its uppercase look. */
 .track-name.custom-name {
   text-transform: none;
+}
+
+/* Focused view: the title doubles as a rename affordance (emits 'rename'). */
+.track-name.renameable {
+  cursor: text;
+  border-bottom: 1px dotted currentColor;
 }
 
 .title-actions {
