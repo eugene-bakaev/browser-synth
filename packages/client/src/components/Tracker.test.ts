@@ -97,6 +97,29 @@ describe('Tracker isPoly computed', () => {
   });
 });
 
+describe('title-is-custom shielding', () => {
+  it('titleIsCustom: true puts the custom-name class on .track-name', () => {
+    const el = mountTracker({
+      ...BASE_PROPS,
+      steps: makeSteps(),
+      engineType: 'kick',
+      titleIsCustom: true,
+    });
+    expect(el.querySelector('.track-name.custom-name')).not.toBeNull();
+  });
+
+  it('titleIsCustom omitted (default false) leaves .track-name without custom-name', () => {
+    const el = mountTracker({
+      ...BASE_PROPS,
+      steps: makeSteps(),
+      engineType: 'kick',
+    });
+    const name = el.querySelector('.track-name');
+    expect(name).not.toBeNull();
+    expect(name!.classList.contains('custom-name')).toBe(false);
+  });
+});
+
 describe('note select empty placeholder', () => {
   // A `:value` binding coerces null to "" on the <select>, so the placeholder
   // option must carry value="" to match — otherwise an empty step renders a

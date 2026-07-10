@@ -55,7 +55,11 @@ function commit(): void {
   // `editing` before its blur too — this guard makes both single-shot.
   if (!editing.value) return;
   editing.value = false;
-  emit('commit', draft.value.trim());
+  const trimmed = draft.value.trim();
+  // No-op guard: click-name-then-click-away without typing shouldn't dispatch
+  // an unchanged value as a sync op.
+  if (trimmed === props.name) return;
+  emit('commit', trimmed);
 }
 
 function cancel(): void {

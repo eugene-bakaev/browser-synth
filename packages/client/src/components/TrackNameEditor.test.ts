@@ -101,4 +101,14 @@ describe('TrackNameEditor', () => {
     await nextTick();
     expect(onCommit).toHaveBeenCalledWith('');
   });
+
+  it('blur without editing (no-op rename) closes the editor without emitting', async () => {
+    const onCommit = vi.fn();
+    const el = mountEditor({ name: 'Lead', displayName: 'Lead', onCommit });
+    const inp = await beginEdit(el);
+    inp.dispatchEvent(new FocusEvent('blur'));
+    await nextTick();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(input(el)).toBeNull();
+  });
 });

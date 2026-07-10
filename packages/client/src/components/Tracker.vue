@@ -2,7 +2,7 @@
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
     <div class="tracker-header-bar">
       <div class="tracker-title-row" @click="$emit('select-track')">
-        <span class="track-name">{{ title }}</span>
+        <span class="track-name" :class="{ 'custom-name': titleIsCustom }">{{ title }}</span>
         <div class="title-actions" v-if="!isFocused">
           <span class="title-badge focus-hint">EDIT</span>
           <button
@@ -246,6 +246,7 @@ const props = withDefaults(defineProps<{
   steps: Step[];
   currentStep: number;
   title: string;
+  titleIsCustom?: boolean;
   color?: string;
   isFocused?: boolean;
   trackId: number;
@@ -255,7 +256,8 @@ const props = withDefaults(defineProps<{
   canRemove?: boolean;
   mixer: MixerState;
 }>(), {
-  mode: 'mono'
+  mode: 'mono',
+  titleIsCustom: false
 });
 
 const emit = defineEmits<{
@@ -401,6 +403,11 @@ const toggleDrumTrigger = (step: Step, i: number) => {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+/* Custom names display as typed; default TRACK N keeps its uppercase look. */
+.track-name.custom-name {
+  text-transform: none;
 }
 
 .title-actions {
