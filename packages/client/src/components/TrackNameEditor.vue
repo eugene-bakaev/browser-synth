@@ -67,6 +67,7 @@ function cancel(): void {
 .track-name-label {
   cursor: text;
   border-bottom: 1px dotted transparent;
+  text-transform: none; /* Shield custom name from inherited header uppercase */
 }
 .track-name-label:hover {
   border-bottom-color: currentColor;
@@ -79,6 +80,7 @@ function cancel(): void {
   font: inherit;
   padding: 0 6px;
   width: 14ch;
+  text-transform: none; /* Shield custom name from inherited header uppercase */
 }
 .track-name-input:focus {
   outline: none;
