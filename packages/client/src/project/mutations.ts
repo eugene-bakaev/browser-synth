@@ -38,3 +38,17 @@ export function fillTrackDraft(
   }
   return window;
 }
+
+export function clearRangeDraft(start: number, end: number): Step[] {
+  return Array.from({ length: end - start + 1 }, () => freshStep());
+}
+
+// Rows to write starting at `cursor`, clipped at the pattern window: pasting
+// never silently writes into invisible rows past the pattern end (spec).
+export function pasteStepsDraft(
+  rows: readonly Step[],
+  cursor: number,
+  patternLength: number,
+): Step[] {
+  return rows.slice(0, Math.max(0, patternLength - cursor)).map((s) => ({ ...s }));
+}

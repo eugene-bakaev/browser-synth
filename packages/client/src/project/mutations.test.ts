@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { freshTrack } from './factory';
-import { clearTrackDraft, shiftTrackDraft, fillTrackDraft } from './mutations';
+import { freshTrack, freshStep } from './factory';
+import type { Step } from '@fiddle/shared';
+import { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft } from './mutations';
 
 describe('clearTrackDraft', () => {
   it('returns a fresh window of exactly patternLength steps', () => {
@@ -83,5 +84,33 @@ describe('fillTrackDraft', () => {
     track.patternLength = 4;
     const draft = fillTrackDraft(track.steps, 0, track.patternLength);
     expect(draft.every((s) => s.note === null)).toBe(true);
+  });
+});
+
+describe('clearRangeDraft', () => {
+  it('produces factory-default steps, one per row in [start, end]', () => {
+    const draft = clearRangeDraft(3, 6);
+    expect(draft).toHaveLength(4);
+    for (const s of draft) expect(s).toEqual(freshStep());
+  });
+});
+
+describe('pasteStepsDraft', () => {
+  const rows: Step[] = [
+    { ...freshStep(), note: 'C' },
+    { ...freshStep(), note: 'D' },
+    { ...freshStep(), note: 'E' },
+  ];
+  it('returns copies of all rows when they fit', () => {
+    const draft = pasteStepsDraft(rows, 2, 16);
+    expect(draft.map((s) => s.note)).toEqual(['C', 'D', 'E']);
+    expect(draft[0]).not.toBe(rows[0]); // copy, not reference
+  });
+  it('clips at the pattern window', () => {
+    expect(pasteStepsDraft(rows, 14, 16).map((s) => s.note)).toEqual(['C', 'D']);
+    expect(pasteStepsDraft(rows, 15, 16)).toHaveLength(1);
+  });
+  it('returns [] when the cursor is at/past the window edge', () => {
+    expect(pasteStepsDraft(rows, 16, 16)).toEqual([]);
   });
 });
