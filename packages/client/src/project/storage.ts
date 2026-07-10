@@ -38,6 +38,9 @@ function reconcileTrack(loaded: unknown, enabled: boolean): ProjectTrack {
 
   const reconciled: ProjectTrack = {
     engineType: (t.engineType as ProjectTrack['engineType']) ?? fresh.engineType,
+    // Same rule as normalizeProject on the sync boundary: a stored string
+    // wins, anything else (old file, hand-edited JSON) heals to '' = unnamed.
+    name: typeof t.name === 'string' ? t.name : fresh.name,
     engines: {
       synth:  deepMerge(SynthEngine.DEFAULT_PARAMS,  loadedEngines.synth),
       kick:   deepMerge(KickEngine.DEFAULT_PARAMS,   loadedEngines.kick),
@@ -133,6 +136,7 @@ export function replaceProject(target: Project, source: Project): void {
     const s = source.tracks[i];
 
     t.engineType = s.engineType;
+    t.name = s.name;
     t.patternLength = s.patternLength;
     t.enabled = s.enabled;
 

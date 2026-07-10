@@ -6,6 +6,7 @@ export type {
 } from './types.js';
 export { activeParams } from './types.js';
 export { freshStep, freshTrack, freshProject } from './factory.js';
+export { trackDisplayName } from './display.js';
 export { normalizeProject, coerceBpm } from './normalize.js';
 export { packProject, unpackProject, deepEqual } from './snapshot-codec.js';
 export type { StoredProject } from './snapshot-codec.js';
@@ -17,6 +18,7 @@ export {
   BPM_MAX,
   STEP_BUFFER_SIZE,
   DEFAULT_PATTERN_LENGTH,
+  TRACK_NAME_MAX_LENGTH,
 } from './constants.js';
 export { ProjectSchema, Schemas } from './schema.js';
 export {

@@ -9,7 +9,7 @@
 // accept ops the client would silently clamp on application, opening a drift.
 
 import { z } from 'zod';
-import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX } from './constants.js';
+import { TRACK_POOL_SIZE, BPM_MIN, BPM_MAX, TRACK_NAME_MAX_LENGTH } from './constants.js';
 import { SYNTH2_DESCRIPTORS, MOD_SOURCES, MOD_DESTS } from '../engines/synth2-descriptors.js';
 import { MATRIX_SLOT_COUNT } from '../engines/synth2.js';
 import { KICK2_DESCRIPTORS } from '../engines/kick2.js';
@@ -213,6 +213,8 @@ const EnginesMapSchema = z.object({
 
 const TrackSchema = z.object({
   engineType: EngineTypeSchema,
+  // '' = unnamed (display fallback lives in trackDisplayName, not here).
+  name: z.string().max(TRACK_NAME_MAX_LENGTH),
   engines: EnginesMapSchema,
   mixer: MixerSchema,
   // Track loop-window length (steps). The buffer below is fixed at 64.

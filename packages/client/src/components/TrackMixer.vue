@@ -28,7 +28,7 @@
         <!-- Strip Header with Label & LED -->
         <div class="strip-header">
           <div class="track-info">
-            <span class="track-number">TRK {{ chan.index + 1 }}</span>
+            <span class="track-number">{{ trackDisplayName(chan.track, chan.index) }}</span>
             <span class="track-type">{{ chan.track.engineType.toUpperCase() }}</span>
           </div>
           <!-- Pulse LED on note trigger -->
@@ -85,7 +85,7 @@ import { DEFAULT_MIXER_STATE, type ProjectTrack } from '../project';
 import { SYNTH_CONTEXT } from '../app/synthContext';
 import { useCommandModel } from '../sync/commandModel';
 import { trackColor } from '../ui/trackColors';
-import { TRACK_POOL_SIZE } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, trackDisplayName } from '@fiddle/shared';
 
 // Writes route through the injected context's command-bus entry points (was a
 // module-scope import from useSynth before Phase 5).

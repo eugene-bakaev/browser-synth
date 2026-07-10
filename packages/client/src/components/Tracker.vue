@@ -2,7 +2,12 @@
   <div class="tracker-container" :style="{ '--track-color': color || '#00f0ff' }" :class="{ focused: isFocused }">
     <div class="tracker-header-bar">
       <div class="tracker-title-row" @click="$emit('select-track')">
-        <span class="track-name">{{ title }}</span>
+        <span
+          class="track-name"
+          :class="{ 'custom-name': titleIsCustom, renameable: isFocused }"
+          :title="isFocused ? `${title} — click to rename` : title"
+          @click="onTitleClick"
+        >{{ title }}</span>
         <div class="title-actions" v-if="!isFocused">
           <span class="title-badge focus-hint">EDIT</span>
           <button
@@ -246,6 +251,7 @@ const props = withDefaults(defineProps<{
   steps: Step[];
   currentStep: number;
   title: string;
+  titleIsCustom?: boolean;
   color?: string;
   isFocused?: boolean;
   trackId: number;
@@ -255,11 +261,13 @@ const props = withDefaults(defineProps<{
   canRemove?: boolean;
   mixer: MixerState;
 }>(), {
-  mode: 'mono'
+  mode: 'mono',
+  titleIsCustom: false
 });
 
 const emit = defineEmits<{
   (e: 'select-track'): void;
+  (e: 'rename'): void;
   (e: 'remove'): void;
   (e: 'clear', trackId: number): void;
   (e: 'shift', payload: { trackId: number; direction: 'left' | 'right' }): void;
@@ -268,6 +276,15 @@ const emit = defineEmits<{
 }>();
 
 const fillSelectRef = ref<HTMLSelectElement | null>(null);
+
+// In the focused view the title is a rename affordance; in the overview a
+// title click keeps bubbling to the row's select-track.
+function onTitleClick(e: MouseEvent): void {
+  if (props.isFocused) {
+    e.stopPropagation();
+    emit('rename');
+  }
+}
 
 // Only the [0, patternLength) window plays/renders. slice() keeps the underlying
 // reactive Step references, so in-place edits still write through to `project`.
@@ -401,12 +418,31 @@ const toggleDrumTrigger = (step: Step, i: number) => {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  /* Long custom names stay on one line and ellipsize inside the 24px title
+     row; the native title tooltip carries the full name. min-width lets the
+     flex item actually shrink below its content width. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Custom names display as typed; default TRACK N keeps its uppercase look. */
+.track-name.custom-name {
+  text-transform: none;
+}
+
+/* Focused view: the title doubles as a rename affordance (emits 'rename'). */
+.track-name.renameable {
+  cursor: text;
+  border-bottom: 1px dotted currentColor;
 }
 
 .title-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0; /* EDIT/DEL badges keep their size; the name ellipsizes */
 }
 
 /* One badge box shared by the EDIT hint and the DEL button so they are

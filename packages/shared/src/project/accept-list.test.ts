@@ -280,3 +280,22 @@ describe('enabled flag path', () => {
     expect(indicesInRange('tracks.32.enabled')).toBe(false);
   });
 });
+
+describe('tracks.*.name', () => {
+  it('is writable and validates strings (including empty)', () => {
+    expect(validatePathAndValue('tracks.3.name', 'Bassline')).toEqual({ ok: true });
+    expect(validatePathAndValue('tracks.0.name', '')).toEqual({ ok: true });
+  });
+
+  it('nacks overlong and non-string values', () => {
+    expect(validatePathAndValue('tracks.0.name', 'x'.repeat(25)))
+      .toMatchObject({ ok: false, code: 'value.invalid' });
+    expect(validatePathAndValue('tracks.0.name', 42))
+      .toMatchObject({ ok: false, code: 'value.invalid' });
+  });
+
+  it('still rejects out-of-range track indices', () => {
+    expect(validatePathAndValue('tracks.99.name', 'x'))
+      .toMatchObject({ ok: false, code: 'path.invalid' });
+  });
+});

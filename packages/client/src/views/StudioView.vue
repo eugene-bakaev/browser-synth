@@ -48,7 +48,8 @@
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
-            :title="`Track ${entry.index + 1}`"
+            :title="trackDisplayName(entry.track, entry.index)"
+            :title-is-custom="entry.track.name.trim() !== ''"
             :mixer="entry.track.mixer"
             :color="trackColor(entry.index)"
             :isFocused="false"
@@ -82,7 +83,13 @@
           ← BACK TO OVERVIEW
         </button>
         <h2 :style="{ color: trackColor(activeTrackIndex) }">
-          Editing: Track {{ activeTrackIndex + 1 }} ({{ focusedTrack!.engineType.toUpperCase() }})
+          Editing:
+          <TrackNameEditor
+            ref="nameEditor"
+            :name="focusedTrack!.name"
+            :displayName="trackDisplayName(focusedTrack!, activeTrackIndex)"
+            @commit="renameTrack"
+          />
         </h2>
 
         <div class="engine-selector">
@@ -173,7 +180,8 @@
             <Tracker
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
-              :title="`Track ${activeTrackIndex + 1}`"
+              :title="trackDisplayName(focusedTrack!, activeTrackIndex)"
+              :title-is-custom="focusedTrack!.name.trim() !== ''"
               :mixer="focusedTrack!.mixer"
               :color="trackColor(activeTrackIndex)"
               :isFocused="true"
@@ -181,6 +189,7 @@
               :engineType="focusedTrack!.engineType"
               :mode="trackMode(focusedTrack!)"
               :patternLength="focusedTrack!.patternLength"
+              @rename="nameEditor?.beginEdit()"
               @clear="onClear"
               @shift="onShift"
               @fill="onFill"
@@ -304,7 +313,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
-import { TRACK_POOL_SIZE, type PresetRecord, type EngineType } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, trackDisplayName, type PresetRecord, type EngineType } from '@fiddle/shared';
 import { SYNTH_CONTEXT } from '../app/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -319,6 +328,7 @@ import {
   type Preset,
 } from '../project';
 import Tracker from '../components/Tracker.vue';
+import TrackNameEditor from '../components/TrackNameEditor.vue';
 import SynthPanel from '../components/SynthPanel.vue';
 import KickPanel from '../components/KickPanel.vue';
 import HatPanel from '../components/HatPanel.vue';
@@ -424,11 +434,20 @@ function setEngineType(t: EngineType) {
   dispatchLocal(['tracks', activeTrackIndex.value, 'engineType'], t);
 }
 
+// The focused Tracker's title click also starts renaming (via the exposed
+// beginEdit) — the input itself always lives in the header editor.
+const nameEditor = ref<InstanceType<typeof TrackNameEditor> | null>(null);
+
+function renameTrack(value: string): void {
+  if (activeTrackIndex.value === null) return;
+  dispatchLocal(['tracks', activeTrackIndex.value, 'name'], value);
+}
+
 // Confirm before removing a track — deletion drops the slot's pattern and patch.
 const onRemoveTrack = async (index: number) => {
   const ok = await dialog.confirm({
     title: 'Remove track',
-    message: `Remove Track ${index + 1}? Its pattern and sound settings will be cleared.`,
+    message: `Remove ${trackDisplayName(project.tracks[index], index)}? Its pattern and sound settings will be cleared.`,
     confirmLabel: 'Remove',
     danger: true,
   });
