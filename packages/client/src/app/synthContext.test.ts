@@ -225,6 +225,7 @@ describe('sync integration', () => {
       location: { pathname: '/r/testroom1' },
       history: { replaceState: vi.fn() },
       addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
     });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/r/testroom1' });
   });
@@ -665,7 +666,7 @@ describe('session-scoped connection', () => {
   beforeEach(() => {
     pushState = vi.fn();
     replaceState = vi.fn();
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn() });
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn(), removeEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
 
@@ -862,7 +863,7 @@ describe('session-scoped connection', () => {
 
 describe('variable track count', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn() });
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { replaceState: vi.fn() }, addEventListener: vi.fn(), removeEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
 
@@ -966,7 +967,7 @@ describe('focused-track URL view-state', () => {
   beforeEach(() => {
     pushState = vi.fn();
     replaceState = vi.fn();
-    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn() });
+    vi.stubGlobal('window', { location: { pathname: '/' }, history: { pushState, replaceState }, addEventListener: vi.fn(), removeEventListener: vi.fn() });
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173', pathname: '/' });
   });
   afterEach(() => vi.unstubAllGlobals());
