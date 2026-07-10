@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { createApp, type App } from 'vue';
+import { createApp, nextTick, type App } from 'vue';
+import { createPinia } from 'pinia';
 import Tracker from './Tracker.vue';
 import { freshStep } from '../project';
 import { DEFAULT_MIXER_STATE } from '../project';
 import { SYNTH_CONTEXT, type SynthContext } from '../app/synthContext';
+import { useSelectionStore } from '../stores/selection';
+import { useProjectStore } from '../stores/project';
 
 // Tracker takes dispatchLocal/endGesture off the injected synth context
 // (Phase 5); these layout tests never write, so a minimal fake suffices.
@@ -24,6 +27,10 @@ function mountTracker(props: Record<string, unknown>): HTMLElement {
   host = document.createElement('div');
   document.body.appendChild(host);
   app = createApp(Tracker, props);
+  // Tracker's setup() now calls useSelectionStore() unconditionally (row
+  // selection), so every mount needs an active Pinia even when a test never
+  // touches selection itself.
+  app.use(createPinia());
   app.provide(SYNTH_CONTEXT, fakeSynth);
   app.mount(host);
   return host;
@@ -31,6 +38,36 @@ function mountTracker(props: Record<string, unknown>): HTMLElement {
 
 function makeSteps(n = 4) {
   return Array.from({ length: n }, () => freshStep());
+}
+
+// Selection-UI harness: installs a fresh Pinia so Tracker's internal
+// useSelectionStore() call resolves, and heals the project store's track at
+// the tested trackId so validSelection() (which validates against live
+// project state) accepts placements — enabled + patternLength >= 16, to
+// cover the shift+click-to-row-6 and patternLength>16 auto-scroll tests.
+function mountTrackerWithPinia(overrideProps: Record<string, unknown> = {}): {
+  el: HTMLElement;
+  selection: ReturnType<typeof useSelectionStore>;
+} {
+  host = document.createElement('div');
+  document.body.appendChild(host);
+  const pinia = createPinia();
+  const props = {
+    ...BASE_PROPS,
+    steps: makeSteps(16),
+    engineType: 'kick',
+    patternLength: 16,
+    ...overrideProps,
+  };
+  app = createApp(Tracker, props);
+  app.use(pinia);
+  app.provide(SYNTH_CONTEXT, fakeSynth);
+  const projectStore = useProjectStore(pinia);
+  const tid = props.trackId as number;
+  projectStore.project.tracks[tid].enabled = true;
+  projectStore.project.tracks[tid].patternLength = 16;
+  app.mount(host);
+  return { el: host, selection: useSelectionStore(pinia) };
 }
 
 const BASE_PROPS = {
@@ -173,5 +210,38 @@ describe('note select empty placeholder', () => {
     expect(select).not.toBeNull();
     expect(select.selectedIndex).toBe(0);
     expect(select.options[select.selectedIndex].text).toBe('---');
+  });
+});
+
+describe('step selection UI', () => {
+  it('click on a step-number cell places the selection; shift+click extends it', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 2 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[3].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 3, head: 3 });
+    cells[6].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 6, head: 6 });
+  });
+
+  it('selected rows get .selected and the head row gets .sel-cursor', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    selection.place(0, 1);
+    selection.extendTo(0, 2);
+    await nextTick();
+    const rows = el.querySelectorAll('.step-row');
+    expect(rows[1].classList.contains('selected')).toBe(true);
+    expect(rows[2].classList.contains('selected')).toBe(true);
+    expect(rows[2].classList.contains('sel-cursor')).toBe(true);
+    expect(rows[1].classList.contains('sel-cursor')).toBe(false);
+    expect(rows[0].classList.contains('selected')).toBe(false);
+  });
+
+  it('rows on a different track render unselected', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    selection.place(1, 1);
+    await nextTick();
+    expect(el.querySelector('.step-row.selected')).toBeNull();
   });
 });
