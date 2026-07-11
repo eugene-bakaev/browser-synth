@@ -222,16 +222,23 @@ describe('step selection UI', () => {
     return e;
   }
 
-  // jsdom has no layout: pin the container rect and the first row's height so
-  // the geometry row lookup (clientY → row) has real numbers to work with.
-  // rect spans rows 0..15 (16 rows × 20px), top at y=0.
-  function mockStepsGeometry(el: HTMLElement, rowHeight = 20, visibleRows = 16): HTMLElement {
+  // jsdom has no layout: pin the container rect and each row's offsetHeight/
+  // offsetTop so the geometry row lookup (clientY → row) has real numbers to
+  // work with. The real .tracker-steps is a flex column with a 2px gap, so
+  // the true row pitch is rowHeight + gap (22px here), not offsetHeight
+  // alone — offsetTop mirrors that gapped layout. rect spans rows 0..15
+  // (16 rows × 22px pitch = 352), top at y=0.
+  function mockStepsGeometry(el: HTMLElement, rowHeight = 20, gap = 2, visibleRows = 16): HTMLElement {
     const steps = el.querySelector('.tracker-steps') as HTMLElement;
+    const pitch = rowHeight + gap;
     vi.spyOn(steps, 'getBoundingClientRect').mockReturnValue({
-      top: 0, bottom: rowHeight * visibleRows, left: 0, right: 100,
-      width: 100, height: rowHeight * visibleRows, x: 0, y: 0, toJSON: () => ({}),
+      top: 0, bottom: pitch * visibleRows, left: 0, right: 100,
+      width: 100, height: pitch * visibleRows, x: 0, y: 0, toJSON: () => ({}),
     } as DOMRect);
-    Object.defineProperty(steps.children[0], 'offsetHeight', { value: rowHeight, configurable: true });
+    for (let i = 0; i < steps.children.length; i++) {
+      Object.defineProperty(steps.children[i], 'offsetHeight', { value: rowHeight, configurable: true });
+      Object.defineProperty(steps.children[i], 'offsetTop', { value: i * pitch, configurable: true });
+    }
     return steps;
   }
 
@@ -257,9 +264,23 @@ describe('step selection UI', () => {
     const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
     const steps = mockStepsGeometry(el);
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
-    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 20 + 10 })); // middle of row 6
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 })); // middle of row 6
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 6, head: 6 });
+  });
+
+  // Catches the offsetHeight-only pitch bug: with a 2px flex gap, the true
+  // row pitch is 22px (20 + 2), not 20px. Under the old (buggy) math
+  // floor(274 / 20) = 13, one row past the pointer. The fix derives pitch
+  // from sibling offsetTop delta, so floor(274 / 22) = 12 — exactly under
+  // the pointer.
+  it('drag lands on the exact row under the pointer even past row 8 (gap-aware pitch)', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 12 * 22 + 10 })); // middle of row 12
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 12, head: 12 });
   });
 
   it('drag clamps to the edge rows when the pointer leaves the container vertically', async () => {
@@ -278,7 +299,7 @@ describe('step selection UI', () => {
     const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
     const steps = mockStepsGeometry(el);
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown', { pointerId: 1 }));
-    steps.dispatchEvent(ptr('pointermove', { pointerId: 99, clientY: 6 * 20 + 10 }));
+    steps.dispatchEvent(ptr('pointermove', { pointerId: 99, clientY: 6 * 22 + 10 }));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
   });
@@ -288,7 +309,7 @@ describe('step selection UI', () => {
     const steps = mockStepsGeometry(el);
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
     steps.dispatchEvent(ptr('pointerup'));
-    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 20 + 10 }));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 }));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
   });

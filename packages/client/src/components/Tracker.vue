@@ -334,16 +334,26 @@ function onStepPointerDown(e: PointerEvent, row: number): void {
 // clientY → step row: clamp to the container's visible rect (so dragging
 // past an edge selects the edge row — the cursorRow auto-scroll watcher
 // then scrolls the next row into view, giving edge auto-scroll for free),
-// add scrollTop, divide by the uniform row height.
+// add scrollTop, divide by the row pitch.
+//
+// The row pitch is NOT offsetHeight: .tracker-steps is a flex column with a
+// 2px gap, so consecutive rows sit 2px further apart than their own height.
+// Reading offsetHeight alone under-measures the pitch and drifts the
+// computed row ahead of the pointer by one row per ~offsetHeight/gap rows
+// dragged. Instead, derive the true (gap-inclusive) pitch from where the
+// second row actually landed — the delta between two siblings' offsetTop —
+// falling back to offsetHeight for a single-row pattern, where there is no
+// second sibling to measure from.
 function rowUnderPointer(e: PointerEvent): number | null {
   const el = stepsEl.value;
   if (!el) return null;
   const first = el.children[0] as HTMLElement | undefined;
-  const rowHeight = first?.offsetHeight ?? 0;
-  if (rowHeight <= 0) return null;
+  const second = el.children[1] as HTMLElement | undefined;
+  const pitch = second ? second.offsetTop - first!.offsetTop : first?.offsetHeight ?? 0;
+  if (!first || pitch <= 0) return null;
   const rect = el.getBoundingClientRect();
   const y = Math.min(Math.max(e.clientY, rect.top), rect.bottom - 1) - rect.top + el.scrollTop;
-  return Math.min(Math.max(Math.floor(y / rowHeight), 0), props.patternLength - 1);
+  return Math.min(Math.max(Math.floor(y / pitch), 0), props.patternLength - 1);
 }
 
 function onStepsPointerMove(e: PointerEvent): void {
