@@ -338,7 +338,13 @@ project load, room switch / `replaceProject`) rather than relying on
 `validSelection`'s clamping to make the old range harmless.
 
 ### Drag-select: mousedown + drag over steps should extend the selection
-**Reported:** 2026-07-10 · **Status:** open · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/stores/selection.ts`
+**Reported:** 2026-07-10 · **Status:** resolved 2026-07-11 (`feat/drag-select`) · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/stores/selection.ts`
+
+Resolved with Pointer Events + `setPointerCapture` on `.tracker-steps` and
+geometric row lookup (gap-aware pitch from sibling `offsetTop` delta), spec
+`docs/superpowers/specs/2026-07-10-drag-select-design.md`. Pointer past the
+visible edge overshoots one row per move so the cursor watcher provides edge
+auto-scroll. Original notes follow.
 
 User request after `feat/keyboard-step-selection` landed. Selection currently
 starts only from discrete clicks on the step-number cell (`.col-step`): click
@@ -353,7 +359,15 @@ shift+click paths or with text `user-select` in neighboring cells. Same-track
 only, matching the single-track selection model.
 
 ### Click outside a track with selected steps should cancel the selection
-**Reported:** 2026-07-10 · **Status:** open · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/views/StudioView.vue`, `packages/client/src/stores/selection.ts`
+**Reported:** 2026-07-10 · **Status:** resolved 2026-07-11 (`feat/drag-select`) · **Area:** `packages/client/src/composables/useClickOutsideDeselect.ts`, `packages/client/src/views/StudioView.vue`
+
+Resolved with a capture-phase document `pointerdown` listener
+(`useClickOutsideDeselect`, registered in StudioView): "outside" = no
+`.tracker-container` and no `[aria-modal="true"]` element in `composedPath()`.
+User decision 2026-07-11: presses on the focused view's engine panel
+(`.engine-section`, a sibling of the tracker card) DO clear the selection —
+accepted as-is; extend the keep-zone later if it grates in practice. Original
+notes follow.
 
 User request after `feat/keyboard-step-selection` landed. Today a selection is
 cleared only by Escape (`tracker.deselect`) or by placing a new one; clicking
