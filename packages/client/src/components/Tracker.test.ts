@@ -247,10 +247,10 @@ describe('step selection UI', () => {
     const cells = el.querySelectorAll('.step-row .col-step');
     cells[3].dispatchEvent(ptr('pointerdown'));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 3, head: 3 });
+    expect(selection.validSelection).toMatchObject({ trackId: 2, first: 3, last: 3, head: 3 });
     cells[6].dispatchEvent(ptr('pointerdown', { shiftKey: true }));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 6, head: 6 });
+    expect(selection.validSelection).toMatchObject({ trackId: 2, first: 3, last: 6, head: 6 });
   });
 
   it('non-primary-button pointerdown does not touch the selection', async () => {
@@ -266,7 +266,7 @@ describe('step selection UI', () => {
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
     steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 })); // middle of row 6
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 6, head: 6 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 6, head: 6 });
   });
 
   // Catches the offsetHeight-only pitch bug: with a 2px flex gap, the true
@@ -280,7 +280,7 @@ describe('step selection UI', () => {
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
     steps.dispatchEvent(ptr('pointermove', { clientY: 12 * 22 + 10 })); // middle of row 12
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 12, head: 12 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 12, head: 12 });
   });
 
   it('drag clamps to the edge rows when the pointer leaves the container vertically', async () => {
@@ -289,10 +289,10 @@ describe('step selection UI', () => {
     el.querySelectorAll('.step-row .col-step')[4].dispatchEvent(ptr('pointerdown'));
     steps.dispatchEvent(ptr('pointermove', { clientY: 9999 })); // far below → bottom visible row
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 15, head: 15 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 4, last: 15, head: 15 });
     steps.dispatchEvent(ptr('pointermove', { clientY: -50 })); // far above → top row
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 0, end: 4, head: 0 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 0, last: 4, head: 0 });
   });
 
   // Edge auto-scroll regression: at pattern length 16 the visible rect covers
@@ -315,7 +315,7 @@ describe('step selection UI', () => {
     // hidden row 16.
     steps.dispatchEvent(ptr('pointermove', { clientY: 9999 }));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 16, head: 16 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 4, last: 16, head: 16 });
 
     // Simulate having scrolled 2 rows (44px) off the top, then push past the
     // top edge: clamped content row is floor(44/22)=2, overshoot lands on
@@ -323,7 +323,7 @@ describe('step selection UI', () => {
     Object.defineProperty(steps, 'scrollTop', { value: 44, configurable: true });
     steps.dispatchEvent(ptr('pointermove', { clientY: -50 }));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 1, end: 4, head: 1 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 1, last: 4, head: 1 });
   });
 
   it('pointermove with a different pointerId does not extend', async () => {
@@ -332,7 +332,7 @@ describe('step selection UI', () => {
     el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown', { pointerId: 1 }));
     steps.dispatchEvent(ptr('pointermove', { pointerId: 99, clientY: 6 * 22 + 10 }));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 2, head: 2 });
   });
 
   it('after pointerup, further pointermoves do not extend', async () => {
@@ -342,7 +342,7 @@ describe('step selection UI', () => {
     steps.dispatchEvent(ptr('pointerup'));
     steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 }));
     await nextTick();
-    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 2, head: 2 });
   });
 
   it('selected rows get .selected and the head row gets .sel-cursor', async () => {
@@ -363,5 +363,62 @@ describe('step selection UI', () => {
     selection.place(1, 1);
     await nextTick();
     expect(el.querySelector('.step-row.selected')).toBeNull();
+  });
+
+  it('cmd+pointerdown toggles rows in and out of the selection', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[5].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 5]);
+    cells[5].dispatchEvent(ptr('pointerdown', { metaKey: true })); // toggle off
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2]);
+  });
+
+  it('ctrl+pointerdown does the same (windows/linux)', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[5].dispatchEvent(ptr('pointerdown', { ctrlKey: true }));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 5]);
+  });
+
+  it('cmd+drag extends the fresh active segment; earlier rows persist', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[8].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 10 * 22 + 10 })); // row 10
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 8, 9, 10]);
+    expect(selection.validSelection!.head).toBe(10);
+  });
+
+  it('cmd toggle-off does not start a drag', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[4].dispatchEvent(ptr('pointerdown', { shiftKey: true })); // 2..4
+    cells[3].dispatchEvent(ptr('pointerdown', { metaKey: true })); // toggle 3 off
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 4]);
+    steps.dispatchEvent(ptr('pointermove', { clientY: 8 * 22 + 10 })); // must not extend
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 4]);
+  });
+
+  it('plain pointerdown collapses a gapped selection to the clicked row', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[6].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    cells[9].dispatchEvent(ptr('pointerdown'));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([9]);
   });
 });

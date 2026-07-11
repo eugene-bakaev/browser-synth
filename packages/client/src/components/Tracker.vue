@@ -304,8 +304,9 @@ const isMelodic = computed(() => props.engineType === 'synth' || props.engineTyp
 const isPoly = computed(() => isMelodic.value && props.mode === 'poly');
 
 // Row selection (keyboard copy/cut/clear/paste). The step-number cell is the
-// selection handle: press places, shift+press extends, and dragging while
-// the button is held live-extends. Pointer capture on the steps container
+// selection handle: press places, shift+press extends the active segment,
+// cmd/ctrl+press toggles the row (multi-select), and dragging while the
+// button is held live-extends. Pointer capture on the steps container
 // keeps the drag alive when the pointer leaves the narrow step column (or
 // the window); rows come from vertical geometry, not hit-testing, so the
 // pointer's horizontal position never matters. Local UI state only.
@@ -317,8 +318,24 @@ let lastDragRow: number | null = null;
 function onStepPointerDown(e: PointerEvent, row: number): void {
   if (e.button !== 0) return;
   e.preventDefault(); // no native text-selection/focus side effects
-  if (e.shiftKey) selection.extendTo(props.trackId, row);
-  else selection.place(props.trackId, row);
+  if (e.metaKey || e.ctrlKey) {
+    // Cmd (mac) / Ctrl (win+linux): toggle the row. A toggle-ON starts a new
+    // active segment, so the drag machinery below may extend it (ctrl+drag
+    // adds-a-range, Excel style); a toggle-OFF must not start a drag — and
+    // must kill any drag already in flight, or a stale dragPointerId would
+    // keep extending from the removed row. macOS Ctrl+click arrives as
+    // button 2, so it never reaches this branch.
+    selection.toggleRow(props.trackId, row);
+    if (!selection.isSelected(props.trackId, row)) {
+      dragPointerId = null;
+      lastDragRow = null;
+      return;
+    }
+  } else if (e.shiftKey) {
+    selection.extendTo(props.trackId, row);
+  } else {
+    selection.place(props.trackId, row);
+  }
   const el = stepsEl.value;
   if (!el) return;
   try {

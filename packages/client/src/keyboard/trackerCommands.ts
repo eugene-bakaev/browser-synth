@@ -11,10 +11,10 @@ export interface TrackerCommandDeps {
   clipboard: ReturnType<typeof useStepClipboardStore>;
   project: Project;
   ops: {
-    clearStepRange(trackId: number, start: number, end: number): void;
-    pasteSteps(trackId: number, cursor: number, rows: readonly Step[]): number;
-    toggleMuteRange(trackId: number, start: number, end: number): void;
-    moveStepRange(trackId: number, start: number, end: number, direction: 'up' | 'down'): void;
+    clearStepRows(trackId: number, rows: readonly number[]): void;
+    pasteSteps(trackId: number, cursor: number, cells: readonly (Step | null)[]): number[];
+    toggleMuteRows(trackId: number, rows: readonly number[]): void;
+    moveStepRows(trackId: number, rows: readonly number[], direction: 'up' | 'down'): void;
   };
   /** The focused-view track (StudioView's activeTrackIndex), or null in the overview. */
   focusedTrackId: () => number | null;
@@ -29,7 +29,13 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
   function copySelection(): void {
     const s = sel();
     if (!s) return;
-    clipboard.set(project.tracks[s.trackId].steps.slice(s.start, s.end + 1));
+    // Span with holes: null marks an unselected row — transparent on paste.
+    const members = new Set(s.rows);
+    clipboard.set(
+      project.tracks[s.trackId].steps
+        .slice(s.first, s.last + 1)
+        .map((step, i) => (members.has(s.first + i) ? step : null)),
+    );
   }
 
   // Arrows: move the cursor when a selection exists; otherwise, in the
@@ -41,18 +47,16 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
   }
 
   // Alt+arrow move: clamp at the pattern-window edge (spec: complete no-op,
-  // nothing dispatched), then move the block and carry the selection with it,
-  // preserving which end holds the cursor.
+  // nothing dispatched), then move the constellation and carry the whole
+  // selection with it — anchor and head shift together, so the cursor stays
+  // on the same end.
   function moveSelection(direction: 'up' | 'down'): void {
     const s = sel();
     if (!s) return;
     const max = project.tracks[s.trackId].patternLength - 1;
-    if (direction === 'up' ? s.start === 0 : s.end === max) return;
-    ops.moveStepRange(s.trackId, s.start, s.end, direction);
-    const delta = direction === 'up' ? -1 : 1;
-    const [anchorRow, headRow] = s.head === s.end ? [s.start, s.end] : [s.end, s.start];
-    selection.place(s.trackId, anchorRow + delta);
-    selection.extendTo(s.trackId, headRow + delta);
+    if (direction === 'up' ? s.first === 0 : s.last === max) return;
+    ops.moveStepRows(s.trackId, s.rows, direction);
+    selection.shiftAll(direction === 'up' ? -1 : 1);
   }
 
   return [
@@ -72,7 +76,7 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
         const s = sel();
         if (!s) return;
         copySelection();
-        ops.clearStepRange(s.trackId, s.start, s.end);
+        ops.clearStepRows(s.trackId, s.rows);
       },
     },
     {
@@ -83,7 +87,7 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
       run: () => {
         const s = sel();
         if (!s) return;
-        ops.clearStepRange(s.trackId, s.start, s.end);
+        ops.clearStepRows(s.trackId, s.rows);
       },
     },
     {
@@ -93,15 +97,13 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
       isEnabled: () => (clipboard.rows?.length ?? 0) > 0 && hasSelection(),
       run: () => {
         const s = sel();
-        const rows = clipboard.rows;
-        if (!s || !rows || rows.length === 0) return;
-        // Paste target = top of the selection (== the cursor for a collapsed
-        // selection). The op clips at the pattern window and reports back.
-        const written = ops.pasteSteps(s.trackId, s.start, rows);
-        if (written > 0) {
-          selection.place(s.trackId, s.start);
-          selection.extendTo(s.trackId, s.start + written - 1);
-        }
+        const cells = clipboard.rows;
+        if (!s || !cells || cells.length === 0) return;
+        // Paste target = top of the selection. The op clips at the pattern
+        // window and returns the absolute rows written; the selection then
+        // mirrors the pasted constellation (M-after-paste hits exactly it).
+        const written = ops.pasteSteps(s.trackId, s.first, cells);
+        if (written.length > 0) selection.selectRows(s.trackId, written);
       },
     },
     {
@@ -151,7 +153,7 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
       run: () => {
         const s = sel();
         if (!s) return;
-        ops.toggleMuteRange(s.trackId, s.start, s.end);
+        ops.toggleMuteRows(s.trackId, s.rows);
       },
     },
     {

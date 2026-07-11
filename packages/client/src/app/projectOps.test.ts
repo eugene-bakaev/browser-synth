@@ -157,44 +157,64 @@ describe('projectOps — whole-project (New / Open)', () => {
   });
 });
 
-describe('step range ops', () => {
-  it('clearStepRange dispatches only the leaves that differ from an empty step, with priors', () => {
+describe('step rows ops', () => {
+  it('clearStepRows dispatches only the leaves that differ from an empty step, with priors', () => {
     const { project, ops, dispatched } = makeHarness();
     project.tracks[0].steps[2].note = 'C';
     project.tracks[0].steps[2].velocity = 0.5;
     project.tracks[0].steps[3].note = 'D';
-    ops.clearStepRange(0, 2, 3);
+    ops.clearStepRows(0, [2, 3]);
     const paths = dispatched.map((d) => d.path.join('.'));
     expect(paths).toContain('tracks.0.steps.2.note');
     expect(paths).toContain('tracks.0.steps.2.velocity');
     expect(paths).toContain('tracks.0.steps.3.note');
-    // untouched rows emit nothing
     expect(paths.every((p) => p.startsWith('tracks.0.steps.2') || p.startsWith('tracks.0.steps.3'))).toBe(true);
     const note2 = dispatched.find((d) => d.path.join('.') === 'tracks.0.steps.2.note')!;
     expect(note2.value).toBeNull();
     expect(note2.priorValue).toBe('C');
   });
 
-  it('pasteSteps writes rows at the cursor, clips at patternLength, and returns the written count', () => {
+  it('clearStepRows on gapped rows leaves the gap row completely untouched', () => {
+    const { project, ops, dispatched } = makeHarness();
+    project.tracks[0].steps[2].note = 'C';
+    project.tracks[0].steps[3].note = 'D';
+    project.tracks[0].steps[4].note = 'E';
+    ops.clearStepRows(0, [2, 4]);
+    const paths = dispatched.map((d) => d.path.join('.'));
+    expect(paths.some((p) => p.startsWith('tracks.0.steps.3'))).toBe(false);
+    expect(paths).toContain('tracks.0.steps.2.note');
+    expect(paths).toContain('tracks.0.steps.4.note');
+  });
+
+  it('pasteSteps writes cells at the cursor, clips at patternLength, and returns the absolute rows written', () => {
     const { project, ops, dispatched } = makeHarness();
     project.tracks[1].patternLength = 16;
-    const rows = [
+    const cells = [
       { ...freshStep(), note: 'C' },
       { ...freshStep(), note: 'D' },
       { ...freshStep(), note: 'E' },
     ];
-    const written = ops.pasteSteps(1, 14, rows);
-    expect(written).toBe(2);
+    const written = ops.pasteSteps(1, 14, cells);
+    expect(written).toEqual([14, 15]);
     const notePaths = dispatched.filter((d) => String(d.path[d.path.length - 1]) === 'note');
     expect(notePaths.map((d) => d.path.join('.'))).toEqual(['tracks.1.steps.14.note', 'tracks.1.steps.15.note']);
     expect(notePaths.map((d) => d.value)).toEqual(['C', 'D']);
+  });
+
+  it('pasteSteps null holes are transparent: destination row untouched, hole row not in the result', () => {
+    const { project, ops, dispatched } = makeHarness();
+    project.tracks[0].steps[6].note = 'B'; // sits under the hole
+    const written = ops.pasteSteps(0, 5, [{ ...freshStep(), note: 'C' }, null, { ...freshStep(), note: 'E' }]);
+    expect(written).toEqual([5, 7]);
+    expect(project.tracks[0].steps[6].note).toBe('B');
+    expect(dispatched.some((d) => d.path.join('.').startsWith('tracks.0.steps.6'))).toBe(false);
   });
 
   it('pasteSteps of identical content dispatches nothing (diff-based)', () => {
     const { project, ops, dispatched } = makeHarness();
     project.tracks[0].steps[0].note = 'C';
     const written = ops.pasteSteps(0, 0, [{ ...freshStep(), note: 'C' }]);
-    expect(written).toBe(1); // row was in range and processed…
+    expect(written).toEqual([0]); // row was in range and processed…
     expect(dispatched).toHaveLength(0); // …but no leaf differed
   });
 });
