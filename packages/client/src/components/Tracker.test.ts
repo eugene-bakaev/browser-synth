@@ -65,7 +65,7 @@ function mountTrackerWithPinia(overrideProps: Record<string, unknown> = {}): {
   const projectStore = useProjectStore(pinia);
   const tid = props.trackId as number;
   projectStore.project.tracks[tid].enabled = true;
-  projectStore.project.tracks[tid].patternLength = 16;
+  projectStore.project.tracks[tid].patternLength = props.patternLength as number;
   app.mount(host);
   return { el: host, selection: useSelectionStore(pinia) };
 }
@@ -214,15 +214,135 @@ describe('note select empty placeholder', () => {
 });
 
 describe('step selection UI', () => {
-  it('click on a step-number cell places the selection; shift+click extends it', async () => {
+  // jsdom has no PointerEvent; a MouseEvent with the pointer type name and a
+  // defined pointerId is what the component's handlers actually read.
+  function ptr(type: string, init: MouseEventInit & { pointerId?: number } = {}): MouseEvent {
+    const e = new MouseEvent(type, { bubbles: true, cancelable: true, ...init });
+    Object.defineProperty(e, 'pointerId', { value: init.pointerId ?? 1 });
+    return e;
+  }
+
+  // jsdom has no layout: pin the container rect and each row's offsetHeight/
+  // offsetTop so the geometry row lookup (clientY → row) has real numbers to
+  // work with. The real .tracker-steps is a flex column with a 2px gap, so
+  // the true row pitch is rowHeight + gap (22px here), not offsetHeight
+  // alone — offsetTop mirrors that gapped layout. rect spans rows 0..15
+  // (16 rows × 22px pitch = 352), top at y=0.
+  function mockStepsGeometry(el: HTMLElement, rowHeight = 20, gap = 2, visibleRows = 16): HTMLElement {
+    const steps = el.querySelector('.tracker-steps') as HTMLElement;
+    const pitch = rowHeight + gap;
+    vi.spyOn(steps, 'getBoundingClientRect').mockReturnValue({
+      top: 0, bottom: pitch * visibleRows, left: 0, right: 100,
+      width: 100, height: pitch * visibleRows, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    for (let i = 0; i < steps.children.length; i++) {
+      Object.defineProperty(steps.children[i], 'offsetHeight', { value: rowHeight, configurable: true });
+      Object.defineProperty(steps.children[i], 'offsetTop', { value: i * pitch, configurable: true });
+    }
+    return steps;
+  }
+
+  it('pointerdown on a step-number cell places the selection; shift+pointerdown extends it', async () => {
     const { el, selection } = mountTrackerWithPinia({ trackId: 2 });
     const cells = el.querySelectorAll('.step-row .col-step');
-    cells[3].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    cells[3].dispatchEvent(ptr('pointerdown'));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 3, head: 3 });
-    cells[6].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    cells[6].dispatchEvent(ptr('pointerdown', { shiftKey: true }));
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 2, start: 3, end: 6, head: 6 });
+  });
+
+  it('non-primary-button pointerdown does not touch the selection', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    el.querySelectorAll('.step-row .col-step')[3].dispatchEvent(ptr('pointerdown', { button: 2 }));
+    await nextTick();
+    expect(selection.validSelection).toBeNull();
+  });
+
+  it('dragging from row 2 down over row 6 extends the selection to 2–6', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 })); // middle of row 6
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 6, head: 6 });
+  });
+
+  // Catches the offsetHeight-only pitch bug: with a 2px flex gap, the true
+  // row pitch is 22px (20 + 2), not 20px. Under the old (buggy) math
+  // floor(274 / 20) = 13, one row past the pointer. The fix derives pitch
+  // from sibling offsetTop delta, so floor(274 / 22) = 12 — exactly under
+  // the pointer.
+  it('drag lands on the exact row under the pointer even past row 8 (gap-aware pitch)', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 12 * 22 + 10 })); // middle of row 12
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 12, head: 12 });
+  });
+
+  it('drag clamps to the edge rows when the pointer leaves the container vertically', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[4].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 9999 })); // far below → bottom visible row
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 15, head: 15 });
+    steps.dispatchEvent(ptr('pointermove', { clientY: -50 })); // far above → top row
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 0, end: 4, head: 0 });
+  });
+
+  // Edge auto-scroll regression: at pattern length 16 the visible rect covers
+  // the whole pattern, so clamping to the edge row IS the correct terminal
+  // state (previous test). At length 32 only 16 rows are visible — a pointer
+  // held past the container edge must walk the head one row *past* the
+  // clamped visible edge on every move (the hidden neighbor), or the
+  // cursorRow watcher's scrollRowIntoView never advances scrollTop and the
+  // drag stalls dead at the edge row (observed live in the browser).
+  it('pointer past the visible edge overshoots one row into the hidden pattern', async () => {
+    const { el, selection } = mountTrackerWithPinia({
+      trackId: 0,
+      patternLength: 32,
+      steps: makeSteps(32),
+    });
+    const steps = mockStepsGeometry(el); // 32 row children, rect still bottom=352 (16 visible)
+    el.querySelectorAll('.step-row .col-step')[4].dispatchEvent(ptr('pointerdown'));
+
+    // Past the bottom edge: clamped visible row is 15, overshoot lands on
+    // hidden row 16.
+    steps.dispatchEvent(ptr('pointermove', { clientY: 9999 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 16, head: 16 });
+
+    // Simulate having scrolled 2 rows (44px) off the top, then push past the
+    // top edge: clamped content row is floor(44/22)=2, overshoot lands on
+    // hidden row 1.
+    Object.defineProperty(steps, 'scrollTop', { value: 44, configurable: true });
+    steps.dispatchEvent(ptr('pointermove', { clientY: -50 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 1, end: 4, head: 1 });
+  });
+
+  it('pointermove with a different pointerId does not extend', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown', { pointerId: 1 }));
+    steps.dispatchEvent(ptr('pointermove', { pointerId: 99, clientY: 6 * 22 + 10 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
+  });
+
+  it('after pointerup, further pointermoves do not extend', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    el.querySelectorAll('.step-row .col-step')[2].dispatchEvent(ptr('pointerdown'));
+    steps.dispatchEvent(ptr('pointerup'));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 6 * 22 + 10 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 2, head: 2 });
   });
 
   it('selected rows get .selected and the head row gets .sel-cursor', async () => {

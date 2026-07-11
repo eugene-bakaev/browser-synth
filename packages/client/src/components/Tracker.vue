@@ -87,6 +87,9 @@
       @focusout="onStepsBlur"
       @wheel="markManualScroll"
       @touchmove="markManualScroll"
+      @pointermove="onStepsPointerMove"
+      @pointerup="onStepsPointerUp"
+      @pointercancel="onStepsPointerUp"
     >
       <div
         v-for="(step, i) in visibleSteps"
@@ -111,7 +114,7 @@
           </button>
         </div>
 
-        <div class="col-step" @click="onStepCellClick($event, i)">{{ i.toString().padStart(2, '0') }}</div>
+        <div class="col-step" @pointerdown="onStepPointerDown($event, i)">{{ i.toString().padStart(2, '0') }}</div>
 
         <!-- Synth Layout -->
         <template v-if="isMelodic">
@@ -301,12 +304,81 @@ const isMelodic = computed(() => props.engineType === 'synth' || props.engineTyp
 const isPoly = computed(() => isMelodic.value && props.mode === 'poly');
 
 // Row selection (keyboard copy/cut/clear/paste). The step-number cell is the
-// selection handle: click places, shift+click extends. Local UI state only.
+// selection handle: press places, shift+press extends, and dragging while
+// the button is held live-extends. Pointer capture on the steps container
+// keeps the drag alive when the pointer leaves the narrow step column (or
+// the window); rows come from vertical geometry, not hit-testing, so the
+// pointer's horizontal position never matters. Local UI state only.
 const selection = useSelectionStore();
 
-function onStepCellClick(e: MouseEvent, row: number): void {
+let dragPointerId: number | null = null;
+let lastDragRow: number | null = null;
+
+function onStepPointerDown(e: PointerEvent, row: number): void {
+  if (e.button !== 0) return;
+  e.preventDefault(); // no native text-selection/focus side effects
   if (e.shiftKey) selection.extendTo(props.trackId, row);
   else selection.place(props.trackId, row);
+  const el = stepsEl.value;
+  if (!el) return;
+  try {
+    el.setPointerCapture(e.pointerId);
+  } catch {
+    // jsdom and exotic embeds don't implement pointer capture; the drag
+    // still works there for pointers that stay over the container.
+  }
+  dragPointerId = e.pointerId;
+  lastDragRow = row;
+}
+
+// clientY → step row: clamp to the container's visible rect (so dragging
+// past an edge selects the edge row — the cursorRow auto-scroll watcher
+// then scrolls the next row into view, giving edge auto-scroll for free),
+// add scrollTop, divide by the row pitch.
+//
+// The row pitch is NOT offsetHeight: .tracker-steps is a flex column with a
+// 2px gap, so consecutive rows sit 2px further apart than their own height.
+// Reading offsetHeight alone under-measures the pitch and drifts the
+// computed row ahead of the pointer by one row per ~offsetHeight/gap rows
+// dragged. Instead, derive the true (gap-inclusive) pitch from where the
+// second row actually landed — the delta between two siblings' offsetTop —
+// falling back to offsetHeight for a single-row pattern, where there is no
+// second sibling to measure from.
+function rowUnderPointer(e: PointerEvent): number | null {
+  const el = stepsEl.value;
+  if (!el) return null;
+  const first = el.children[0] as HTMLElement | undefined;
+  const second = el.children[1] as HTMLElement | undefined;
+  const pitch = second ? second.offsetTop - first!.offsetTop : first?.offsetHeight ?? 0;
+  if (!first || pitch <= 0) return null;
+  const rect = el.getBoundingClientRect();
+  const y = Math.min(Math.max(e.clientY, rect.top), rect.bottom - 1) - rect.top + el.scrollTop;
+  let row = Math.floor(y / pitch);
+  // Pointer past the visible edge: overshoot one row so each move walks the
+  // head into the hidden neighbor and the cursorRow watcher scrolls it into
+  // view — the clamp alone would recompute the same edge row forever.
+  if (e.clientY > rect.bottom - 1) row += 1;
+  else if (e.clientY < rect.top) row -= 1;
+  return Math.min(Math.max(row, 0), props.patternLength - 1);
+}
+
+function onStepsPointerMove(e: PointerEvent): void {
+  if (dragPointerId === null || e.pointerId !== dragPointerId) return;
+  const row = rowUnderPointer(e);
+  if (row === null || row === lastDragRow) return;
+  lastDragRow = row;
+  selection.extendTo(props.trackId, row);
+}
+
+function onStepsPointerUp(e: PointerEvent): void {
+  if (dragPointerId === null || e.pointerId !== dragPointerId) return;
+  try {
+    stepsEl.value?.releasePointerCapture(e.pointerId);
+  } catch {
+    // browsers release implicitly on pointerup; jsdom has no capture at all
+  }
+  dragPointerId = null;
+  lastDragRow = null;
 }
 
 // This track's cursor row (selection head), or null when the selection is
