@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { freshTrack, freshStep } from './factory';
 import type { Step } from '@fiddle/shared';
-import { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft, toggleMuteRangeDraft, moveRangeDraft } from './mutations';
+import { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft, toggleMuteRangeDraft, moveRangeDraft, toggleMuteRowsDraft, clearRowsDraft, pasteCellsDraft, moveRowsDraft } from './mutations';
 
 describe('clearTrackDraft', () => {
   it('returns a fresh window of exactly patternLength steps', () => {
@@ -171,5 +171,147 @@ describe('moveRangeDraft', () => {
     const steps = marked();
     expect(moveRangeDraft(steps, 0, 2, 'up')).toEqual([]);
     expect(moveRangeDraft(steps, 62, 63, 'down')).toEqual([]);
+  });
+});
+
+describe('toggleMuteRowsDraft', () => {
+  it('contiguous rows reproduce toggleMuteRangeDraft exactly (regression oracle vs 610603c)', () => {
+    const t = freshTrack();
+    t.steps[2].muted = true; t.steps[2].note = 'C';
+    t.steps[3].muted = false; t.steps[3].note = 'D';
+    const draft = toggleMuteRowsDraft(t.steps, [2, 3, 4]);
+    expect(draft.map((s) => s.muted)).toEqual([false, true, true]);
+    expect(draft.map((s) => s.note)).toEqual(['C', 'D', null]);
+  });
+
+  it('gapped rows: members flip, gap rows are copied through unchanged', () => {
+    const t = freshTrack();
+    t.steps[3].muted = true; t.steps[3].note = 'G';
+    const draft = toggleMuteRowsDraft(t.steps, [2, 5]);
+    expect(draft).toHaveLength(4); // span [2..5]
+    expect(draft.map((s) => s.muted)).toEqual([true, true, false, true]);
+    expect(draft[1].note).toBe('G'); // gap row content intact
+  });
+
+  it('returns copies and never mutates the input', () => {
+    const t = freshTrack();
+    const draft = toggleMuteRowsDraft(t.steps, [0, 2]);
+    expect(draft[0]).not.toBe(t.steps[0]);
+    expect(draft[1]).not.toBe(t.steps[1]);
+    expect(t.steps[0].muted).toBe(false);
+    expect(t.steps[1].muted).toBe(false);
+  });
+});
+
+describe('clearRowsDraft', () => {
+  it('members become factory-default steps; gap rows copy through', () => {
+    const t = freshTrack();
+    t.steps[2].note = 'C'; t.steps[3].note = 'D'; t.steps[4].note = 'E';
+    const draft = clearRowsDraft(t.steps, [2, 4]);
+    expect(draft).toHaveLength(3);
+    expect(draft[0]).toEqual(freshStep());
+    expect(draft[1].note).toBe('D'); // gap untouched
+    expect(draft[2]).toEqual(freshStep());
+  });
+
+  it('contiguous rows produce a fresh step per row (clearRangeDraft oracle)', () => {
+    const t = freshTrack();
+    const draft = clearRowsDraft(t.steps, [3, 4, 5, 6]);
+    expect(draft).toHaveLength(4);
+    for (const s of draft) expect(s).toEqual(freshStep());
+  });
+
+  it('never mutates the input', () => {
+    const t = freshTrack();
+    t.steps[2].note = 'C';
+    clearRowsDraft(t.steps, [2]);
+    expect(t.steps[2].note).toBe('C');
+  });
+});
+
+describe('pasteCellsDraft', () => {
+  function dest(): Step[] {
+    const t = freshTrack();
+    t.steps[9].note = 'G'; t.steps[10].note = 'A'; t.steps[11].note = 'B';
+    return t.steps;
+  }
+  const cells: (Step | null)[] = [
+    { ...freshStep(), note: 'C' },
+    null,
+    { ...freshStep(), note: 'E' },
+  ];
+
+  it('non-null cells overwrite; null holes copy the destination row through', () => {
+    const draft = pasteCellsDraft(dest(), 9, cells, 16);
+    expect(draft.map((s) => s.note)).toEqual(['C', 'A', 'E']);
+  });
+
+  it('clips at the pattern window, not the steps buffer', () => {
+    const draft = pasteCellsDraft(dest(), 14, cells, 16);
+    expect(draft).toHaveLength(2); // rows 14,15 only — buffer has 64 slots
+    expect(pasteCellsDraft(dest(), 16, cells, 16)).toEqual([]);
+  });
+
+  it('returns copies, not references (cells and destination alike)', () => {
+    const steps = dest();
+    const draft = pasteCellsDraft(steps, 9, cells, 16);
+    expect(draft[0]).not.toBe(cells[0]);
+    expect(draft[1]).not.toBe(steps[10]);
+  });
+});
+
+describe('moveRowsDraft', () => {
+  // Distinct note markers on rows 1..7.
+  function marked(): Step[] {
+    const t = freshTrack();
+    const notes = ['A', 'C', 'D', 'E', 'F', 'G', 'B'];
+    notes.forEach((n, i) => { t.steps[i + 1].note = n; });
+    return t.steps;
+  }
+
+  it('contiguous up reproduces moveRangeDraft exactly (610603c oracle)', () => {
+    expect(moveRowsDraft(marked(), [2, 3, 4], 'up').map((s) => s.note))
+      .toEqual(['C', 'D', 'E', 'A']); // rows 1..4 = block first, displaced last
+  });
+
+  it('contiguous down reproduces moveRangeDraft exactly (610603c oracle)', () => {
+    expect(moveRowsDraft(marked(), [2, 3, 4], 'down').map((s) => s.note))
+      .toEqual(['F', 'C', 'D', 'E']); // rows 2..5 = displaced first, block after
+  });
+
+  it('gapped down: constellation shifts rigidly, unselected fill vacated slots in order', () => {
+    // rows 2,5,6 of [1:A 2:C 3:D 4:E 5:F 6:G 7:B]; window [2..7].
+    // Selected land on 3,6,7; unselected old 3,4,7 fill slots 2,4,5 in order.
+    expect(moveRowsDraft(marked(), [2, 5, 6], 'down').map((s) => s.note))
+      .toEqual(['D', 'C', 'E', 'B', 'F', 'G']); // rows 2..7
+  });
+
+  it('gapped up: mirror of the worked example', () => {
+    // rows 2,5,6 up; window [1..6]. Selected land on 1,4,5;
+    // unselected old 1,3,4 fill slots 2,3,6 in order.
+    expect(moveRowsDraft(marked(), [2, 5, 6], 'up').map((s) => s.note))
+      .toEqual(['C', 'A', 'D', 'F', 'G', 'E']); // rows 1..6
+  });
+
+  it('single gapped pair moves both directions', () => {
+    // rows 2,4 down: window [2..5], selected land 3,5; unselected old 3,5 → slots 2,4.
+    expect(moveRowsDraft(marked(), [2, 4], 'down').map((s) => s.note))
+      .toEqual(['D', 'C', 'F', 'E']);
+    // rows 2,4 up: window [1..4], selected land 1,3; unselected old 1,3 → slots 2,4.
+    expect(moveRowsDraft(marked(), [2, 4], 'up').map((s) => s.note))
+      .toEqual(['C', 'A', 'E', 'D']);
+  });
+
+  it('returns copies, never references into the input array', () => {
+    const steps = marked();
+    for (const row of moveRowsDraft(steps, [2, 5], 'down')) {
+      expect(steps.includes(row as Step)).toBe(false);
+    }
+  });
+
+  it('defensive: missing neighbor returns [] (up at row 0, down at the buffer end)', () => {
+    const steps = marked();
+    expect(moveRowsDraft(steps, [0, 2], 'up')).toEqual([]);
+    expect(moveRowsDraft(steps, [60, 63], 'down')).toEqual([]);
   });
 });
