@@ -364,4 +364,61 @@ describe('step selection UI', () => {
     await nextTick();
     expect(el.querySelector('.step-row.selected')).toBeNull();
   });
+
+  it('cmd+pointerdown toggles rows in and out of the selection', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[5].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 5]);
+    cells[5].dispatchEvent(ptr('pointerdown', { metaKey: true })); // toggle off
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2]);
+  });
+
+  it('ctrl+pointerdown does the same (windows/linux)', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[5].dispatchEvent(ptr('pointerdown', { ctrlKey: true }));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 5]);
+  });
+
+  it('cmd+drag extends the fresh active segment; earlier rows persist', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[8].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    steps.dispatchEvent(ptr('pointermove', { clientY: 10 * 22 + 10 })); // row 10
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 8, 9, 10]);
+    expect(selection.validSelection!.head).toBe(10);
+  });
+
+  it('cmd toggle-off does not start a drag', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const steps = mockStepsGeometry(el);
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[4].dispatchEvent(ptr('pointerdown', { shiftKey: true })); // 2..4
+    cells[3].dispatchEvent(ptr('pointerdown', { metaKey: true })); // toggle 3 off
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 4]);
+    steps.dispatchEvent(ptr('pointermove', { clientY: 8 * 22 + 10 })); // must not extend
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([2, 4]);
+  });
+
+  it('plain pointerdown collapses a gapped selection to the clicked row', async () => {
+    const { el, selection } = mountTrackerWithPinia({ trackId: 0 });
+    const cells = el.querySelectorAll('.step-row .col-step');
+    cells[2].dispatchEvent(ptr('pointerdown'));
+    cells[6].dispatchEvent(ptr('pointerdown', { metaKey: true }));
+    cells[9].dispatchEvent(ptr('pointerdown'));
+    await nextTick();
+    expect(selection.validSelection!.rows).toEqual([9]);
+  });
 });
