@@ -15,8 +15,8 @@ import { toRaw } from 'vue';
 import { TRACK_POOL_SIZE, type Path, type Project, type Step } from '@fiddle/shared';
 import type { EngineType, Preset } from '../project';
 import {
-  clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft,
-  toggleMuteRangeDraft, moveRangeDraft,
+  clearTrackDraft, shiftTrackDraft, fillTrackDraft,
+  toggleMuteRowsDraft, clearRowsDraft, pasteCellsDraft, moveRowsDraft,
   applyPresetDraft, resetEnginePatchDraft, freshProject,
 } from '../project';
 import { diffParams, cloneEngineSlice } from '../project/paramDiff';
@@ -229,29 +229,36 @@ export function createProjectOps(deps: ProjectOpsDeps) {
       const t = project.tracks[trackId];
       dispatchStepsWindow(trackId, fillTrackDraft(t.steps, interval, t.patternLength) as unknown as Record<string, unknown>[]);
     },
-    // Selection ops (keyboard copy/cut/clear/paste). Same draft-diff-dispatch
-    // discipline as clearTrack/fillTrack — every leaf carries its prior, so
-    // sync rollback and future undo are preserved.
-    clearStepRange(trackId: number, start: number, end: number): void {
-      dispatchStepsRange(trackId, start, clearRangeDraft(start, end) as unknown as Record<string, unknown>[]);
+    // Selection ops (keyboard copy/cut/clear/paste + M/alt+arrows). Rows-based:
+    // a selection may be gapped (cmd+click multi-select). Producers build a
+    // span draft with gap rows copied through unchanged, so the diff dispatches
+    // only member changes — same draft-diff-dispatch discipline as clearTrack/
+    // fillTrack; every leaf carries its prior for sync rollback / future undo.
+    clearStepRows(trackId: number, rows: readonly number[]): void {
+      const t = project.tracks[trackId];
+      dispatchStepsRange(trackId, rows[0], clearRowsDraft(t.steps, rows) as unknown as Record<string, unknown>[]);
     },
-    /** Writes clipboard rows at `cursor`, clipped at the pattern window. Returns the number of rows written. */
-    pasteSteps(trackId: number, cursor: number, rows: readonly Step[]): number {
-      const draft = pasteStepsDraft(rows, cursor, project.tracks[trackId].patternLength);
+    /** Transparent paste at `cursor`, clipped at the pattern window; null cells
+     *  leave destination rows untouched. Returns the ABSOLUTE rows written
+     *  (the caller re-selects exactly these). */
+    pasteSteps(trackId: number, cursor: number, cells: readonly (Step | null)[]): number[] {
+      const t = project.tracks[trackId];
+      const draft = pasteCellsDraft(t.steps, cursor, cells, t.patternLength);
       dispatchStepsRange(trackId, cursor, draft as unknown as Record<string, unknown>[]);
-      return draft.length;
+      return cells.slice(0, draft.length).flatMap((c, i) => (c ? [cursor + i] : []));
     },
-    /** Per-step mute flip over [start, end] (spec: mixed selections invert per step). */
-    toggleMuteRange(trackId: number, start: number, end: number): void {
+    /** Per-step mute flip over the selected rows; gap rows untouched. */
+    toggleMuteRows(trackId: number, rows: readonly number[]): void {
       const t = project.tracks[trackId];
-      dispatchStepsRange(trackId, start, toggleMuteRangeDraft(t.steps, start, end) as unknown as Record<string, unknown>[]);
+      dispatchStepsRange(trackId, rows[0], toggleMuteRowsDraft(t.steps, rows) as unknown as Record<string, unknown>[]);
     },
-    /** IDE move-line: shifts [start..end] one row toward `direction`; the displaced
-     *  neighbor jumps to the block's other side. Caller clamps at the window edges. */
-    moveStepRange(trackId: number, start: number, end: number, direction: 'up' | 'down'): void {
+    /** Rigid constellation move: selected rows shift ±1 preserving gaps;
+     *  displaced unselected rows fill the vacated slots in order. Caller
+     *  clamps at the pattern-window edges. */
+    moveStepRows(trackId: number, rows: readonly number[], direction: 'up' | 'down'): void {
       const t = project.tracks[trackId];
-      const windowStart = direction === 'up' ? start - 1 : start;
-      dispatchStepsRange(trackId, windowStart, moveRangeDraft(t.steps, start, end, direction) as unknown as Record<string, unknown>[]);
+      const windowStart = direction === 'up' ? rows[0] - 1 : rows[0];
+      dispatchStepsRange(trackId, windowStart, moveRowsDraft(t.steps, rows, direction) as unknown as Record<string, unknown>[]);
     },
     applyPreset(trackId: number, preset: Preset): void {
       const t = project.tracks[trackId];

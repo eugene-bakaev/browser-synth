@@ -11,7 +11,7 @@ export {
   activeParams,
 } from './types';
 export { freshProject, freshTrack, freshStep } from './factory';
-export { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft, toggleMuteRangeDraft, moveRangeDraft, toggleMuteRowsDraft, clearRowsDraft, pasteCellsDraft, moveRowsDraft } from './mutations';
+export { clearTrackDraft, shiftTrackDraft, fillTrackDraft, toggleMuteRowsDraft, clearRowsDraft, pasteCellsDraft, moveRowsDraft } from './mutations';
 export { reconcileWithDefaults } from './storage';
 export { migrateToLatest } from './migrations';
 export {

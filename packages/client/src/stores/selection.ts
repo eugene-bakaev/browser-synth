@@ -23,9 +23,6 @@ export interface ValidSelection {
   first: number; // rows[0]
   last: number;  // rows[rows.length - 1]
   head: number;  // the cursor (the moving end of the active segment)
-  /** TRANSITIONAL (Task 3 removes them): span bounds, = first/last. */
-  start: number;
-  end: number;
 }
 
 export const useSelectionStore = defineStore('selection', () => {
@@ -62,8 +59,6 @@ export const useSelectionStore = defineStore('selection', () => {
       first: rows[0],
       last: rows[rows.length - 1],
       head: Math.min(Math.max(head.value, 0), max),
-      start: rows[0],
-      end: rows[rows.length - 1],
     };
   });
 

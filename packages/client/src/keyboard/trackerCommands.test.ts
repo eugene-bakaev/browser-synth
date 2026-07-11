@@ -21,10 +21,10 @@ describe('trackerCommands', () => {
   let clipboard: ReturnType<typeof useStepClipboardStore>;
   let projectStore: ReturnType<typeof useProjectStore>;
   let ops: {
-    clearStepRange: Mock<(trackId: number, start: number, end: number) => void>;
-    pasteSteps: Mock<(trackId: number, cursor: number, rows: readonly Step[]) => number>;
-    toggleMuteRange: Mock<(trackId: number, start: number, end: number) => void>;
-    moveStepRange: Mock<(trackId: number, start: number, end: number, direction: 'up' | 'down') => void>;
+    clearStepRows: Mock<(trackId: number, rows: readonly number[]) => void>;
+    pasteSteps: Mock<(trackId: number, cursor: number, cells: readonly (Step | null)[]) => number[]>;
+    toggleMuteRows: Mock<(trackId: number, rows: readonly number[]) => void>;
+    moveStepRows: Mock<(trackId: number, rows: readonly number[], direction: 'up' | 'down') => void>;
   };
   let focused: number | null;
   let cmds: KeyboardCommand[];
@@ -34,7 +34,7 @@ describe('trackerCommands', () => {
     projectStore = useProjectStore();
     selection = useSelectionStore();
     clipboard = useStepClipboardStore();
-    ops = { clearStepRange: vi.fn(), pasteSteps: vi.fn(() => 0), toggleMuteRange: vi.fn(), moveStepRange: vi.fn() };
+    ops = { clearStepRows: vi.fn(), pasteSteps: vi.fn(() => [] as number[]), toggleMuteRows: vi.fn(), moveStepRows: vi.fn() };
     focused = null;
     const deps: TrackerCommandDeps = {
       selection, clipboard,
@@ -63,28 +63,28 @@ describe('trackerCommands', () => {
     selection.place(0, 2);
     selection.extendTo(0, 3);
     run(byId(cmds, 'tracker.copy'));
-    expect(clipboard.rows!.map((s) => s.note)).toEqual(['C', 'D']);
+    expect(clipboard.rows!.map((s) => s!.note)).toEqual(['C', 'D']);
   });
 
-  it('cut = copy + clearStepRange; selection stays', () => {
+  it('cut = copy + clearStepRows; selection stays', () => {
     selection.place(0, 2);
     selection.extendTo(0, 3);
     run(byId(cmds, 'tracker.cut'));
-    expect(clipboard.rows!.map((s) => s.note)).toEqual(['C', 'D']);
-    expect(ops.clearStepRange).toHaveBeenCalledWith(0, 2, 3);
+    expect(clipboard.rows!.map((s) => s!.note)).toEqual(['C', 'D']);
+    expect(ops.clearStepRows).toHaveBeenCalledWith(0, [2, 3]);
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 3, head: 3 });
   });
 
   it('clear clears without touching the clipboard', () => {
     selection.place(0, 2);
     run(byId(cmds, 'tracker.clear'));
-    expect(ops.clearStepRange).toHaveBeenCalledWith(0, 2, 2);
+    expect(ops.clearStepRows).toHaveBeenCalledWith(0, [2]);
     expect(clipboard.rows).toBeNull();
   });
 
   it('paste pastes at the selection start and re-selects the written range', () => {
     clipboard.set([projectStore.project.tracks[0].steps[2], projectStore.project.tracks[0].steps[3]]);
-    ops.pasteSteps.mockReturnValue(2);
+    ops.pasteSteps.mockReturnValue([8, 9]);
     selection.place(0, 8);
     run(byId(cmds, 'tracker.paste'));
     expect(ops.pasteSteps).toHaveBeenCalledWith(0, 8, clipboard.rows);
@@ -93,7 +93,7 @@ describe('trackerCommands', () => {
 
   it('paste that writes 0 rows leaves the selection alone', () => {
     clipboard.set([projectStore.project.tracks[0].steps[2]]);
-    ops.pasteSteps.mockReturnValue(0);
+    ops.pasteSteps.mockReturnValue([]);
     selection.place(0, 8);
     run(byId(cmds, 'tracker.paste'));
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 8, last: 8, head: 8 });
@@ -143,7 +143,7 @@ describe('trackerCommands', () => {
     selection.place(0, 2);
     selection.extendTo(0, 4);
     run(byId(cmds, 'tracker.toggleMute'));
-    expect(ops.toggleMuteRange).toHaveBeenCalledWith(0, 2, 4);
+    expect(ops.toggleMuteRows).toHaveBeenCalledWith(0, [2, 3, 4]);
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 2, last: 4, head: 4 });
   });
 
@@ -152,12 +152,12 @@ describe('trackerCommands', () => {
     selection.place(0, 0);
     selection.extendTo(0, 2);
     run(byId(cmds, 'tracker.moveUp'));
-    expect(ops.moveStepRange).not.toHaveBeenCalled();
+    expect(ops.moveStepRows).not.toHaveBeenCalled();
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 0, last: 2, head: 2 });
     selection.place(0, 14);
     selection.extendTo(0, 15); // patternLength is 16 (beforeEach)
     run(byId(cmds, 'tracker.moveDown'));
-    expect(ops.moveStepRange).not.toHaveBeenCalled();
+    expect(ops.moveStepRows).not.toHaveBeenCalled();
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 14, last: 15, head: 15 });
   });
 
@@ -165,7 +165,7 @@ describe('trackerCommands', () => {
     selection.place(0, 2);
     selection.extendTo(0, 4); // anchor 2, head 4 -> head === end
     run(byId(cmds, 'tracker.moveDown'));
-    expect(ops.moveStepRange).toHaveBeenCalledWith(0, 2, 4, 'down');
+    expect(ops.moveStepRows).toHaveBeenCalledWith(0, [2, 3, 4], 'down');
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 3, last: 5, head: 5 });
   });
 
@@ -173,8 +173,50 @@ describe('trackerCommands', () => {
     selection.place(0, 4);
     selection.extendTo(0, 2); // anchor 4, head 2 -> head === start
     run(byId(cmds, 'tracker.moveUp'));
-    expect(ops.moveStepRange).toHaveBeenCalledWith(0, 2, 4, 'up');
+    expect(ops.moveStepRows).toHaveBeenCalledWith(0, [2, 3, 4], 'up');
     expect(selection.validSelection).toMatchObject({ trackId: 0, first: 1, last: 3, head: 1 });
+  });
+
+  it('gapped copy produces a span with null holes; cut clears only the members', () => {
+    projectStore.project.tracks[0].steps[4].note = 'E';
+    selection.place(0, 2);
+    selection.toggleRow(0, 4); // rows 2,4
+    run(byId(cmds, 'tracker.copy'));
+    expect(clipboard.rows!.map((s) => s?.note ?? null)).toEqual(['C', null, 'E']);
+    run(byId(cmds, 'tracker.cut'));
+    expect(ops.clearStepRows).toHaveBeenCalledWith(0, [2, 4]);
+  });
+
+  it('paste re-selects exactly the written constellation', () => {
+    clipboard.set([projectStore.project.tracks[0].steps[2], null, projectStore.project.tracks[0].steps[3]]);
+    ops.pasteSteps.mockReturnValue([8, 10]);
+    selection.place(0, 8);
+    run(byId(cmds, 'tracker.paste'));
+    expect(ops.pasteSteps).toHaveBeenCalledWith(0, 8, clipboard.rows);
+    expect(selection.validSelection).toMatchObject({ trackId: 0, first: 8, last: 10, head: 10 });
+    expect(selection.validSelection!.rows).toEqual([8, 10]);
+  });
+
+  it('gapped move: clamps on first/last, dispatches rows, and the whole selection follows', () => {
+    selection.place(0, 0);
+    selection.toggleRow(0, 3); // rows 0,3 — first === 0
+    run(byId(cmds, 'tracker.moveUp'));
+    expect(ops.moveStepRows).not.toHaveBeenCalled();
+    run(byId(cmds, 'tracker.moveDown'));
+    expect(ops.moveStepRows).toHaveBeenCalledWith(0, [0, 3], 'down');
+    expect(selection.validSelection!.rows).toEqual([1, 4]);
+    ops.moveStepRows.mockClear();
+    selection.place(0, 13);
+    selection.toggleRow(0, 15); // rows 13,15 — last === patternLength-1
+    run(byId(cmds, 'tracker.moveDown'));
+    expect(ops.moveStepRows).not.toHaveBeenCalled();
+  });
+
+  it('gapped mute passes the exact member rows', () => {
+    selection.place(0, 2);
+    selection.toggleRow(0, 5);
+    run(byId(cmds, 'tracker.toggleMute'));
+    expect(ops.toggleMuteRows).toHaveBeenCalledWith(0, [2, 5]);
   });
 });
 
@@ -186,7 +228,7 @@ describe('bindings hygiene', () => {
       selection: useSelectionStore(),
       clipboard: useStepClipboardStore(),
       project: projectStore.project,
-      ops: { clearStepRange: () => {}, pasteSteps: () => 0, toggleMuteRange: () => {}, moveStepRange: () => {} },
+      ops: { clearStepRows: () => {}, pasteSteps: () => [], toggleMuteRows: () => {}, moveStepRows: () => {} },
       focusedTrackId: () => null,
     };
     const cmds = createTrackerCommands(deps);
@@ -211,7 +253,7 @@ describe('end-to-end keydown flow (service + stores + commands)', () => {
     const cmds = createTrackerCommands({
       selection, clipboard,
       project: projectStore.project,
-      ops: { clearStepRange: () => {}, pasteSteps: () => 0, toggleMuteRange: () => {}, moveStepRange: () => {} },
+      ops: { clearStepRows: () => {}, pasteSteps: () => [], toggleMuteRows: () => {}, moveStepRows: () => {} },
       focusedTrackId: () => null,
     });
     const service = new KeyboardService({ platform: 'mac', target: null });
@@ -219,7 +261,7 @@ describe('end-to-end keydown flow (service + stores + commands)', () => {
 
     selection.place(0, 1);
     service.handleKeydown(new KeyboardEvent('keydown', { key: 'c', metaKey: true, cancelable: true }));
-    expect(clipboard.rows!.map((s) => s.note)).toEqual(['F']);
+    expect(clipboard.rows!.map((s) => s!.note)).toEqual(['F']);
 
     // keydown originating from an input is fully ignored
     const input = document.createElement('input');

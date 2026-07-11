@@ -17,8 +17,8 @@ describe('step clipboard store', () => {
     clip.set(source);
     source[0].note = 'G';
     source[0].velocity = 1;
-    expect(clip.rows![0].note).toBe('C');
-    expect(clip.rows![0].velocity).toBe(0.5);
+    expect(clip.rows![0]!.note).toBe('C');
+    expect(clip.rows![0]!.velocity).toBe(0.5);
   });
 
   it('copies the full row shape', () => {
@@ -26,5 +26,14 @@ describe('step clipboard store', () => {
     const step: Step = { note: 'E', octave: 5, length: 3, velocity: 0.7, muted: true, isChord: true, chordType: 'min' };
     clip.set([step]);
     expect(clip.rows![0]).toEqual(step);
+  });
+
+  it('preserves null holes and deep-copies the non-null cells around them', () => {
+    const clip = useStepClipboardStore();
+    const source: (Step | null)[] = [{ ...freshStep(), note: 'C' }, null, { ...freshStep(), note: 'E' }];
+    clip.set(source);
+    expect(clip.rows![1]).toBeNull();
+    (source[2] as Step).note = 'G';
+    expect(clip.rows![2]!.note).toBe('E');
   });
 });
