@@ -65,7 +65,7 @@ function mountTrackerWithPinia(overrideProps: Record<string, unknown> = {}): {
   const projectStore = useProjectStore(pinia);
   const tid = props.trackId as number;
   projectStore.project.tracks[tid].enabled = true;
-  projectStore.project.tracks[tid].patternLength = 16;
+  projectStore.project.tracks[tid].patternLength = props.patternLength as number;
   app.mount(host);
   return { el: host, selection: useSelectionStore(pinia) };
 }
@@ -293,6 +293,37 @@ describe('step selection UI', () => {
     steps.dispatchEvent(ptr('pointermove', { clientY: -50 })); // far above → top row
     await nextTick();
     expect(selection.validSelection).toEqual({ trackId: 0, start: 0, end: 4, head: 0 });
+  });
+
+  // Edge auto-scroll regression: at pattern length 16 the visible rect covers
+  // the whole pattern, so clamping to the edge row IS the correct terminal
+  // state (previous test). At length 32 only 16 rows are visible — a pointer
+  // held past the container edge must walk the head one row *past* the
+  // clamped visible edge on every move (the hidden neighbor), or the
+  // cursorRow watcher's scrollRowIntoView never advances scrollTop and the
+  // drag stalls dead at the edge row (observed live in the browser).
+  it('pointer past the visible edge overshoots one row into the hidden pattern', async () => {
+    const { el, selection } = mountTrackerWithPinia({
+      trackId: 0,
+      patternLength: 32,
+      steps: makeSteps(32),
+    });
+    const steps = mockStepsGeometry(el); // 32 row children, rect still bottom=352 (16 visible)
+    el.querySelectorAll('.step-row .col-step')[4].dispatchEvent(ptr('pointerdown'));
+
+    // Past the bottom edge: clamped visible row is 15, overshoot lands on
+    // hidden row 16.
+    steps.dispatchEvent(ptr('pointermove', { clientY: 9999 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 4, end: 16, head: 16 });
+
+    // Simulate having scrolled 2 rows (44px) off the top, then push past the
+    // top edge: clamped content row is floor(44/22)=2, overshoot lands on
+    // hidden row 1.
+    Object.defineProperty(steps, 'scrollTop', { value: 44, configurable: true });
+    steps.dispatchEvent(ptr('pointermove', { clientY: -50 }));
+    await nextTick();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 1, end: 4, head: 1 });
   });
 
   it('pointermove with a different pointerId does not extend', async () => {

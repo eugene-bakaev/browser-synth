@@ -353,7 +353,13 @@ function rowUnderPointer(e: PointerEvent): number | null {
   if (!first || pitch <= 0) return null;
   const rect = el.getBoundingClientRect();
   const y = Math.min(Math.max(e.clientY, rect.top), rect.bottom - 1) - rect.top + el.scrollTop;
-  return Math.min(Math.max(Math.floor(y / pitch), 0), props.patternLength - 1);
+  let row = Math.floor(y / pitch);
+  // Pointer past the visible edge: overshoot one row so each move walks the
+  // head into the hidden neighbor and the cursorRow watcher scrolls it into
+  // view — the clamp alone would recompute the same edge row forever.
+  if (e.clientY > rect.bottom - 1) row += 1;
+  else if (e.clientY < rect.top) row -= 1;
+  return Math.min(Math.max(row, 0), props.patternLength - 1);
 }
 
 function onStepsPointerMove(e: PointerEvent): void {
