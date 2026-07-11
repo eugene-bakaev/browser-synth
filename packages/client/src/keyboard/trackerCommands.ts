@@ -13,6 +13,8 @@ export interface TrackerCommandDeps {
   ops: {
     clearStepRange(trackId: number, start: number, end: number): void;
     pasteSteps(trackId: number, cursor: number, rows: readonly Step[]): number;
+    toggleMuteRange(trackId: number, start: number, end: number): void;
+    moveStepRange(trackId: number, start: number, end: number, direction: 'up' | 'down'): void;
   };
   /** The focused-view track (StudioView's activeTrackIndex), or null in the overview. */
   focusedTrackId: () => number | null;
@@ -36,6 +38,21 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
     if (sel()) { selection.moveCursor(delta); return; }
     const focused = focusedTrackId();
     if (focused !== null) selection.place(focused, 0);
+  }
+
+  // Alt+arrow move: clamp at the pattern-window edge (spec: complete no-op,
+  // nothing dispatched), then move the block and carry the selection with it,
+  // preserving which end holds the cursor.
+  function moveSelection(direction: 'up' | 'down'): void {
+    const s = sel();
+    if (!s) return;
+    const max = project.tracks[s.trackId].patternLength - 1;
+    if (direction === 'up' ? s.start === 0 : s.end === max) return;
+    ops.moveStepRange(s.trackId, s.start, s.end, direction);
+    const delta = direction === 'up' ? -1 : 1;
+    const [anchorRow, headRow] = s.head === s.end ? [s.start, s.end] : [s.end, s.start];
+    selection.place(s.trackId, anchorRow + delta);
+    selection.extendTo(s.trackId, headRow + delta);
   }
 
   return [
@@ -125,6 +142,33 @@ export function createTrackerCommands(deps: TrackerCommandDeps): KeyboardCommand
       context: 'tracker',
       isEnabled: () => selection.trackId !== null,
       run: () => selection.clear(),
+    },
+    {
+      id: 'tracker.toggleMute',
+      description: 'Toggle mute on selected steps',
+      context: 'tracker',
+      isEnabled: hasSelection,
+      run: () => {
+        const s = sel();
+        if (!s) return;
+        ops.toggleMuteRange(s.trackId, s.start, s.end);
+      },
+    },
+    {
+      id: 'tracker.moveUp',
+      description: 'Move selected steps up',
+      context: 'tracker',
+      allowRepeat: true,
+      isEnabled: hasSelection,
+      run: () => moveSelection('up'),
+    },
+    {
+      id: 'tracker.moveDown',
+      description: 'Move selected steps down',
+      context: 'tracker',
+      allowRepeat: true,
+      isEnabled: hasSelection,
+      run: () => moveSelection('down'),
     },
   ];
 }

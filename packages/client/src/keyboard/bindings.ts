@@ -12,5 +12,8 @@ export const KEY_BINDINGS: Record<string, string | readonly string[]> = {
   'tracker.deselect': 'escape',
   'tracker.extendDown': 'shift+arrowdown',
   'tracker.extendUp': 'shift+arrowup',
+  'tracker.moveDown': 'alt+arrowdown',
+  'tracker.moveUp': 'alt+arrowup',
   'tracker.paste': 'mod+v',
+  'tracker.toggleMute': 'm',
 };

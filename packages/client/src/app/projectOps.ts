@@ -16,6 +16,7 @@ import { TRACK_POOL_SIZE, type Path, type Project, type Step } from '@fiddle/sha
 import type { EngineType, Preset } from '../project';
 import {
   clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft,
+  toggleMuteRangeDraft, moveRangeDraft,
   applyPresetDraft, resetEnginePatchDraft, freshProject,
 } from '../project';
 import { diffParams, cloneEngineSlice } from '../project/paramDiff';
@@ -239,6 +240,18 @@ export function createProjectOps(deps: ProjectOpsDeps) {
       const draft = pasteStepsDraft(rows, cursor, project.tracks[trackId].patternLength);
       dispatchStepsRange(trackId, cursor, draft as unknown as Record<string, unknown>[]);
       return draft.length;
+    },
+    /** Per-step mute flip over [start, end] (spec: mixed selections invert per step). */
+    toggleMuteRange(trackId: number, start: number, end: number): void {
+      const t = project.tracks[trackId];
+      dispatchStepsRange(trackId, start, toggleMuteRangeDraft(t.steps, start, end) as unknown as Record<string, unknown>[]);
+    },
+    /** IDE move-line: shifts [start..end] one row toward `direction`; the displaced
+     *  neighbor jumps to the block's other side. Caller clamps at the window edges. */
+    moveStepRange(trackId: number, start: number, end: number, direction: 'up' | 'down'): void {
+      const t = project.tracks[trackId];
+      const windowStart = direction === 'up' ? start - 1 : start;
+      dispatchStepsRange(trackId, windowStart, moveRangeDraft(t.steps, start, end, direction) as unknown as Record<string, unknown>[]);
     },
     applyPreset(trackId: number, preset: Preset): void {
       const t = project.tracks[trackId];

@@ -23,6 +23,8 @@ describe('trackerCommands', () => {
   let ops: {
     clearStepRange: Mock<(trackId: number, start: number, end: number) => void>;
     pasteSteps: Mock<(trackId: number, cursor: number, rows: readonly Step[]) => number>;
+    toggleMuteRange: Mock<(trackId: number, start: number, end: number) => void>;
+    moveStepRange: Mock<(trackId: number, start: number, end: number, direction: 'up' | 'down') => void>;
   };
   let focused: number | null;
   let cmds: KeyboardCommand[];
@@ -32,7 +34,7 @@ describe('trackerCommands', () => {
     projectStore = useProjectStore();
     selection = useSelectionStore();
     clipboard = useStepClipboardStore();
-    ops = { clearStepRange: vi.fn(), pasteSteps: vi.fn(() => 0) };
+    ops = { clearStepRange: vi.fn(), pasteSteps: vi.fn(() => 0), toggleMuteRange: vi.fn(), moveStepRange: vi.fn() };
     focused = null;
     const deps: TrackerCommandDeps = {
       selection, clipboard,
@@ -127,13 +129,52 @@ describe('trackerCommands', () => {
     expect(selection.trackId).toBeNull();
   });
 
-  it('cursor/extend commands allow key repeat; clipboard ops do not', () => {
-    for (const id of ['tracker.cursorUp', 'tracker.cursorDown', 'tracker.extendUp', 'tracker.extendDown']) {
+  it('cursor/extend/move commands allow key repeat; clipboard ops and mute do not', () => {
+    for (const id of ['tracker.cursorUp', 'tracker.cursorDown', 'tracker.extendUp', 'tracker.extendDown', 'tracker.moveUp', 'tracker.moveDown']) {
       expect(byId(cmds, id).allowRepeat).toBe(true);
     }
-    for (const id of ['tracker.copy', 'tracker.cut', 'tracker.clear', 'tracker.paste']) {
+    for (const id of ['tracker.copy', 'tracker.cut', 'tracker.clear', 'tracker.paste', 'tracker.toggleMute']) {
       expect(byId(cmds, id).allowRepeat).not.toBe(true);
     }
+  });
+
+  it('toggleMute: disabled without selection; flips the selected range; selection stays', () => {
+    expect(byId(cmds, 'tracker.toggleMute').isEnabled!()).toBe(false);
+    selection.place(0, 2);
+    selection.extendTo(0, 4);
+    run(byId(cmds, 'tracker.toggleMute'));
+    expect(ops.toggleMuteRange).toHaveBeenCalledWith(0, 2, 4);
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 2, end: 4, head: 4 });
+  });
+
+  it('moveUp at row 0 and moveDown at the pattern end are complete no-ops', () => {
+    expect(byId(cmds, 'tracker.moveUp').isEnabled!()).toBe(false);
+    selection.place(0, 0);
+    selection.extendTo(0, 2);
+    run(byId(cmds, 'tracker.moveUp'));
+    expect(ops.moveStepRange).not.toHaveBeenCalled();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 0, end: 2, head: 2 });
+    selection.place(0, 14);
+    selection.extendTo(0, 15); // patternLength is 16 (beforeEach)
+    run(byId(cmds, 'tracker.moveDown'));
+    expect(ops.moveStepRange).not.toHaveBeenCalled();
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 14, end: 15, head: 15 });
+  });
+
+  it('moveDown mid-track: dispatches the op and the selection follows, head still on the bottom end', () => {
+    selection.place(0, 2);
+    selection.extendTo(0, 4); // anchor 2, head 4 -> head === end
+    run(byId(cmds, 'tracker.moveDown'));
+    expect(ops.moveStepRange).toHaveBeenCalledWith(0, 2, 4, 'down');
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 3, end: 5, head: 5 });
+  });
+
+  it('moveUp with the head at the TOP of the block keeps the cursor on the top end', () => {
+    selection.place(0, 4);
+    selection.extendTo(0, 2); // anchor 4, head 2 -> head === start
+    run(byId(cmds, 'tracker.moveUp'));
+    expect(ops.moveStepRange).toHaveBeenCalledWith(0, 2, 4, 'up');
+    expect(selection.validSelection).toEqual({ trackId: 0, start: 1, end: 3, head: 1 });
   });
 });
 
@@ -145,7 +186,7 @@ describe('bindings hygiene', () => {
       selection: useSelectionStore(),
       clipboard: useStepClipboardStore(),
       project: projectStore.project,
-      ops: { clearStepRange: () => {}, pasteSteps: () => 0 },
+      ops: { clearStepRange: () => {}, pasteSteps: () => 0, toggleMuteRange: () => {}, moveStepRange: () => {} },
       focusedTrackId: () => null,
     };
     const cmds = createTrackerCommands(deps);
@@ -170,7 +211,7 @@ describe('end-to-end keydown flow (service + stores + commands)', () => {
     const cmds = createTrackerCommands({
       selection, clipboard,
       project: projectStore.project,
-      ops: { clearStepRange: () => {}, pasteSteps: () => 0 },
+      ops: { clearStepRange: () => {}, pasteSteps: () => 0, toggleMuteRange: () => {}, moveStepRange: () => {} },
       focusedTrackId: () => null,
     });
     const service = new KeyboardService({ platform: 'mac', target: null });
