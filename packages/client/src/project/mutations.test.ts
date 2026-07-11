@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { freshTrack, freshStep } from './factory';
 import type { Step } from '@fiddle/shared';
-import { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft } from './mutations';
+import { clearTrackDraft, shiftTrackDraft, fillTrackDraft, clearRangeDraft, pasteStepsDraft, toggleMuteRangeDraft, moveRangeDraft } from './mutations';
 
 describe('clearTrackDraft', () => {
   it('returns a fresh window of exactly patternLength steps', () => {
@@ -112,5 +112,64 @@ describe('pasteStepsDraft', () => {
   });
   it('returns [] when the cursor is at/past the window edge', () => {
     expect(pasteStepsDraft(rows, 16, 16)).toEqual([]);
+  });
+});
+
+describe('toggleMuteRangeDraft', () => {
+  it('flips each step independently (mixed stays mixed, inverted)', () => {
+    const t = freshTrack();
+    t.steps[2].muted = true; t.steps[2].note = 'C';
+    t.steps[3].muted = false; t.steps[3].note = 'D';
+    const draft = toggleMuteRangeDraft(t.steps, 2, 4);
+    expect(draft.map((s) => s.muted)).toEqual([false, true, true]);
+    expect(draft.map((s) => s.note)).toEqual(['C', 'D', null]); // other fields untouched
+  });
+
+  it('includes rests, returns copies, and never mutates the input', () => {
+    const t = freshTrack();
+    const draft = toggleMuteRangeDraft(t.steps, 0, 0);
+    expect(draft[0].muted).toBe(true); // rest flipped too
+    expect(draft[0]).not.toBe(t.steps[0]);
+    expect(t.steps[0].muted).toBe(false);
+  });
+});
+
+describe('moveRangeDraft', () => {
+  // Distinct note markers: row1='A' row2='C' row3='D' row4='E' row5='F'
+  function marked(): Step[] {
+    const t = freshTrack();
+    t.steps[1].note = 'A'; t.steps[2].note = 'C'; t.steps[3].note = 'D';
+    t.steps[4].note = 'E'; t.steps[5].note = 'F';
+    return t.steps;
+  }
+
+  it('up: returns rows [start-1..end] = block first, displaced row last', () => {
+    // Moving [2..4] up -> rows 1..4 become [old2, old3, old4, old1]
+    const draft = moveRangeDraft(marked(), 2, 4, 'up');
+    expect(draft.map((s) => s.note)).toEqual(['C', 'D', 'E', 'A']);
+  });
+
+  it('down: returns rows [start..end+1] = displaced row first, block after', () => {
+    // Moving [2..4] down -> rows 2..5 become [old5, old2, old3, old4]
+    const draft = moveRangeDraft(marked(), 2, 4, 'down');
+    expect(draft.map((s) => s.note)).toEqual(['F', 'C', 'D', 'E']);
+  });
+
+  it('single-row block moves both directions', () => {
+    expect(moveRangeDraft(marked(), 2, 2, 'up').map((s) => s.note)).toEqual(['C', 'A']);
+    expect(moveRangeDraft(marked(), 2, 2, 'down').map((s) => s.note)).toEqual(['D', 'C']);
+  });
+
+  it('returns copies, never references into the input array', () => {
+    const steps = marked();
+    for (const row of moveRangeDraft(steps, 2, 4, 'up')) {
+      expect(steps.includes(row as Step)).toBe(false);
+    }
+  });
+
+  it('defensive: missing neighbor returns [] (up at row 0, down at the buffer end)', () => {
+    const steps = marked();
+    expect(moveRangeDraft(steps, 0, 2, 'up')).toEqual([]);
+    expect(moveRangeDraft(steps, 62, 63, 'down')).toEqual([]);
   });
 });

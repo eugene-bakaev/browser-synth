@@ -52,3 +52,34 @@ export function pasteStepsDraft(
 ): Step[] {
   return rows.slice(0, Math.max(0, patternLength - cursor)).map((s) => ({ ...s }));
 }
+
+/** Copies of steps[start..end] with `muted` inverted per step (rests included). */
+export function toggleMuteRangeDraft(
+  steps: readonly Step[],
+  start: number,
+  end: number,
+): Step[] {
+  return steps.slice(start, end + 1).map((s) => ({ ...s, muted: !s.muted }));
+}
+
+// IDE move-line over the steps buffer: the block [start..end] shifts one row
+// toward `direction` and the displaced neighbor row jumps to the block's
+// other side. Returns ONLY the affected window:
+//   up   -> rows [start-1 .. end]  = [block rows..., old start-1 row]
+//   down -> rows [start .. end+1]  = [old end+1 row, block rows...]
+// Precondition (caller-enforced clamp): the neighbor row exists in the
+// pattern window. A violated precondition returns [] so nothing dispatches.
+export function moveRangeDraft(
+  steps: readonly Step[],
+  start: number,
+  end: number,
+  direction: 'up' | 'down',
+): Step[] {
+  const block = steps.slice(start, end + 1).map((s) => ({ ...s }));
+  if (direction === 'up') {
+    if (start <= 0) return [];
+    return [...block, { ...steps[start - 1] }];
+  }
+  if (end >= steps.length - 1) return [];
+  return [{ ...steps[end + 1] }, ...block];
+}
