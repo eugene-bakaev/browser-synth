@@ -4,6 +4,8 @@
 // here is legal (invocable-only, e.g. from a future palette); an entry with
 // no registered command is caught by the hygiene test in trackerCommands.test.
 export const KEY_BINDINGS: Record<string, string | readonly string[]> = {
+  'global.redo': ['shift+mod+z', 'mod+y'],
+  'global.undo': 'mod+z',
   'tracker.clear': ['delete', 'backspace'],
   'tracker.copy': 'mod+c',
   'tracker.cursorDown': 'arrowdown',
