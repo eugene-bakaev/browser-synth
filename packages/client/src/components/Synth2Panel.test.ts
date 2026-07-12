@@ -243,6 +243,20 @@ describe('Synth2Panel LFO column (I3b)', () => {
   });
 });
 
+describe('Synth2Panel oscillator pitch (2026-07-12 octave + detune)', () => {
+  it('renders an Octave and a Detune knob for each of the 3 oscillators', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const labels = Array.from(el.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels.filter((l) => l === 'Octave')).toHaveLength(3);
+    expect(labels.filter((l) => l === 'Detune')).toHaveLength(3);
+    // Old labels are gone.
+    expect(labels).not.toContain('Coarse');
+    expect(labels).not.toContain('Fine');
+  });
+});
+
 describe('Synth2Panel envelope loop + ENV 3 (I3c)', () => {
   it('renders the ENV 3 column', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
