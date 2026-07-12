@@ -46,6 +46,20 @@ describe('formatKnobValue — octave (LFO depth)', () => {
   });
 });
 
+describe('formatKnobValue — octaveSwitch (semitone leaf → octaves)', () => {
+  it('renders whole octaves as signed integers', () => {
+    expect(formatKnobValue('octaveSwitch', 0)).toBe('0');
+    expect(formatKnobValue('octaveSwitch', 12)).toBe('+1');
+    expect(formatKnobValue('octaveSwitch', 36)).toBe('+3');
+    expect(formatKnobValue('octaveSwitch', -12)).toBe('-1');
+    expect(formatKnobValue('octaveSwitch', -24)).toBe('-2');
+  });
+  it('rounds an off-octave (legacy) semitone value to the nearest octave label', () => {
+    expect(formatKnobValue('octaveSwitch', 7)).toBe('+1'); // round(7/12) = 1
+    expect(formatKnobValue('octaveSwitch', -5)).toBe('0'); // round(-5/12) = 0
+  });
+});
+
 describe('formatKnobValue — db (perceptual dB)', () => {
   it('shows zero as "-∞ dB"', () => {
     expect(formatKnobValue('db', 0)).toBe('-∞ dB');

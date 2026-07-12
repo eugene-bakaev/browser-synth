@@ -37,6 +37,21 @@ describe('SYNTH2_DESCRIPTORS', () => {
     expect(d.kind).toBeUndefined(); // continuous, still a mod destination
   });
 
+  it('osc fine is a ±1 octave (±1200 cent) detune with preserved mod depth', () => {
+    const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map((d) => [d.key, d]));
+    for (const key of ['osc1.fine', 'osc2.fine', 'osc3.fine']) {
+      const d = byKey[key];
+      expect(d.min, key).toBe(-1200);
+      expect(d.max, key).toBe(1200);
+      // modScale 1/12 keeps a full-depth linear mod at ±200 cents (±2 st) even
+      // though the base range widened 200 → 2400 (see ParamSlot.next()).
+      expect(d.modScale, key).toBe(1 / 12);
+      expect(d.taper, key).toBe('linear');
+      expect(d.modulatable, key).toBe(true);
+      expect(d.kind, key).toBeUndefined(); // still continuous / a mod dest
+    }
+  });
+
   it('covers exactly the I3d param set (append-only from here)', () => {
     expect(SYNTH2_DESCRIPTORS.map(d => d.key)).toEqual([
       'osc1.morph', 'osc1.pulseWidth', 'osc1.coarse', 'osc1.fine', 'osc1.level',

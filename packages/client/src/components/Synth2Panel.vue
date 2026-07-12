@@ -28,8 +28,8 @@
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc1.morph" :modelValue="params.osc1.morph" @update:modelValue="ks.set(['osc1', 'morph'], $event)" :syncPath="ks.pathFor(['osc1', 'morph'])" @gesture-end="ks.end(['osc1', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc1.pulseWidth" :modelValue="params.osc1.pulseWidth" @update:modelValue="ks.set(['osc1', 'pulseWidth'], $event)" :syncPath="ks.pathFor(['osc1', 'pulseWidth'])" @gesture-end="ks.end(['osc1', 'pulseWidth'])" />
-          <Knob label="Coarse" :min="-36" :max="36" :step="1" :defaultValue="DEFAULTS.osc1.coarse" :modelValue="params.osc1.coarse" @update:modelValue="ks.set(['osc1', 'coarse'], $event)" :syncPath="ks.pathFor(['osc1', 'coarse'])" @gesture-end="ks.end(['osc1', 'coarse'])" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc1.fine" :modelValue="params.osc1.fine" @update:modelValue="ks.set(['osc1', 'fine'], $event)" :syncPath="ks.pathFor(['osc1', 'fine'])" @gesture-end="ks.end(['osc1', 'fine'])" />
+          <Knob label="Octave" :min="-36" :max="36" :step="12" format="octaveSwitch" :defaultValue="DEFAULTS.osc1.coarse" :modelValue="params.osc1.coarse" @update:modelValue="ks.set(['osc1', 'coarse'], $event)" :syncPath="ks.pathFor(['osc1', 'coarse'])" @gesture-end="ks.end(['osc1', 'coarse'])" />
+          <Knob label="Detune" :min="-1200" :max="1200" :step="1" format="cents" :defaultValue="DEFAULTS.osc1.fine" :modelValue="params.osc1.fine" @update:modelValue="ks.set(['osc1', 'fine'], $event)" :syncPath="ks.pathFor(['osc1', 'fine'])" @gesture-end="ks.end(['osc1', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc1.level" :modelValue="params.osc1.level" @update:modelValue="ks.set(['osc1', 'level'], $event)" :syncPath="ks.pathFor(['osc1', 'level'])" @gesture-end="ks.end(['osc1', 'level'])" />
         </div>
       </div>
@@ -57,8 +57,8 @@
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc2.morph" :modelValue="params.osc2.morph" @update:modelValue="ks.set(['osc2', 'morph'], $event)" :syncPath="ks.pathFor(['osc2', 'morph'])" @gesture-end="ks.end(['osc2', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.pulseWidth" :modelValue="params.osc2.pulseWidth" @update:modelValue="ks.set(['osc2', 'pulseWidth'], $event)" :syncPath="ks.pathFor(['osc2', 'pulseWidth'])" @gesture-end="ks.end(['osc2', 'pulseWidth'])" />
-          <Knob label="Coarse" :min="-36" :max="36" :step="1" :defaultValue="DEFAULTS.osc2.coarse" :modelValue="params.osc2.coarse" @update:modelValue="ks.set(['osc2', 'coarse'], $event)" :syncPath="ks.pathFor(['osc2', 'coarse'])" @gesture-end="ks.end(['osc2', 'coarse'])" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc2.fine" :modelValue="params.osc2.fine" @update:modelValue="ks.set(['osc2', 'fine'], $event)" :syncPath="ks.pathFor(['osc2', 'fine'])" @gesture-end="ks.end(['osc2', 'fine'])" />
+          <Knob label="Octave" :min="-36" :max="36" :step="12" format="octaveSwitch" :defaultValue="DEFAULTS.osc2.coarse" :modelValue="params.osc2.coarse" @update:modelValue="ks.set(['osc2', 'coarse'], $event)" :syncPath="ks.pathFor(['osc2', 'coarse'])" @gesture-end="ks.end(['osc2', 'coarse'])" />
+          <Knob label="Detune" :min="-1200" :max="1200" :step="1" format="cents" :defaultValue="DEFAULTS.osc2.fine" :modelValue="params.osc2.fine" @update:modelValue="ks.set(['osc2', 'fine'], $event)" :syncPath="ks.pathFor(['osc2', 'fine'])" @gesture-end="ks.end(['osc2', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc2.level" :modelValue="params.osc2.level" @update:modelValue="ks.set(['osc2', 'level'], $event)" :syncPath="ks.pathFor(['osc2', 'level'])" @gesture-end="ks.end(['osc2', 'level'])" />
         </div>
         <button
@@ -80,8 +80,8 @@
         <div class="knob-row">
           <Knob label="Morph" :min="0" :max="3" :step="0.01" :defaultValue="DEFAULTS.osc3.morph" :modelValue="params.osc3.morph" @update:modelValue="ks.set(['osc3', 'morph'], $event)" :syncPath="ks.pathFor(['osc3', 'morph'])" @gesture-end="ks.end(['osc3', 'morph'])" />
           <Knob label="PW" :min="0.05" :max="0.95" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.pulseWidth" :modelValue="params.osc3.pulseWidth" @update:modelValue="ks.set(['osc3', 'pulseWidth'], $event)" :syncPath="ks.pathFor(['osc3', 'pulseWidth'])" @gesture-end="ks.end(['osc3', 'pulseWidth'])" />
-          <Knob label="Coarse" :min="-36" :max="36" :step="1" :defaultValue="DEFAULTS.osc3.coarse" :modelValue="params.osc3.coarse" @update:modelValue="ks.set(['osc3', 'coarse'], $event)" :syncPath="ks.pathFor(['osc3', 'coarse'])" @gesture-end="ks.end(['osc3', 'coarse'])" />
-          <Knob label="Fine" :min="-100" :max="100" :step="1" format="cents" :defaultValue="DEFAULTS.osc3.fine" :modelValue="params.osc3.fine" @update:modelValue="ks.set(['osc3', 'fine'], $event)" :syncPath="ks.pathFor(['osc3', 'fine'])" @gesture-end="ks.end(['osc3', 'fine'])" />
+          <Knob label="Octave" :min="-36" :max="36" :step="12" format="octaveSwitch" :defaultValue="DEFAULTS.osc3.coarse" :modelValue="params.osc3.coarse" @update:modelValue="ks.set(['osc3', 'coarse'], $event)" :syncPath="ks.pathFor(['osc3', 'coarse'])" @gesture-end="ks.end(['osc3', 'coarse'])" />
+          <Knob label="Detune" :min="-1200" :max="1200" :step="1" format="cents" :defaultValue="DEFAULTS.osc3.fine" :modelValue="params.osc3.fine" @update:modelValue="ks.set(['osc3', 'fine'], $event)" :syncPath="ks.pathFor(['osc3', 'fine'])" @gesture-end="ks.end(['osc3', 'fine'])" />
           <Knob label="Level" :min="0" :max="1" :step="0.01" format="percent" :defaultValue="DEFAULTS.osc3.level" :modelValue="params.osc3.level" @update:modelValue="ks.set(['osc3', 'level'], $event)" :syncPath="ks.pathFor(['osc3', 'level'])" @gesture-end="ks.end(['osc3', 'level'])" />
         </div>
         <button

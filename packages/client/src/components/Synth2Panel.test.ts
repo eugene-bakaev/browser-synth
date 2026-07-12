@@ -243,6 +243,38 @@ describe('Synth2Panel LFO column (I3b)', () => {
   });
 });
 
+describe('Synth2Panel oscillator pitch (2026-07-12 octave + detune)', () => {
+  it('renders an Octave and a Detune knob for each of the 3 oscillators', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const labels = Array.from(el.querySelectorAll<HTMLLabelElement>('.knob-label'))
+      .map((n) => n.textContent?.trim());
+    expect(labels.filter((l) => l === 'Octave')).toHaveLength(3);
+    expect(labels.filter((l) => l === 'Detune')).toHaveLength(3);
+    // Old labels are gone.
+    expect(labels).not.toContain('Coarse');
+    expect(labels).not.toContain('Fine');
+  });
+
+  it('binds each Octave/Detune knob to its OWN oscillator (no cross-osc leak)', () => {
+    // Distinct per-osc values so a copy-paste path leak (e.g. osc2's Octave bound
+    // to osc1.coarse) surfaces as a wrong readout in DOM order. The Octave knob's
+    // 'octaveSwitch' readout = round(coarse/12) signed; Detune's 'cents' = `${fine}c`.
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    params.osc1.coarse = 12;  params.osc1.fine = 100;   // +1 / +100c
+    params.osc2.coarse = 24;  params.osc2.fine = -600;  // +2 / -600c
+    params.osc3.coarse = 36;  params.osc3.fine = 1200;  // +3 / +1200c
+    const el = mountPanel(params);
+    // A knob's readout (.knob-value) renders straight from its bound modelValue.
+    const readoutFor = (label: string) =>
+      Array.from(el.querySelectorAll<HTMLElement>('.knob'))
+        .filter((k) => k.querySelector('.knob-label')?.textContent?.trim() === label)
+        .map((k) => k.querySelector('.knob-value')?.textContent?.trim());
+    expect(readoutFor('Octave')).toEqual(['+1', '+2', '+3']);
+    expect(readoutFor('Detune')).toEqual(['+100c', '-600c', '+1200c']);
+  });
+});
+
 describe('Synth2Panel envelope loop + ENV 3 (I3c)', () => {
   it('renders the ENV 3 column', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
