@@ -357,7 +357,7 @@ const dialog = useDialog();
 
 const synth = inject(SYNTH_CONTEXT);
 if (!synth) throw new Error('SYNTH_CONTEXT not provided');
-const { dispatchLocal, projectOps } = synth;
+const { dispatchLocal, endGesture, projectOps } = synth;
 
 const projectStore = useProjectStore();
 
@@ -439,6 +439,10 @@ const commitBpm = () => {
   const clamped = Math.max(40, Math.min(240, Number.isFinite(n) && n > 0 ? n : bpm.value));
   bpmDraft.value = clamped; // reflect the clamp in the field
   bpm.value = clamped;
+  // BPM is a continuous leaf, so consecutive commits would otherwise drag-merge
+  // into one undo step. Each committed value is a deliberate edit: close the undo
+  // merge window (and flush the outbox now, skipping the 50ms throttle).
+  endGesture(['bpm']);
 };
 
 // Returns the play mode for a track. Melodic engines (synth, synth2) carry their
