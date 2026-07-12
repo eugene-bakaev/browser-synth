@@ -25,6 +25,9 @@ export interface CommandBusDeps {
   loadProject: (next: Project) => void;
   /** Hand an outbound op to the Outbox (throttle/coalesce/nack). Gated on the room being live by the provider. */
   enqueue: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => void;
+  /** Undo-history tap: reports every LOCAL command after the write + enqueue.
+   *  Remote ops and rollbacks never report — only the user's own edits are undoable. */
+  onLocalCommand?: (path: Path, value: unknown, priorValue: unknown, gestureEnd: boolean) => void;
 }
 
 export interface LocalCommand {
@@ -59,6 +62,7 @@ export function createCommandBus(deps: CommandBusDeps) {
     deps.applySet(cmd.path, cmd.value);
     emit({ kind: 'set', path: cmd.path, value: cmd.value });
     deps.enqueue(cmd.path, cmd.value, cmd.priorValue, cmd.gestureEnd ?? false);
+    deps.onLocalCommand?.(cmd.path, cmd.value, cmd.priorValue, cmd.gestureEnd ?? false);
   }
 
   function applyRemote(op: SetOpBroadcast): boolean {

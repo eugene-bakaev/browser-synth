@@ -45,6 +45,7 @@ export function createSynthContext(runtime: AppRuntime) {
   // the 50ms throttle. No-op when sync is off or nothing is pending. Used by the
   // panels via useKnobSync (see sync/knobSync.ts).
   function endGesture(path: Path): void {
+    runtime.history.endGesture(path); // close the undo drag-merge window for this knob
     session.flushPath(path);
   }
 

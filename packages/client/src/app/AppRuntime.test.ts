@@ -1,5 +1,11 @@
+// @vitest-environment jsdom
+// jsdom (not the default node env) so `new KeyboardEvent(...)` in the
+// undo/redo wiring tests below is a real constructor — same pattern as
+// keyboard/KeyboardService.test.ts and keyboard/trackerCommands.test.ts.
 import { describe, it, expect, vi } from 'vitest';
 import { createAppRuntime } from './AppRuntime';
+import { detectPlatform } from '../keyboard/keys';
+import { freshProject } from '../project';
 
 // Minimal Web Audio mock (same shape as AudioEngine.test / useSynth.test) —
 // createAppRuntime builds an AudioEngine, whose ensureAudio()/togglePlay() touch
@@ -125,5 +131,48 @@ describe('AppRuntime', () => {
     runtime.session.connect('room-x');
     expect(built).toHaveLength(2);                                // fresh socket
     runtime.shutdown();
+  });
+});
+
+describe('undo/redo wiring', () => {
+  // jsdom's platform varies by host OS — derive the expected mod key the same
+  // way the KeyboardService does, so the test passes on mac and linux CI alike.
+  const mod = () => (detectPlatform() === 'mac' ? { metaKey: true } : { ctrlKey: true });
+
+  it('mod+z undoes and shift+mod+z redoes a local edit end-to-end', async () => {
+    const rt = createAppRuntime({ syncEnabled: false });
+    const prior = rt.store.project.bpm;
+    rt.bus.dispatchLocal({ path: ['bpm'], value: prior + 8, priorValue: prior, gestureEnd: true });
+    await Promise.resolve(); // seal the burst entry
+    rt.keyboard.handleKeydown(new KeyboardEvent('keydown', { key: 'z', ...mod() }));
+    expect(rt.store.project.bpm).toBe(prior);
+    rt.keyboard.handleKeydown(new KeyboardEvent('keydown', { key: 'z', shiftKey: true, ...mod() }));
+    expect(rt.store.project.bpm).toBe(prior + 8);
+    rt.shutdown();
+  });
+
+  it('undo restores route through the bus (outbound enqueue observed)', async () => {
+    const rt = createAppRuntime({ syncEnabled: false });
+    const enqueued: unknown[] = [];
+    const spy = vi.spyOn(rt.session, 'enqueue').mockImplementation(((...args: unknown[]) => { enqueued.push(args); }) as never);
+    const prior = rt.store.project.bpm;
+    rt.bus.dispatchLocal({ path: ['bpm'], value: prior + 8, priorValue: prior, gestureEnd: true });
+    await Promise.resolve();
+    rt.history.undo();
+    expect(rt.store.project.bpm).toBe(prior);
+    expect(enqueued.length).toBe(2); // the edit AND the restore both sync
+    spy.mockRestore();
+    rt.shutdown();
+  });
+
+  it('loadProject clears the history', async () => {
+    const rt = createAppRuntime({ syncEnabled: false });
+    rt.bus.dispatchLocal({ path: ['bpm'], value: 99, priorValue: rt.store.project.bpm, gestureEnd: true });
+    await Promise.resolve();
+    expect(rt.history.canUndo()).toBe(true);
+    rt.bus.loadProject(freshProject());
+    expect(rt.history.canUndo()).toBe(false);
+    expect(rt.history.canRedo()).toBe(false);
+    rt.shutdown();
   });
 });

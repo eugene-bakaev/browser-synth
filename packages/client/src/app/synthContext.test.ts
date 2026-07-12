@@ -1027,3 +1027,15 @@ describe('focused-track URL view-state', () => {
     expect(replaceState).not.toHaveBeenCalled();
   });
 });
+
+describe('endGesture undo tap', () => {
+  it('endGesture closes the undo drag-merge window AND still flushes the path', () => {
+    const { runtime, ctx } = makeCtx({ sync: false });
+    const histSpy = vi.spyOn(runtime.history, 'endGesture');
+    const flushSpy = vi.spyOn(runtime.session, 'flushPath');
+    const path = ['tracks', 0, 'engines', 'synth', 'osc1Coarse'];
+    ctx.endGesture(path);
+    expect(histSpy).toHaveBeenCalledWith(path);
+    expect(flushSpy).toHaveBeenCalledWith(path);
+  });
+});

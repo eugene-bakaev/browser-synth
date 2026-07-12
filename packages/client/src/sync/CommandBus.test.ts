@@ -198,3 +198,35 @@ describe('applied-command stream (Phase 5)', () => {
     expect(seen).toHaveLength(1);
   });
 });
+
+describe('onLocalCommand tap (undo history)', () => {
+  it('dispatchLocal reports path/value/priorValue/gestureEnd to the tap', () => {
+    const f = makeFakes();
+    const tapped: Array<{ path: Path; value: unknown; priorValue: unknown; gestureEnd: boolean }> = [];
+    const bus = createCommandBus({
+      ...f.deps,
+      onLocalCommand: (path, value, priorValue, gestureEnd) => { tapped.push({ path, value, priorValue, gestureEnd }); },
+    });
+    bus.dispatchLocal({ path: ['bpm'], value: 128, priorValue: 120, gestureEnd: true });
+    bus.dispatchLocal({ path: ['bpm'], value: 130, priorValue: 128 });
+    expect(tapped).toEqual([
+      { path: ['bpm'], value: 128, priorValue: 120, gestureEnd: true },
+      { path: ['bpm'], value: 130, priorValue: 128, gestureEnd: false }, // default false
+    ]);
+  });
+
+  it('applyRemote and applyRollback do NOT hit the tap', () => {
+    const f = makeFakes();
+    const tap = vi.fn();
+    const bus = createCommandBus({ ...f.deps, onLocalCommand: tap });
+    bus.applyRemote(broadcast(['bpm'], 90, 1));
+    bus.applyRollback(['bpm'], 120);
+    expect(tap).not.toHaveBeenCalled();
+  });
+
+  it('a bus without the tap dispatches without throwing', () => {
+    const f = makeFakes();
+    const bus = createCommandBus(f.deps);
+    expect(() => bus.dispatchLocal({ path: ['bpm'], value: 128, priorValue: 120 })).not.toThrow();
+  });
+});
