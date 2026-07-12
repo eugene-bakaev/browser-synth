@@ -103,7 +103,7 @@ export class KeyboardService {
   // Public so tests (and future synthetic invocation) can drive dispatch
   // without a real listener.
   handleKeydown(e: KeyboardEvent): void {
-    // Guard 1b — modal dialog open: a modal is a stronger mode, so the whole
+    // Guard 1 — modal dialog open: a modal is a stronger mode, so the whole
     // command system (including focusIndependent commands) stands down while
     // one is open. Left completely untouched — no preventDefault. Without
     // this, e.g. Escape would both close the modal (BaseModal's own
@@ -114,14 +114,14 @@ export class KeyboardService {
     // into this service as a higher-priority context (backlogged,
     // docs/BACKLOG.md), this guard is replaced by that context.
     if (isModalOpen()) return;
-    // Guard 1 — editable target: typing in a field NEVER triggers commands,
+    // Guard 2 — editable target: typing in a field NEVER triggers commands,
     // EXCEPT commands that opt in via focusIndependent (undo/redo). The
     // guard must stay for everything else so plain keys are not swallowed
     // from the field. Component-local key handling (e.g. Enter in
     // TrackNameEditor) is untouched: we listen in the bubble phase.
     const editable = isEditableTarget(e.target);
     const matches = this.registrations.filter((r) =>
-      // Guard 2 — key auto-repeat, unless the command opted in.
+      // Guard 3 — key auto-repeat, unless the command opted in.
       (!e.repeat || r.cmd.allowRepeat === true)
       && (!editable || r.cmd.focusIndependent === true)
       && r.descriptors.some((d) => matchesEvent(d, e, this.platform)),
