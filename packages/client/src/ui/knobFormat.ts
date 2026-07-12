@@ -1,4 +1,4 @@
-export type KnobFormat = 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'ratio' | 'db';
+export type KnobFormat = 'hz' | 'ms' | 'percent' | 'cents' | 'octave' | 'octaveSwitch' | 'ratio' | 'db';
 
 /** Render a knob's numeric value as its readout string. Extracted from Knob.vue
  *  so it is unit-testable (mirrors ui/knobTaper.ts). When `labels` is given and
@@ -46,6 +46,13 @@ export function formatKnobValue(
       // Magnitude is in octaves, but the label already implies it; unit text omitted
       // to keep the value cell narrow and stop layout shifts on knob turn.
       return rounded > 0 ? `↑${rounded}` : `↓${Math.abs(rounded)}`;
+    }
+    case 'octaveSwitch': {
+      // The leaf is semitones; the OCTAVE switch steps it in whole octaves, so
+      // render as signed octaves. A legacy off-octave value rounds to nearest.
+      const oct = Math.round(value / 12);
+      if (oct === 0) return '0';
+      return oct > 0 ? `+${oct}` : `${oct}`; // negative already carries '-'
     }
     case 'ratio':
       return value.toFixed(1);
