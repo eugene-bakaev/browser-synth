@@ -337,6 +337,31 @@ range is valid, just meaningless post-load. Consider calling
 project load, room switch / `replaceProject`) rather than relying on
 `validSelection`'s clamping to make the old range harmless.
 
+### De-duplicate the aria-modal `composedPath()` walk shared by the two deselect composables
+**Reported:** 2026-07-12 · **Status:** open (deferred, YAGNI — extract on the third consumer) · **Area:** `packages/client/src/composables/useDeselectOnInputFocus.ts`, `packages/client/src/composables/useClickOutsideDeselect.ts`
+
+Deferred Minor from the `feat/focus-mode-keyboard` final whole-branch review. The
+new focus-deselect composable and the existing click-outside-deselect composable
+each contain the identical "is this event inside an open modal?" loop:
+
+```js
+for (const node of e.composedPath()) {
+  if (node instanceof Element && node.getAttribute('aria-modal') === 'true') return;
+}
+```
+
+Not fixed now on purpose: there are exactly **two** identical copies, so the
+rule-of-three is not crossed (a third aria-modal check exists in
+`KeyboardService.isModalOpen()`, but it queries the whole document via
+`querySelector`, a genuinely different shape — not a third copy of this
+event-path loop). The plan also deliberately mandated mirroring the sibling
+composable's shape verbatim so the two were trivially diffable in review. The loop
+is a pure read-only walk with no branching subtlety, so a copy cannot silently
+drift into a bug. **Trigger to act:** when a *third* `composedPath()` aria-modal
+consumer appears, extract a shared helper (e.g. `pathHasOpenModal(e: Event): boolean`
+in a small `composables/` or `keyboard/` util) and route all three event-path
+callers through it. The final review (opus) independently concurred with deferring.
+
 ### Drag-select: mousedown + drag over steps should extend the selection
 **Reported:** 2026-07-10 · **Status:** resolved 2026-07-11 (`feat/drag-select`) · **Area:** `packages/client/src/components/Tracker.vue`, `packages/client/src/stores/selection.ts`
 

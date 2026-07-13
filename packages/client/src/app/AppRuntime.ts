@@ -80,11 +80,13 @@ export function createAppRuntime(opts: AppRuntimeOptions = {}): AppRuntime {
   // is page-lifetime; keyboard.dispose() in shutdown() drops the registrations.
   keyboard.register({
     id: 'global.undo', description: 'Undo last edit', context: 'global',
-    allowRepeat: true, isEnabled: () => history.canUndo(), run: () => history.undo(),
+    allowRepeat: true, focusIndependent: true,
+    isEnabled: () => history.canUndo(), run: () => history.undo(),
   });
   keyboard.register({
     id: 'global.redo', description: 'Redo last undone edit', context: 'global',
-    allowRepeat: true, isEnabled: () => history.canRedo(), run: () => history.redo(),
+    allowRepeat: true, focusIndependent: true,
+    isEnabled: () => history.canRedo(), run: () => history.redo(),
   });
 
   function shutdown(): void {

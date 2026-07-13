@@ -352,6 +352,7 @@ import { useStepClipboardStore } from '../stores/stepClipboard';
 import { createTrackerCommands } from '../keyboard/trackerCommands';
 import { useKeyboardCommand } from '../keyboard/useKeyboardCommand';
 import { useClickOutsideDeselect } from '../composables/useClickOutsideDeselect';
+import { useDeselectOnInputFocus } from '../composables/useDeselectOnInputFocus';
 
 const dialog = useDialog();
 
@@ -394,6 +395,7 @@ useKeyboardCommand(synth.keyboard, createTrackerCommands({
 // Press outside every Tracker card clears the step selection (mouse
 // counterpart of Escape / tracker.deselect). Modal presses stand down.
 useClickOutsideDeselect(selectionStore);
+useDeselectOnInputFocus(selectionStore);
 
 // Read-only project selectors now come from the canonical ProjectStore
 // (Phase 1). Writes and write-entangled reads still use `synth` (Phase 2).

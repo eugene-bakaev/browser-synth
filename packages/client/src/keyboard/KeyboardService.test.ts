@@ -125,6 +125,43 @@ describe('KeyboardService dispatch', () => {
     s.handleKeydown(kev('c', { ctrlKey: true }));
     expect(c.run).not.toHaveBeenCalled();
   });
+
+  it('focusIndependent: dispatches even when an editable target is focused', () => {
+    const s = svc();
+    const guarded = cmd({ id: 'test.copy' });
+    const global = cmd({ id: 'test.globalUp', context: 'global', focusIndependent: true });
+    s.register(guarded);
+    s.register(global);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    const e1 = kev('c', { ctrlKey: true, bubbles: true });
+    input.dispatchEvent(e1); // sets e1.target to the input
+    s.handleKeydown(e1);
+    expect(guarded.run).not.toHaveBeenCalled(); // non-flagged stays suppressed
+
+    const e2 = kev('ArrowUp', { bubbles: true });
+    input.dispatchEvent(e2);
+    s.handleKeydown(e2);
+    expect(global.run).toHaveBeenCalledTimes(1); // flagged fires through the field
+    expect(e2.defaultPrevented).toBe(true);
+
+    input.remove();
+  });
+
+  it('focusIndependent commands are still suppressed while a modal is open', () => {
+    const s = svc();
+    const global = cmd({ id: 'test.globalUp', context: 'global', focusIndependent: true });
+    s.register(global);
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(modal);
+    const e = kev('ArrowUp');
+    s.handleKeydown(e);
+    expect(global.run).not.toHaveBeenCalled();
+    expect(e.defaultPrevented).toBe(false);
+    modal.remove();
+  });
 });
 
 describe('KeyboardService modal guard', () => {

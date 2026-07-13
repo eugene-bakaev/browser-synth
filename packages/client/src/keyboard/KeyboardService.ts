@@ -13,6 +13,10 @@ import {
   type KeyDescriptor, type Platform,
 } from './keys';
 import { KEY_BINDINGS } from './bindings';
+import { isEditableTarget } from './isEditableTarget';
+
+// Re-exported so existing/future importers can keep using it from here.
+export { isEditableTarget };
 
 export type KeyboardContext = 'global' | 'tracker';
 
@@ -30,6 +34,10 @@ export interface KeyboardCommand {
   isEnabled?: () => boolean;
   /** Default false: held-key auto-repeat is ignored. Cursor movement opts in. */
   allowRepeat?: boolean;
+  /** Default false. When true, the command fires even while an editable
+   *  target is focused (still suppressed under an open modal). Reserved for
+   *  truly app-global commands (undo/redo). */
+  focusIndependent?: boolean;
   run: (e: KeyboardEvent) => void;
 }
 
@@ -43,17 +51,6 @@ export interface KeyboardServiceOptions {
 interface Registration {
   cmd: KeyboardCommand;
   descriptors: KeyDescriptor[];
-}
-
-export function isEditableTarget(t: EventTarget | null): boolean {
-  if (!(t instanceof HTMLElement)) return false;
-  const tag = t.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  // isContentEditable is the correct (inherited/computed) check in real
-  // browsers. jsdom (used by this file's tests) doesn't implement it, so
-  // fall back to the raw property/attribute value — a no-op in real
-  // browsers, where isContentEditable is already true whenever this is.
-  return t.isContentEditable || t.contentEditable === 'true';
 }
 
 // Guarded with typeof document !== 'undefined' because the service is
@@ -106,24 +103,27 @@ export class KeyboardService {
   // Public so tests (and future synthetic invocation) can drive dispatch
   // without a real listener.
   handleKeydown(e: KeyboardEvent): void {
-    // Guard 1 — editable target: typing in a field NEVER triggers commands.
-    // No opt-out by design (spec). Component-local key handling (e.g. Enter
-    // in TrackNameEditor) is untouched: we listen in the bubble phase.
-    if (isEditableTarget(e.target)) return;
-    // Guard 1b — modal dialog open: modal/overlay dialogs (BaseModal.vue)
-    // are not yet a keyboard context, so while one is open the command
-    // system stands down ENTIRELY (event left completely untouched — no
-    // preventDefault). Without this, e.g. Escape would both close the modal
-    // (BaseModal's own listener) AND run tracker.deselect behind it, and
-    // Delete/Backspace/mod+v with an active selection would clear/paste
-    // steps invisibly behind the open dialog. Detected semantically via
-    // aria-modal, which BaseModal's dialog carries. When modal/overlay
-    // commands are migrated into this service as a higher-priority context
-    // (backlogged, docs/BACKLOG.md), this guard is replaced by that context.
+    // Guard 1 — modal dialog open: a modal is a stronger mode, so the whole
+    // command system (including focusIndependent commands) stands down while
+    // one is open. Left completely untouched — no preventDefault. Without
+    // this, e.g. Escape would both close the modal (BaseModal's own
+    // listener) AND run tracker.deselect behind it, and Delete/Backspace/
+    // mod+v with an active selection would clear/paste steps invisibly
+    // behind the open dialog. Detected semantically via aria-modal, which
+    // BaseModal's dialog carries. When modal/overlay commands are migrated
+    // into this service as a higher-priority context (backlogged,
+    // docs/BACKLOG.md), this guard is replaced by that context.
     if (isModalOpen()) return;
+    // Guard 2 — editable target: typing in a field NEVER triggers commands,
+    // EXCEPT commands that opt in via focusIndependent (undo/redo). The
+    // guard must stay for everything else so plain keys are not swallowed
+    // from the field. Component-local key handling (e.g. Enter in
+    // TrackNameEditor) is untouched: we listen in the bubble phase.
+    const editable = isEditableTarget(e.target);
     const matches = this.registrations.filter((r) =>
-      // Guard 2 — key auto-repeat, unless the command opted in.
+      // Guard 3 — key auto-repeat, unless the command opted in.
       (!e.repeat || r.cmd.allowRepeat === true)
+      && (!editable || r.cmd.focusIndependent === true)
       && r.descriptors.some((d) => matchesEvent(d, e, this.platform)),
     );
     matches.sort((a, b) => CONTEXT_PRIORITY[b.cmd.context] - CONTEXT_PRIORITY[a.cmd.context]);
