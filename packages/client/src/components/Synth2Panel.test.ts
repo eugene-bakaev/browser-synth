@@ -345,6 +345,17 @@ describe('Synth2Panel LFO tempo-sync', () => {
     // The synced LFO1 Rate knob readout shows the division, not a Hz value.
     expect(el.textContent).toContain('1/8');
   });
+
+  it('renders the LFO mode control and dispatches lfo1.mode on S&H click', () => {
+    const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
+    const el = mountPanel(params);
+    const seg = el.querySelector('.lfo-mode-selector');
+    expect(seg).not.toBeNull();
+    const buttons = seg!.querySelectorAll<HTMLButtonElement>('.lfo-mode-btn');
+    expect(buttons.length).toBe(3); // OFF / S&H / SMOOTH
+    buttons[1].click(); // S&H
+    expect(dispatchLocal).toHaveBeenCalledWith(SYN2('lfo1', 'mode'), 's&h');
+  });
 });
 
 describe('Synth2Panel envelope tempo-sync', () => {

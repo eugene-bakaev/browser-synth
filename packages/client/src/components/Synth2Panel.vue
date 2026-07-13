@@ -179,21 +179,31 @@
     <div class="rack-column">
       <div class="module-group">
         <h3>LFO 1</h3>
-        <WavePreview kind="lfo" :shape="params.lfo1.shape" :color="color" />
+        <WavePreview kind="lfo" :shape="params.lfo1.shape" :mode="params.lfo1.mode" :color="color" />
         <div class="knob-row">
           <Knob v-if="!params.lfo1.sync" label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo1.rate" :modelValue="params.lfo1.rate" @update:modelValue="ks.set(['lfo1', 'rate'], $event)" :syncPath="ks.pathFor(['lfo1', 'rate'])" @gesture-end="ks.end(['lfo1', 'rate'])" />
           <Knob v-else label="Rate" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.lfo1.div)" :modelValue="divisionLabelToIndex(params.lfo1.div)" @update:modelValue="ks.set(['lfo1', 'div'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['lfo1', 'div'])" @gesture-end="ks.end(['lfo1', 'div'])" />
-          <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" :modelValue="params.lfo1.shape" @update:modelValue="ks.set(['lfo1', 'shape'], $event)" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
+          <Knob v-if="params.lfo1.mode === 'off'" label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo1.shape" :modelValue="params.lfo1.shape" @update:modelValue="ks.set(['lfo1', 'shape'], $event)" :syncPath="ks.pathFor(['lfo1', 'shape'])" @gesture-end="ks.end(['lfo1', 'shape'])" />
+        </div>
+        <div class="lfo-mode-selector">
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo1.mode === 'off' }" @click="ks.set(['lfo1', 'mode'], 'off')">OFF</button>
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo1.mode === 's&h' }" @click="ks.set(['lfo1', 'mode'], 's&h')">S&amp;H</button>
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo1.mode === 'smooth' }" @click="ks.set(['lfo1', 'mode'], 'smooth')">SMOOTH</button>
         </div>
         <button type="button" class="lfo-sync-btn" :class="{ active: params.lfo1.sync }" @click="ks.set(['lfo1', 'sync'], !params.lfo1.sync)">SYNC</button>
       </div>
       <div class="module-group">
         <h3>LFO 2</h3>
-        <WavePreview kind="lfo" :shape="params.lfo2.shape" :color="color" />
+        <WavePreview kind="lfo" :shape="params.lfo2.shape" :mode="params.lfo2.mode" :color="color" />
         <div class="knob-row">
           <Knob v-if="!params.lfo2.sync" label="Rate" :min="0.01" :max="2000" :step="0.01" format="hz" curve="exp" :defaultValue="DEFAULTS.lfo2.rate" :modelValue="params.lfo2.rate" @update:modelValue="ks.set(['lfo2', 'rate'], $event)" :syncPath="ks.pathFor(['lfo2', 'rate'])" @gesture-end="ks.end(['lfo2', 'rate'])" />
           <Knob v-else label="Rate" :min="0" :max="LFO_SYNC_LABELS.length - 1" :step="1" :labels="LFO_SYNC_LABELS" :defaultValue="divisionLabelToIndex(DEFAULTS.lfo2.div)" :modelValue="divisionLabelToIndex(params.lfo2.div)" @update:modelValue="ks.set(['lfo2', 'div'], LFO_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['lfo2', 'div'])" @gesture-end="ks.end(['lfo2', 'div'])" />
-          <Knob label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" :modelValue="params.lfo2.shape" @update:modelValue="ks.set(['lfo2', 'shape'], $event)" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
+          <Knob v-if="params.lfo2.mode === 'off'" label="Shape" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.lfo2.shape" :modelValue="params.lfo2.shape" @update:modelValue="ks.set(['lfo2', 'shape'], $event)" :syncPath="ks.pathFor(['lfo2', 'shape'])" @gesture-end="ks.end(['lfo2', 'shape'])" />
+        </div>
+        <div class="lfo-mode-selector">
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo2.mode === 'off' }" @click="ks.set(['lfo2', 'mode'], 'off')">OFF</button>
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo2.mode === 's&h' }" @click="ks.set(['lfo2', 'mode'], 's&h')">S&amp;H</button>
+          <button type="button" class="lfo-mode-btn" :class="{ active: params.lfo2.mode === 'smooth' }" @click="ks.set(['lfo2', 'mode'], 'smooth')">SMOOTH</button>
         </div>
         <button type="button" class="lfo-sync-btn" :class="{ active: params.lfo2.sync }" @click="ks.set(['lfo2', 'sync'], !params.lfo2.sync)">SYNC</button>
       </div>
@@ -320,6 +330,23 @@ defineProps<{
 }
 .filter-model-btn:hover { color: #aaa; border-color: #444; }
 .filter-model-btn.active { background: #222; color: #fff; border-color: #555; }
+.lfo-mode-selector { display: flex; gap: 4px; width: 100%; margin-top: 6px; }
+.lfo-mode-btn {
+  flex: 1;
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 5px 0;
+  font-family: monospace;
+  font-size: 0.65rem;
+  font-weight: bold;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lfo-mode-btn:hover { color: #aaa; border-color: #444; }
+.lfo-mode-btn.active { background: #222; color: #fff; border-color: #555; }
 .matrix-grid { display: flex; flex-direction: column; gap: 4px; }
 .matrix-row { display: flex; align-items: center; gap: 4px; }
 .matrix-row select {
