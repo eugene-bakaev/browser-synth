@@ -8,7 +8,7 @@ import { ENV_SYNC_LABELS } from './env-sync.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div', 'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv', 'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv', 'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div', 'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv', 'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv', 'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv', 'lfo1.mode', 'lfo2.mode'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -72,6 +72,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv',
       'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv',
       'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv',
+      'lfo1.mode', 'lfo2.mode',
     ]);
   });
 
