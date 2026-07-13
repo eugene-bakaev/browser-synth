@@ -79,4 +79,28 @@ describe('renderLfoShape', () => {
     expect(Math.abs(mean(sine))).toBeLessThan(0.05);
     for (const v of renderLfoShape(4)) expect(Math.abs(v)).toBeCloseTo(1, 6);
   });
+
+  it('s&h is stepped, stable across calls, and in range', () => {
+    const a = renderLfoShape(0, 's&h');
+    const b = renderLfoShape(0, 's&h');
+    expect(a.length).toBe(PREVIEW_POINTS);
+    expect([...a]).toEqual([...b]); // fixed seed ⇒ no flicker on redraw
+    for (const v of a) { expect(v).toBeLessThanOrEqual(1); expect(v).toBeGreaterThanOrEqual(-1); }
+    // Stepped: at least one flat run and at least one jump across the buffer.
+    let flats = 0, jumps = 0;
+    for (let i = 1; i < a.length; i++) (a[i] === a[i - 1] ? flats++ : jumps++);
+    expect(flats).toBeGreaterThan(0);
+    expect(jumps).toBeGreaterThan(0);
+  });
+
+  it('smooth is continuous and stable across calls', () => {
+    const a = renderLfoShape(0, 'smooth');
+    const b = renderLfoShape(0, 'smooth');
+    expect([...a]).toEqual([...b]);
+    for (let i = 1; i < a.length; i++) expect(Math.abs(a[i] - a[i - 1])).toBeLessThan(0.1);
+  });
+
+  it('defaults to the off morph when mode is omitted', () => {
+    expect([...renderLfoShape(2.3)]).toEqual([...renderLfoShape(2.3, 'off')]);
+  });
 });
