@@ -98,16 +98,39 @@ describe('Lfo', () => {
     for (const v of buf) { expect(v).toBeLessThanOrEqual(1); expect(v).toBeGreaterThanOrEqual(-1); }
   });
 
-  it('S&H is deterministic per seed and reproducible after reset', () => {
+  it('S&H is seeded at construction but FREE-RUNNING across resets (not rewound)', () => {
+    // Two fresh instances with the same construction seed produce the identical
+    // stream (reproducible cold start), and distinct seeds diverge.
     const a = lfoWith(shRate, 0, 1, 42);
     const b = lfoWith(shRate, 0, 1, 42);
     expect([...collect(a, 400)]).toEqual([...collect(b, 400)]);
     const c = lfoWith(shRate, 0, 1, 7);
     expect([...collect(c, 400)]).not.toEqual([...collect(lfoWith(shRate, 0, 1, 42), 400)]);
+    // reset() (note-on) does NOT rewind the RNG: the post-reset stream continues
+    // rather than replaying the first block. This is the fix for "S&H sounds the
+    // same on every note" — the noise stream free-runs instead of being re-seeded.
     const r = lfoWith(shRate, 0, 1, 42);
     const first = [...collect(r, 400)];
     r.reset();
-    expect([...collect(r, 400)]).toEqual(first);
+    expect([...collect(r, 400)]).not.toEqual(first);
+  });
+
+  it('S&H produces a different pattern on each note-on, not a repeat', () => {
+    // Simulate consecutive note-ons on one voice: reset (note-on) then hold a note.
+    const lfo = lfoWith(shRate, 0, 1, 42);
+    const note = () => { lfo.reset(); return [...collect(lfo, 5 * CYCLE)]; };
+    const n1 = note(), n2 = note(), n3 = note();
+    expect(n2).not.toEqual(n1);
+    expect(n3).not.toEqual(n2);
+    expect(n3).not.toEqual(n1);
+  });
+
+  it('Smooth still starts flat on every note-on (prev == curr after reset)', () => {
+    const lfo = lfoWith(shRate, 0, 2, 42);
+    collect(lfo, 3 * CYCLE); // free-run across a few cycles
+    lfo.reset();             // note-on: draws a fresh target, prev = curr
+    const buf = collect(lfo, CYCLE - 2);
+    for (let i = 1; i < buf.length; i++) expect(buf[i]).toBeCloseTo(buf[0], 6);
   });
 
   it('Smooth starts flat, is continuous, and passes through the S&H targets', () => {

@@ -11,8 +11,11 @@
 //                   linearly from the previous target to the new one across the
 //                   cycle (one segment per cycle, no discontinuity). shape ignored.
 //
-// Randomness is a per-instance xorshift32 (the Noise.ts generator), deterministic
-// from the seed and re-seeded on reset() — reproducible per voice, no shared state.
+// Randomness is a per-instance xorshift32 (the Noise.ts generator), seeded ONCE
+// at construction and then FREE-RUNNING: reset() (note-on) does NOT rewind it, so
+// S&H/Smooth draw fresh values on every note instead of replaying one fixed
+// sequence. The per-voice construction seed keeps voices decorrelated; the kernel
+// mixes in per-load entropy so patterns also differ across sessions.
 // Pure, allocation-free (kernel ABI §6.7). next() must be called exactly once per
 // rendered sample: it advances all three ParamSlots' smoothers and the phase.
 
@@ -31,18 +34,19 @@ export class Lfo {
     private readonly shapeSlot: ParamSlot,
     private readonly modeSlot: ParamSlot,
     private readonly sampleRate: number,
-    private readonly seed = 1,
+    seed = 1,
   ) {
     this.rngState = (seed | 0) || 0x9e3779b9; // avoid the xorshift zero fixed-point
     this.curr = this.draw();
     this.prev = this.curr;
   }
 
-  /** Note-on / voice-steal retrigger: restart the waveform and re-seed the RNG so
-   *  the random sequence is reproducible per voice. */
+  /** Note-on / voice-steal retrigger: restart the waveform (phase 0) and draw a
+   *  fresh S&H/Smooth target. The RNG is deliberately NOT re-seeded — it free-runs
+   *  across notes, so each note-on continues the random stream (every note differs)
+   *  rather than replaying one fixed sequence. prev = curr so Smooth starts flat. */
   reset(): void {
     this.phase = 0;
-    this.rngState = (this.seed | 0) || 0x9e3779b9;
     this.curr = this.draw();
     this.prev = this.curr;
   }

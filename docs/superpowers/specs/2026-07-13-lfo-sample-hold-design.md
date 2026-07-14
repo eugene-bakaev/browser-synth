@@ -206,3 +206,27 @@ unchanged. No migration is introduced (consistent with prior appends).
   segment per cycle).
 - Modulating `mode` from the matrix.
 - S&H on synth1 (it has no comparable per-voice LFO).
+
+## Update (2026-07-14): free-running RNG + session entropy
+
+The original design re-seeded the PRNG to a fixed per-voice seed on every `reset()`
+(note-on), framed as "reproducible per voice, matching the Noise/SvfCore seeded-reset
+ethos." In practice this made S&H/Smooth **replay the identical random sequence on every
+note** — imperceptible for white noise, but it defeats the entire point of S&H, whose
+musical value is audible variation. (User feedback: "every time S&H is applied it produces
+the same effect.")
+
+Corrected behavior:
+
+- **`Lfo.reset()` no longer rewinds the RNG.** It zeros the phase and draws one fresh
+  target (`prev = curr`, so Smooth still starts flat), but the xorshift32 stream
+  **free-runs across note-ons** — each note continues the sequence, so held values differ
+  every note. The RNG is seeded once, at construction only.
+- **`Synth2Kernel` mixes per-load entropy into each voice seed**
+  (`sessionSeed = Math.random()` XOR the per-voice constant), so patterns also differ
+  across page reloads/sessions, while voices stay decorrelated within a session.
+
+Determinism is therefore intentionally dropped for the random modes; the `Lfo` unit tests
+assert the new free-running contract (same construction seed ⇒ identical cold-start stream,
+but each `reset()`/note-on advances rather than replays). Off mode is unaffected (it never
+touches the RNG). No store/ABI/schema change.
