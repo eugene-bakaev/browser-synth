@@ -74,10 +74,13 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'osc1.pulseWidth', min: 0.05,  max: 0.95, default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1 },
   // osc pitch (spec 2026-07-12): coarse is semitones — the panel's OCTAVE switch
   // steps it in whole octaves (±36 st = ±3 oct). fine is cents — the panel's
-  // DETUNE knob spans a full ±1 octave (±1200 c). modScale 1/12 keeps a
-  // full-depth linear mod at ±200 c (±2 st), matching the pre-widening depth.
-  { key: 'osc1.coarse',     min: -36,   max: 36,   default: 0,    taper: 'linear',     modulatable: true, modScale: 24 / 72 },
-  { key: 'osc1.fine',       min: -1200, max: 1200, default: 0,    taper: 'linear',     modulatable: true, modScale: 1 / 12 },
+  // DETUNE knob spans a full ±1 octave (±1200 c). modScale 1 (2026-07-14)
+  // unifies pitch with every other linear dest: full-depth mod swings ±range
+  // and clamps, so it reaches the knob extremes from any base position. (The
+  // old 1/12 / 24/72 fractions preserved pre-widening depths and made pitch
+  // the odd one out.)
+  { key: 'osc1.coarse',     min: -36,   max: 36,   default: 0,    taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc1.fine',       min: -1200, max: 1200, default: 0,    taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc1.level',      min: 0,     max: 1,    default: 0.8,  taper: 'linear',     modulatable: true, modScale: 1 },
   // env1 (amp) — same a/d/s/r units as synth1 (seconds / 0..1 sustain).
   { key: 'env1.a',          min: 0.001, max: 10,   default: 0.01, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
@@ -88,14 +91,14 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // osc2 — mirrors osc1. Default: detuned saw (+7 cents) for the classic fat default (spec §5.8).
   { key: 'osc2.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc2.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc2.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 24 / 72 },
-  { key: 'osc2.fine',       min: -1200, max: 1200, default: 7,   taper: 'linear',     modulatable: true, modScale: 1 / 12 },
+  { key: 'osc2.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc2.fine',       min: -1200, max: 1200, default: 7,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc2.level',      min: 0,    max: 1,    default: 0.8, taper: 'linear',     modulatable: true, modScale: 1 },
   // osc3 — mirrors osc1. Default level 0 (silent until dialed in; spec §5.8).
   { key: 'osc3.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc3.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc3.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 24 / 72 },
-  { key: 'osc3.fine',       min: -1200, max: 1200, default: 0,   taper: 'linear',     modulatable: true, modScale: 1 / 12 },
+  { key: 'osc3.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc3.fine',       min: -1200, max: 1200, default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
   { key: 'osc3.level',      min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
   // noise — 4th mixer channel. color morphs five textbook noise colors, white at
   // center (spec 2026-06-20): 0 brown(-6 dB/oct) · 0.25 pink(-3) · 0.5 white(0) ·

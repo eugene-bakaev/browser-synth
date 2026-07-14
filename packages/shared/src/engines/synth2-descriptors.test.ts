@@ -37,18 +37,28 @@ describe('SYNTH2_DESCRIPTORS', () => {
     expect(d.kind).toBeUndefined(); // continuous, still a mod destination
   });
 
-  it('osc fine is a ±1 octave (±1200 cent) detune with preserved mod depth', () => {
+  it('osc pitch mod depth is unified with the other linear dests (modScale 1)', () => {
     const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map((d) => [d.key, d]));
     for (const key of ['osc1.fine', 'osc2.fine', 'osc3.fine']) {
       const d = byKey[key];
       expect(d.min, key).toBe(-1200);
       expect(d.max, key).toBe(1200);
-      // modScale 1/12 keeps a full-depth linear mod at ±200 cents (±2 st) even
-      // though the base range widened 200 → 2400 (see ParamSlot.next()).
-      expect(d.modScale, key).toBe(1 / 12);
+      // modScale 1 = the same convention as every other linear dest: full-depth
+      // mod swings ±range, so it can pin the knob to either extreme from any
+      // base position (clamped in ParamSlot.next()).
+      expect(d.modScale, key).toBe(1);
       expect(d.taper, key).toBe('linear');
       expect(d.modulatable, key).toBe(true);
       expect(d.kind, key).toBeUndefined(); // still continuous / a mod dest
+    }
+    for (const key of ['osc1.coarse', 'osc2.coarse', 'osc3.coarse']) {
+      const d = byKey[key];
+      expect(d.min, key).toBe(-36);
+      expect(d.max, key).toBe(36);
+      expect(d.modScale, key).toBe(1);
+      expect(d.taper, key).toBe('linear');
+      expect(d.modulatable, key).toBe(true);
+      expect(d.kind, key).toBeUndefined();
     }
   });
 
