@@ -48,7 +48,12 @@ export class Synth2Kernel {
   get nonFiniteFlushed(): number { return this._nonFiniteFlushed; }
 
   constructor(private readonly sampleRate: number) {
-    this.voices = Array.from({ length: VOICE_COUNT }, (_, i) => new Voice(sampleRate, (i + 1) * 0x9e3779b9));
+    // Per-load entropy so the free-running S&H/Smooth streams differ across
+    // sessions/reloads; XOR with a distinct per-voice constant keeps the voices
+    // decorrelated within a session. (Zero fixed-point is handled downstream.)
+    const sessionSeed = (Math.random() * 0x1_0000_0000) >>> 0;
+    this.voices = Array.from({ length: VOICE_COUNT }, (_, i) =>
+      new Voice(sampleRate, (sessionSeed ^ ((i + 1) * 0x9e3779b9)) >>> 0));
     this.events = Array.from({ length: MAX_EVENTS }, () => ({
       frame: 0, freq: 440, gateFrames: 0, velocity: 1, mono: true,
     }));

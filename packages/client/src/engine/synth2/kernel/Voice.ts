@@ -106,8 +106,8 @@ export class Voice {
     this.keyTrackSlot = slot('filter.keyTrack');
     this.envAmountSlot = slot('filter.envAmount');
     this.driveSlot = slot('filter.drive');
-    this.lfo1 = new Lfo(slot('lfo1.rate'), slot('lfo1.shape'), sampleRate);
-    this.lfo2 = new Lfo(slot('lfo2.rate'), slot('lfo2.shape'), sampleRate);
+    this.lfo1 = new Lfo(slot('lfo1.rate'), slot('lfo1.shape'), slot('lfo1.mode'), sampleRate, (seed ^ 0xa5a5a5a5) | 0);
+    this.lfo2 = new Lfo(slot('lfo2.rate'), slot('lfo2.shape'), slot('lfo2.mode'), sampleRate, (seed ^ 0x5a5a5a5a) | 0);
   }
 
   /** Block-boundary discrete update: osc2 syncs to osc1's wraps, osc3 to osc2's.

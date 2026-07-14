@@ -12,6 +12,10 @@ import type { KnobCurve } from './knob-curve.js';
 import { LFO_SYNC_LABELS, LFO_SYNC_DEFAULT_INDEX } from './lfo-sync.js';
 import { ENV_SYNC_LABELS } from './env-sync.js';
 
+/** LFO Mode enum (2026-07-13). Off = continuous morph; S&H = stepped random;
+ *  Smooth = interpolated random. Stored as the label; kernel reads the index. */
+export const LFO_MODE_LABELS = ['off', 's&h', 'smooth'] as const;
+
 export type Synth2Taper = 'linear' | 'expOctaves';
 
 // Discrete kinds ride the SAME Float32Array param block as continuous params
@@ -191,6 +195,12 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   { key: 'env3.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
   { key: 'env3.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
   { key: 'env3.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
+  // --- LFO random modes (2026-07-13, append-only). A REAL kernel enum (unlike
+  // lfo*.sync/div which are main-thread-only): the Lfo kernel reads mode per
+  // sample. 0 off = continuous morph; 1 s&h = per-cycle stepped random; 2 smooth
+  // = linearly-interpolated random. Not modulatable. Mirrors filter.type's kind.
+  { key: 'lfo1.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS },
+  { key: 'lfo2.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel

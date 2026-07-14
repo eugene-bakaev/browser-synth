@@ -45,6 +45,14 @@ const OSC_PW = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.pulseWidth']];
 const OSC_COARSE = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.coarse']];
 const OSC_FINE = SYNTH2_DESCRIPTORS[PARAM_INDEX['osc1.fine']];
 
+const LFO_RATE = SYNTH2_DESCRIPTORS[PARAM_INDEX['lfo1.rate']];
+const LFO_SHAPE = SYNTH2_DESCRIPTORS[PARAM_INDEX['lfo1.shape']];
+const LFO_MODE = SYNTH2_DESCRIPTORS[PARAM_INDEX['lfo1.mode']];
+// Fixed seed so the random thumbnail never flickers between redraws.
+const LFO_PREVIEW_SEED = 0x1234abcd;
+// Rate that spans PREVIEW_CYCLES cycles across PREVIEW_POINTS samples (≈281 Hz).
+const LFO_PREVIEW_RATE = (PREVIEW_CYCLES * PREVIEW_SR) / PREVIEW_POINTS;
+
 // NB: overriding `default` bypasses ParamSlot.setBase's NaN clamp, but next()'s
 // own output clamp (non-finite → desc.min) keeps a garbage value finite — that
 // clamp, not the constructor, is what makes the NaN-hardening case safe here.
@@ -82,11 +90,27 @@ export function renderOscShape(morph: number, pulseWidth: number): Float32Array 
  * produced by the engine's own Lfo.wave (naive by design ⇒ exact at any
  * sampling). Length === PREVIEW_POINTS.
  */
-export function renderLfoShape(shape: number): Float32Array {
+export function renderLfoShape(
+  shape: number,
+  mode: 'off' | 's&h' | 'smooth' = 'off',
+): Float32Array {
   const out = new Float32Array(PREVIEW_POINTS);
-  for (let i = 0; i < PREVIEW_POINTS; i++) {
-    const phase = ((i / PREVIEW_POINTS) * PREVIEW_CYCLES) % 1;
-    out[i] = Lfo.wave(shape, phase);
+  if (mode === 'off') {
+    for (let i = 0; i < PREVIEW_POINTS; i++) {
+      const phase = ((i / PREVIEW_POINTS) * PREVIEW_CYCLES) % 1;
+      out[i] = Lfo.wave(shape, phase);
+    }
+    return out;
   }
+  // S&H / Smooth: drive the real kernel Lfo (single source of truth for the DSP)
+  // at a fixed rate + seed so PREVIEW_CYCLES random steps fill the thumbnail.
+  const lfo = new Lfo(
+    slotWithValue(LFO_RATE, LFO_PREVIEW_RATE),
+    slotWithValue(LFO_SHAPE, 0),
+    slotWithValue(LFO_MODE, mode === 's&h' ? 1 : 2),
+    PREVIEW_SR,
+    LFO_PREVIEW_SEED,
+  );
+  for (let i = 0; i < PREVIEW_POINTS; i++) out[i] = lfo.next();
   return out;
 }

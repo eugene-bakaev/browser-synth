@@ -14,9 +14,10 @@ const props = withDefaults(
     morph?: number;
     pulseWidth?: number;
     shape?: number;
+    mode?: 'off' | 's&h' | 'smooth';
     color?: string;
   }>(),
-  { morph: 0, pulseWidth: 0.5, shape: 0, color: '#00f0ff' },
+  { morph: 0, pulseWidth: 0.5, shape: 0, mode: 'off', color: '#00f0ff' },
 );
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -25,7 +26,7 @@ const VPAD = 0.9; // headroom so a full-scale wave isn't clipped at the canvas e
 // Compute (cheap, pure) separated from paint (canvas) so the buffer recomputes
 // reactively even where there is no 2D context (tests).
 const samples = computed<Float32Array>(() =>
-  props.kind === 'lfo' ? renderLfoShape(props.shape) : renderOscShape(props.morph, props.pulseWidth),
+  props.kind === 'lfo' ? renderLfoShape(props.shape, props.mode) : renderOscShape(props.morph, props.pulseWidth),
 );
 
 function resizeCanvas(): void {

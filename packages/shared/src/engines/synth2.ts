@@ -46,6 +46,7 @@ export interface Synth2LfoParams {
   shape: number;  // 0..4 morph: sine → tri → saw-up → saw-down → square
   sync: boolean;  // tempo-sync on/off (rate derived from div × bpm on the main thread)
   div: string;    // note-division label from LFO_SYNC_DIVISIONS (used when sync is on)
+  mode: 'off' | 's&h' | 'smooth'; // Off = continuous morph; S&H / Smooth = random (shape ignored)
 }
 
 export interface Synth2FilterParams {

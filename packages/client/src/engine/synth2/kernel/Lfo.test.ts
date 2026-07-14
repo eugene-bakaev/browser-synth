@@ -12,11 +12,13 @@ const desc = (
   taper: 'linear' | 'expOctaves', modScale: number,
 ): Synth2ParamDescriptor => ({ key: 'lfo.test', min, max, default: def, taper, modulatable: true, modScale });
 
-const lfoWith = (rate: number, shape: number) =>
+const lfoWith = (rate: number, shape: number, mode = 0, seed = 1) =>
   new Lfo(
     new ParamSlot(desc(0.01, 2000, rate, 'expOctaves', 4), SR),
     new ParamSlot(desc(0, 4, shape, 'linear', 1), SR),
+    new ParamSlot(desc(0, 2, mode, 'linear', 0), SR),
     SR,
+    seed,
   );
 
 const collect = (lfo: Lfo, n: number) => {
@@ -79,5 +81,79 @@ describe('Lfo', () => {
     collect(lfo, 137);            // advance to some mid-cycle phase
     lfo.reset();
     expect(lfo.next()).toBeCloseTo(0, 6); // sine(0) again
+  });
+
+  // rate = SR/100 ⇒ phase steps 0.01/sample ⇒ a new cycle every 100 samples.
+  const CYCLE = 100;
+  const shRate = SR / CYCLE;
+
+  it('S&H holds a constant value across each cycle and only steps at wraps', () => {
+    const buf = collect(lfoWith(shRate, 0, 1, 42), 3 * CYCLE);
+    const changes: number[] = [];
+    for (let i = 1; i < buf.length; i++) if (buf[i] !== buf[i - 1]) changes.push(i);
+    // Exactly one step per completed cycle, each ~CYCLE samples apart.
+    expect(changes.length).toBeGreaterThanOrEqual(2);
+    expect(changes.length).toBeLessThanOrEqual(3);
+    for (const c of changes) expect(Math.abs((c % CYCLE)) <= 1 || Math.abs((c % CYCLE) - CYCLE) <= 1).toBe(true);
+    for (const v of buf) { expect(v).toBeLessThanOrEqual(1); expect(v).toBeGreaterThanOrEqual(-1); }
+  });
+
+  it('S&H is seeded at construction but FREE-RUNNING across resets (not rewound)', () => {
+    // Two fresh instances with the same construction seed produce the identical
+    // stream (reproducible cold start), and distinct seeds diverge.
+    const a = lfoWith(shRate, 0, 1, 42);
+    const b = lfoWith(shRate, 0, 1, 42);
+    expect([...collect(a, 400)]).toEqual([...collect(b, 400)]);
+    const c = lfoWith(shRate, 0, 1, 7);
+    expect([...collect(c, 400)]).not.toEqual([...collect(lfoWith(shRate, 0, 1, 42), 400)]);
+    // reset() (note-on) does NOT rewind the RNG: the post-reset stream continues
+    // rather than replaying the first block. This is the fix for "S&H sounds the
+    // same on every note" — the noise stream free-runs instead of being re-seeded.
+    const r = lfoWith(shRate, 0, 1, 42);
+    const first = [...collect(r, 400)];
+    r.reset();
+    expect([...collect(r, 400)]).not.toEqual(first);
+  });
+
+  it('S&H produces a different pattern on each note-on, not a repeat', () => {
+    // Simulate consecutive note-ons on one voice: reset (note-on) then hold a note.
+    const lfo = lfoWith(shRate, 0, 1, 42);
+    const note = () => { lfo.reset(); return [...collect(lfo, 5 * CYCLE)]; };
+    const n1 = note(), n2 = note(), n3 = note();
+    expect(n2).not.toEqual(n1);
+    expect(n3).not.toEqual(n2);
+    expect(n3).not.toEqual(n1);
+  });
+
+  it('Smooth still starts flat on every note-on (prev == curr after reset)', () => {
+    const lfo = lfoWith(shRate, 0, 2, 42);
+    collect(lfo, 3 * CYCLE); // free-run across a few cycles
+    lfo.reset();             // note-on: draws a fresh target, prev = curr
+    const buf = collect(lfo, CYCLE - 2);
+    for (let i = 1; i < buf.length; i++) expect(buf[i]).toBeCloseTo(buf[0], 6);
+  });
+
+  it('Smooth starts flat, is continuous, and passes through the S&H targets', () => {
+    const smooth = collect(lfoWith(shRate, 0, 2, 42), 3 * CYCLE);
+    // First cycle (before the first wrap) is flat: prev == curr at construction.
+    for (let i = 1; i < CYCLE - 1; i++) expect(smooth[i]).toBeCloseTo(smooth[0], 6);
+    // No discontinuity: per-sample delta bounded by the ramp step (target span ≤ 2 over CYCLE).
+    for (let i = 1; i < smooth.length; i++) expect(Math.abs(smooth[i] - smooth[i - 1])).toBeLessThan(0.05);
+    // At the end of a cycle the smooth ramp has reached that cycle's S&H target.
+    // One sample before the wrap the ramp is at phase 0.99, i.e. up to 1/CYCLE
+    // (here 1%) short of the target for a max span of 2 — precision 1 (0.05)
+    // covers that quantization headroom regardless of the seed's draw spacing.
+    const sh = collect(lfoWith(shRate, 0, 1, 42), 3 * CYCLE);
+    expect(smooth[2 * CYCLE - 2]).toBeCloseTo(sh[2 * CYCLE - 2], 1);
+  });
+
+  it('Off mode (0) is byte-identical to the static morph waveform', () => {
+    const buf = collect(lfoWith(37, 2.3, 0, 99), 2000);
+    // Re-derive phase the same way and compare to Lfo.wave.
+    let phase = 0;
+    for (let i = 0; i < buf.length; i++) {
+      expect(buf[i]).toBeCloseTo(Lfo.wave(2.3, phase), 6);
+      phase += 37 / SR; if (phase >= 1) phase -= 1;
+    }
   });
 });
