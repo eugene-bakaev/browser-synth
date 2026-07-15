@@ -347,7 +347,7 @@ describe('coerceBpm', () => {
 
 describe('trackOrder healing', () => {
   it('missing trackOrder heals to identity', () => {
-    const p = freshProject() as Record<string, unknown>;
+    const p = freshProject() as unknown as Record<string, unknown>;
     delete p.trackOrder;
     const out = normalizeProject(p as unknown as Project);
     expect(out.trackOrder).toEqual(identityTrackOrder());

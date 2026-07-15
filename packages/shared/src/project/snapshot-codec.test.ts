@@ -100,7 +100,7 @@ describe('trackOrder round-trip', () => {
     expect(unpackProject(stored).trackOrder).toEqual(p.trackOrder);
   });
   it('legacy stored rows without trackOrder unpack to identity', () => {
-    const stored = packProject(normalizeProject(freshProject())) as Record<string, unknown>;
+    const stored = packProject(normalizeProject(freshProject())) as unknown as Record<string, unknown>;
     delete stored.trackOrder;
     expect(unpackProject(stored).trackOrder).toEqual(identityTrackOrder());
   });
