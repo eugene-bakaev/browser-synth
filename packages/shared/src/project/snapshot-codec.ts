@@ -38,14 +38,12 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 // index ("0".."31") and contains ONLY slots that carry information. Top-level
 // schemaVersion + bpm are carried through unchanged.
 //
-// `trackOrder` is optional here for the same version-skew reason it's optional
-// on ProjectSchema: an old stored snapshot won't have it. Trivial passthrough
-// for now (no sparse/identity-omission encoding, no validation) — the encoding
-// and repair-on-missing behavior are owned by a later trackOrder task.
+// Optional: rows persisted before the reorder feature lack it; unpack routes
+// through normalizeProject which heals absence to identity.
 export interface StoredProject {
   schemaVersion: Project['schemaVersion'];
   bpm: number;
-  trackOrder?: Project['trackOrder'];
+  trackOrder?: number[];
   tracks: Record<string, ProjectTrack>;
 }
 

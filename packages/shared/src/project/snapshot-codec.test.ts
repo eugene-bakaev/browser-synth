@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deepEqual, packProject, unpackProject } from './snapshot-codec.js';
 import { freshProject, freshTrack } from './factory.js';
-import { normalizeProject } from './normalize.js';
+import { normalizeProject, identityTrackOrder } from './index.js';
 
 describe('deepEqual', () => {
   it('is true for identical primitives and structurally equal objects', () => {
@@ -88,5 +88,20 @@ describe('unpackProject', () => {
       expect(out.tracks.some((t) => t.enabled)).toBe(true); // normalizeProject re-enables
       expect(out.schemaVersion).toBe(2);
     }
+  });
+});
+
+describe('trackOrder round-trip', () => {
+  it('pack keeps the order; unpack restores it', () => {
+    const p = normalizeProject(freshProject());
+    p.trackOrder = [...p.trackOrder].reverse();
+    const stored = packProject(p);
+    expect(stored.trackOrder).toEqual(p.trackOrder);
+    expect(unpackProject(stored).trackOrder).toEqual(p.trackOrder);
+  });
+  it('legacy stored rows without trackOrder unpack to identity', () => {
+    const stored = packProject(normalizeProject(freshProject())) as Record<string, unknown>;
+    delete stored.trackOrder;
+    expect(unpackProject(stored).trackOrder).toEqual(identityTrackOrder());
   });
 });
