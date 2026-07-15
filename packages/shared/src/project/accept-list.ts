@@ -30,6 +30,9 @@ import { CLAP2_DESCRIPTORS } from '../engines/clap2.js';
 // Order matters only for human reading; lookups iterate the full list.
 export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   ['bpm'],
+  // Whole-array atomic write — the ONLY way to change display order (a
+  // per-element pattern could produce a duplicated index mid-flight).
+  ['trackOrder'],
   ['tracks', '*', 'engineType'],
   ['tracks', '*', 'patternLength'],
   ['tracks', '*', 'enabled'],
@@ -174,6 +177,7 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
   // Top-level scalar fields.
   if (tokens.length === 1) {
     if (tokens[0] === 'bpm') return Schemas.Project.shape.bpm;
+    if (tokens[0] === 'trackOrder') return Schemas.TrackOrder;
     return null;
   }
 

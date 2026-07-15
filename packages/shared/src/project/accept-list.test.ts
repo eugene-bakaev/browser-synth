@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
 import { SYNTH2_DESCRIPTORS, decodeBool, decodeEnum } from '../engines/index.js';
+import { identityTrackOrder } from './index.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -297,5 +298,28 @@ describe('tracks.*.name', () => {
   it('still rejects out-of-range track indices', () => {
     expect(validatePathAndValue('tracks.99.name', 'x'))
       .toMatchObject({ ok: false, code: 'path.invalid' });
+  });
+});
+
+describe('trackOrder path', () => {
+  it('the whole-array leaf is writable', () => {
+    expect(pathIsWritable('trackOrder')).toBe(true);
+  });
+  it('per-element writes are NOT writable', () => {
+    expect(pathIsWritable('trackOrder.0')).toBe(false);
+  });
+  it('a valid permutation passes validatePathAndValue', () => {
+    expect(validatePathAndValue('trackOrder', identityTrackOrder())).toEqual({ ok: true });
+  });
+  it('duplicates are value.invalid', () => {
+    const dupes = identityTrackOrder(); dupes[1] = 0;
+    const r = validatePathAndValue('trackOrder', dupes);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('value.invalid');
+  });
+  it('wrong length is value.invalid', () => {
+    const r = validatePathAndValue('trackOrder', identityTrackOrder().slice(1));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('value.invalid');
   });
 });
