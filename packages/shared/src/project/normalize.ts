@@ -10,6 +10,7 @@ import {
   DEFAULT_PATTERN_LENGTH,
 } from './constants.js';
 import { PROJECT_SCHEMA_VERSION } from '../index.js';
+import { isValidTrackOrder, coerceTrackOrder } from './order.js';
 
 // The one definition of a valid bpm. Round to integer, clamp to the shared
 // [BPM_MIN, BPM_MAX] band, and fall back to DEFAULT_BPM for anything not a
@@ -88,6 +89,7 @@ function healSlice(loaded: unknown, template: unknown): unknown {
 // satisfies all of them — see `isAlreadyValid`):
 //   - schemaVersion is the current PROJECT_SCHEMA_VERSION
 //   - bpm is an integer within [BPM_MIN, BPM_MAX]
+//   - trackOrder is a permutation of 0..TRACK_POOL_SIZE-1 (healed to identity)
 //   - exactly TRACK_POOL_SIZE slots
 //   - every slot's `enabled` is a boolean
 //   - at least one slot is enabled (the UI guarantees >=1 track; 0 enabled is
@@ -134,6 +136,7 @@ export function normalizeProject(project: Project): Project {
     ...project,
     schemaVersion: PROJECT_SCHEMA_VERSION,
     bpm: coerceBpm(project.bpm),
+    trackOrder: coerceTrackOrder(project.trackOrder),
     tracks: out,
   };
 }
@@ -142,6 +145,7 @@ function isAlreadyValid(project: Project, tracks: ProjectTrack[]): boolean {
   return (
     project.schemaVersion === PROJECT_SCHEMA_VERSION &&
     Number.isInteger(project.bpm) && project.bpm >= BPM_MIN && project.bpm <= BPM_MAX &&
+    isValidTrackOrder(project.trackOrder) &&
     tracks.length === TRACK_POOL_SIZE &&
     tracks.every(isValidTrack) &&
     tracks.some(t => t.enabled)

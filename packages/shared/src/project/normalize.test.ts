@@ -11,6 +11,7 @@ import {
 } from './constants.js';
 import { ProjectSchema } from './schema.js';
 import { PROJECT_SCHEMA_VERSION } from '../index.js';
+import { identityTrackOrder } from './order.js';
 import type { Project } from './types.js';
 
 describe('normalizeProject', () => {
@@ -341,5 +342,29 @@ describe('coerceBpm', () => {
     expect(coerceBpm(5000)).toBe(BPM_MAX);
     expect(coerceBpm(0)).toBe(BPM_MIN);
     expect(coerceBpm(140)).toBe(140);
+  });
+});
+
+describe('trackOrder healing', () => {
+  it('missing trackOrder heals to identity', () => {
+    const p = freshProject() as Record<string, unknown>;
+    delete p.trackOrder;
+    const out = normalizeProject(p as unknown as Project);
+    expect(out.trackOrder).toEqual(identityTrackOrder());
+  });
+  it('invalid trackOrder (duplicates) heals to identity', () => {
+    const p = freshProject();
+    p.trackOrder = p.trackOrder.map(() => 0);
+    expect(normalizeProject(p).trackOrder).toEqual(identityTrackOrder());
+  });
+  it('a valid shuffled order survives by reference', () => {
+    const p = freshProject();
+    const shuffled = [...p.trackOrder].reverse();
+    p.trackOrder = shuffled;
+    expect(normalizeProject(p).trackOrder).toBe(shuffled);
+  });
+  it('fast path: a fully valid project returns by reference', () => {
+    const p = normalizeProject(freshProject());
+    expect(normalizeProject(p)).toBe(p);
   });
 });
