@@ -306,3 +306,34 @@ describe('envelope tempo-sync descriptor rows (step divisions, 2026-07-08)', () 
     }
   });
 });
+
+describe('display labels (2026-07-15 label unification)', () => {
+  it('every descriptor has a non-empty label with no dots (never a raw wire key)', () => {
+    for (const d of SYNTH2_DESCRIPTORS) {
+      expect(d.label, d.key).toBeTruthy();
+      expect(d.label, d.key).not.toContain('.');
+    }
+  });
+
+  it('env stage rows carry the terse knob shortLabel (A/D/S/R); no other row has one', () => {
+    const short = Object.fromEntries(
+      SYNTH2_DESCRIPTORS.filter(d => d.shortLabel !== undefined).map(d => [d.key, d.shortLabel]),
+    );
+    expect(short).toEqual({
+      'env1.a': 'A', 'env1.d': 'D', 'env1.s': 'S', 'env1.r': 'R',
+      'env2.a': 'A', 'env2.d': 'D', 'env2.s': 'S', 'env2.r': 'R',
+      'env3.a': 'A', 'env3.d': 'D', 'env3.s': 'S', 'env3.r': 'R',
+    });
+  });
+
+  it('pins the user-facing vocabulary for the modulatable pitch/filter rows', () => {
+    const byKey = Object.fromEntries(SYNTH2_DESCRIPTORS.map(d => [d.key, d]));
+    expect(byKey['osc1.coarse'].label).toBe('Octave');
+    expect(byKey['osc1.fine'].label).toBe('Detune');
+    expect(byKey['osc1.pulseWidth'].label).toBe('PW');
+    expect(byKey['filter.resonance'].label).toBe('Res');
+    expect(byKey['filter.keyTrack'].label).toBe('KeyTrk');
+    expect(byKey['fm.osc2'].label).toBe('FM 1→2');
+    expect(byKey['fm.osc3'].label).toBe('FM 2→3');
+  });
+});

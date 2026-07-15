@@ -4,10 +4,10 @@ import type { Synth2ParamDescriptor } from '@fiddle/shared';
 
 const SR = 48000;
 const lin: Synth2ParamDescriptor = {
-  key: 't.lin', min: 0, max: 1, default: 0.5, taper: 'linear', modulatable: true, modScale: 1,
+  key: 't.lin', min: 0, max: 1, default: 0.5, taper: 'linear', modulatable: true, modScale: 1, label: 'Test',
 };
 const exp: Synth2ParamDescriptor = {
-  key: 't.exp', min: 20, max: 20000, default: 1000, taper: 'expOctaves', modulatable: true, modScale: 4,
+  key: 't.exp', min: 20, max: 20000, default: 1000, taper: 'expOctaves', modulatable: true, modScale: 4, label: 'Test',
 };
 
 describe('ParamSlot', () => {

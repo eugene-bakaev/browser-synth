@@ -10,7 +10,7 @@ const SR = 48000;
 const desc = (
   min: number, max: number, def: number,
   taper: 'linear' | 'expOctaves', modScale: number,
-): Synth2ParamDescriptor => ({ key: 'lfo.test', min, max, default: def, taper, modulatable: true, modScale });
+): Synth2ParamDescriptor => ({ key: 'lfo.test', min, max, default: def, taper, modulatable: true, modScale, label: 'Test' });
 
 const lfoWith = (rate: number, shape: number, mode = 0, seed = 1) =>
   new Lfo(

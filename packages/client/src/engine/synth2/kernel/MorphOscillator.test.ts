@@ -8,7 +8,7 @@ const TWO_PI = Math.PI * 2;
 
 function slot(key: string, min: number, max: number, def: number): ParamSlot {
   const d: Synth2ParamDescriptor = {
-    key, min, max, default: def, taper: 'linear', modulatable: true, modScale: 1,
+    key, min, max, default: def, taper: 'linear', modulatable: true, modScale: 1, label: 'Test',
   };
   return new ParamSlot(d, SR);
 }

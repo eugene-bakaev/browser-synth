@@ -7,14 +7,14 @@ const SR = 48000;
 
 function timeSlot(key: string, def: number): ParamSlot {
   const d: Synth2ParamDescriptor = {
-    key, min: 0.001, max: 10, default: def, taper: 'expOctaves', modulatable: true, modScale: 4,
+    key, min: 0.001, max: 10, default: def, taper: 'expOctaves', modulatable: true, modScale: 4, label: 'Test',
   };
   return new ParamSlot(d, SR);
 }
 
 function makeEnv(a = 0.01, d = 0.05, s = 0.5, r = 0.05): LoopEnvelope {
   const sus: Synth2ParamDescriptor = {
-    key: 'env1.s', min: 0, max: 1, default: s, taper: 'linear', modulatable: true, modScale: 1,
+    key: 'env1.s', min: 0, max: 1, default: s, taper: 'linear', modulatable: true, modScale: 1, label: 'Test',
   };
   return new LoopEnvelope(
     timeSlot('env1.a', a), timeSlot('env1.d', d), new ParamSlot(sus, SR), timeSlot('env1.r', r), SR,
