@@ -45,6 +45,13 @@ export interface Synth2ParamDescriptor {
   /** Optional UI knob response curve (presentational only). Omitted ⇒ 'linear'.
    *  Distinct from `taper`, which scales kernel modulation, not the UI. */
   curve?: KnobCurve;
+  /** Human-readable param name (presentational only — never on the wire).
+   *  Composed with SYNTH2_MODULE_LABELS into mod-matrix option text; also the
+   *  panel knob label unless shortLabel overrides it. */
+  label: string;
+  /** Terse knob-face variant (e.g. 'A' for 'Attack'). Knobs render
+   *  shortLabel ?? label; the matrix always uses the full label. */
+  shortLabel?: string;
 }
 
 /** A param is discrete (block-boundary, no smoother, not a mod dest) when it
@@ -70,8 +77,8 @@ export const decodeEnum = (n: number, values: readonly string[]): string => {
 
 export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // osc1 — spec §5.2. morph: 0 sine → 1 triangle → 2 saw → 3 pulse.
-  { key: 'osc1.morph',      min: 0,     max: 3,    default: 2,    taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc1.pulseWidth', min: 0.05,  max: 0.95, default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc1.morph',      min: 0,     max: 3,    default: 2,    taper: 'linear',     modulatable: true, modScale: 1, label: 'Morph' },
+  { key: 'osc1.pulseWidth', min: 0.05,  max: 0.95, default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1, label: 'PW' },
   // osc pitch (spec 2026-07-12): coarse is semitones — the panel's OCTAVE switch
   // steps it in whole octaves (±36 st = ±3 oct). fine is cents — the panel's
   // DETUNE knob spans a full ±1 octave (±1200 c). modScale 1 (2026-07-14)
@@ -79,103 +86,103 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // and clamps, so it reaches the knob extremes from any base position. (The
   // old 1/12 / 24/72 fractions preserved pre-widening depths and made pitch
   // the odd one out.)
-  { key: 'osc1.coarse',     min: -36,   max: 36,   default: 0,    taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc1.fine',       min: -1200, max: 1200, default: 0,    taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc1.level',      min: 0,     max: 1,    default: 0.8,  taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc1.coarse',     min: -36,   max: 36,   default: 0,    taper: 'linear',     modulatable: true, modScale: 1, label: 'Octave' },
+  { key: 'osc1.fine',       min: -1200, max: 1200, default: 0,    taper: 'linear',     modulatable: true, modScale: 1, label: 'Detune' },
+  { key: 'osc1.level',      min: 0,     max: 1,    default: 0.8,  taper: 'linear',     modulatable: true, modScale: 1, label: 'Level' },
   // env1 (amp) — same a/d/s/r units as synth1 (seconds / 0..1 sustain).
-  { key: 'env1.a',          min: 0.001, max: 10,   default: 0.01, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
-  { key: 'env1.d',          min: 0.001, max: 10,   default: 0.2,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
-  { key: 'env1.s',          min: 0,     max: 1,    default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'env1.r',          min: 0.001, max: 10,   default: 0.5,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
+  { key: 'env1.a',          min: 0.001, max: 10,   default: 0.01, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Attack', shortLabel: 'A' },
+  { key: 'env1.d',          min: 0.001, max: 10,   default: 0.2,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Decay', shortLabel: 'D' },
+  { key: 'env1.s',          min: 0,     max: 1,    default: 0.5,  taper: 'linear',     modulatable: true, modScale: 1, label: 'Sustain', shortLabel: 'S' },
+  { key: 'env1.r',          min: 0.001, max: 10,   default: 0.5,  taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Release', shortLabel: 'R' },
   // --- I2b oscillator section (append-only) ---
   // osc2 — mirrors osc1. Default: detuned saw (+7 cents) for the classic fat default (spec §5.8).
-  { key: 'osc2.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc2.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc2.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc2.fine',       min: -1200, max: 1200, default: 7,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc2.level',      min: 0,    max: 1,    default: 0.8, taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc2.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Morph' },
+  { key: 'osc2.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1, label: 'PW' },
+  { key: 'osc2.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Octave' },
+  { key: 'osc2.fine',       min: -1200, max: 1200, default: 7,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Detune' },
+  { key: 'osc2.level',      min: 0,    max: 1,    default: 0.8, taper: 'linear',     modulatable: true, modScale: 1, label: 'Level' },
   // osc3 — mirrors osc1. Default level 0 (silent until dialed in; spec §5.8).
-  { key: 'osc3.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc3.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc3.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc3.fine',       min: -1200, max: 1200, default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'osc3.level',      min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'osc3.morph',      min: 0,    max: 3,    default: 2,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Morph' },
+  { key: 'osc3.pulseWidth', min: 0.05, max: 0.95, default: 0.5, taper: 'linear',     modulatable: true, modScale: 1, label: 'PW' },
+  { key: 'osc3.coarse',     min: -36,  max: 36,   default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Octave' },
+  { key: 'osc3.fine',       min: -1200, max: 1200, default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Detune' },
+  { key: 'osc3.level',      min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Level' },
   // noise — 4th mixer channel. color morphs five textbook noise colors, white at
   // center (spec 2026-06-20): 0 brown(-6 dB/oct) · 0.25 pink(-3) · 0.5 white(0) ·
   // 0.75 blue(+3) · 1 violet(+6). Loudness-matched so the knob is purely tonal.
-  { key: 'noise.level',     min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'noise.color',     min: 0,    max: 1,    default: 0.5, taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'noise.level',     min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Level' },
+  { key: 'noise.color',     min: 0,    max: 1,    default: 0.5, taper: 'linear',     modulatable: true, modScale: 1, label: 'Color' },
   // TZFM index by carrier: fm.osc2 = osc1→osc2, fm.osc3 = osc2→osc3. Range >1 enables
   // through-zero (dt' = dt·(1 + amt·mod) can go negative). Default 0 (off).
-  { key: 'fm.osc2',         min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'fm.osc3',         min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'fm.osc2',         min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'FM 1→2' },
+  { key: 'fm.osc3',         min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'FM 2→3' },
   // --- I2c-1 hard sync (append-only). Discrete booleans: ride the block as 0/1,
   // applied at the block boundary (no smoother), excluded from the mod matrix.
   // osc1.sync is inert (osc1 is the sync master) but kept so all 3 oscs share
   // one uniform param shape (spec §7.2). Kernel wires osc2←osc1, osc3←osc2.
   // modScale is 0 because discrete rows are never mod-matrix destinations.
-  { key: 'osc1.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'osc2.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'osc3.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'osc1.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'osc2.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'osc3.sync',       min: 0,    max: 1,    default: 0,   taper: 'linear',     modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
   // --- I2c-2 filter section (append-only). env2 mirrors env1 (a/d/r expOctaves
   // time taper, s linear). filter cutoff is expOctaves (±4 oct mod range);
   // resonance/keyTrack linear. filter.envAmount is the HARDWIRED env2→cutoff
   // depth in bipolar octaves (±4): continuous (smoothed) but NOT a mod dest
   // (spec §5.6 omits it), so modulatable:false. filter.type is the first ENUM —
   // rides the block as an index (lp=0,bp=1,hp=2), applied at the block boundary.
-  { key: 'env2.a',          min: 0.001, max: 10,    default: 0.01, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'env2.d',          min: 0.001, max: 10,    default: 0.2,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'env2.s',          min: 0,     max: 1,     default: 0.5,  taper: 'linear',     modulatable: true,  modScale: 1 },
-  { key: 'env2.r',          min: 0.001, max: 10,    default: 0.5,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'filter.cutoff',   min: 20,    max: 20000, default: 2000, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'filter.resonance',min: 0,     max: 1,     default: 0.15, taper: 'linear',     modulatable: true,  modScale: 1, curve: 's' },
-  { key: 'filter.keyTrack', min: 0,     max: 1,     default: 0,    taper: 'linear',     modulatable: true,  modScale: 1 },
-  { key: 'filter.envAmount',min: -4,    max: 4,     default: 2.4,  taper: 'linear',     modulatable: false, modScale: 0 },
-  { key: 'filter.type',     min: 0,     max: 2,     default: 0,    taper: 'linear',     modulatable: false, modScale: 0, kind: 'enum', enumValues: ['lp', 'bp', 'hp'] },
+  { key: 'env2.a',          min: 0.001, max: 10,    default: 0.01, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Attack', shortLabel: 'A' },
+  { key: 'env2.d',          min: 0.001, max: 10,    default: 0.2,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Decay', shortLabel: 'D' },
+  { key: 'env2.s',          min: 0,     max: 1,     default: 0.5,  taper: 'linear',     modulatable: true,  modScale: 1, label: 'Sustain', shortLabel: 'S' },
+  { key: 'env2.r',          min: 0.001, max: 10,    default: 0.5,  taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Release', shortLabel: 'R' },
+  { key: 'filter.cutoff',   min: 20,    max: 20000, default: 2000, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Cutoff' },
+  { key: 'filter.resonance',min: 0,     max: 1,     default: 0.15, taper: 'linear',     modulatable: true,  modScale: 1, curve: 's', label: 'Res' },
+  { key: 'filter.keyTrack', min: 0,     max: 1,     default: 0,    taper: 'linear',     modulatable: true,  modScale: 1, label: 'KeyTrk' },
+  { key: 'filter.envAmount',min: -4,    max: 4,     default: 2.4,  taper: 'linear',     modulatable: false, modScale: 0, label: 'EnvAmt' },
+  { key: 'filter.type',     min: 0,     max: 2,     default: 0,    taper: 'linear',     modulatable: false, modScale: 0, kind: 'enum', enumValues: ['lp', 'bp', 'hp'], label: 'Type' },
   // --- I3b LFOs (append-only). Two per-voice retriggered LFOs filling the
   // inert lfo1/lfo2 mod sources. rate as a mod DEST is exponential ±4 oct (like
   // filter.cutoff); its base value is plain Hz (log response is a panel-knob
   // mapping). shape is a continuous 0..4 morph (sine→tri→saw-up→saw-down→square),
   // linear/full-range like osc morph. Both modulatable so the matrix can sweep
   // them (incl. LFO→LFO). MOD_SOURCES is unchanged — lfo1/lfo2 already exist there.
-  { key: 'lfo1.rate',  min: 0.01, max: 2000, default: 5,   taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
-  { key: 'lfo1.shape', min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1 },
-  { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp' },
-  { key: 'lfo2.shape', min: 0,    max: 4,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1 },
+  { key: 'lfo1.rate',  min: 0.01, max: 2000, default: 5,   taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Rate' },
+  { key: 'lfo1.shape', min: 0,    max: 4,    default: 0,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Shape' },
+  { key: 'lfo2.rate',  min: 0.01, max: 2000, default: 0.5, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Rate' },
+  { key: 'lfo2.shape', min: 0,    max: 4,    default: 1,   taper: 'linear',     modulatable: true, modScale: 1, label: 'Shape' },
   // --- I3c env3 + loop mode (append-only). env3 mirrors env1/env2 (a/d/r
   // expOctaves time taper, s linear) but is NOT hardwired to anything — it
   // exists solely as the env3 mod source (live as of I3c). The three loop rows
   // mirror the sync toggles: kind:'bool', applied at the block boundary, NOT
   // mod-matrix destinations (modulatable:false). Default off ⇒ behavior unchanged.
-  { key: 'env3.a',    min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'env3.d',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'env3.s',    min: 0,     max: 1,  default: 0,   taper: 'linear',     modulatable: true,  modScale: 1 },
-  { key: 'env3.r',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp' },
-  { key: 'env1.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'env2.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'env3.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
+  { key: 'env3.a',    min: 0.001, max: 10, default: 0.2, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Attack', shortLabel: 'A' },
+  { key: 'env3.d',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Decay', shortLabel: 'D' },
+  { key: 'env3.s',    min: 0,     max: 1,  default: 0,   taper: 'linear',     modulatable: true,  modScale: 1, label: 'Sustain', shortLabel: 'S' },
+  { key: 'env3.r',    min: 0.001, max: 10, default: 0.3, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Release', shortLabel: 'R' },
+  { key: 'env1.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Loop' },
+  { key: 'env2.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Loop' },
+  { key: 'env3.loop', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Loop' },
   // --- I3d morph filter (append-only). filter.morph is the continuous LP→BP→HP
   // blend (0..2), modulatable so the matrix can sweep the filter ARCHITECTURE
   // (auto-joins MOD_DESTS). filter.model selects the FilterModule per track — the
   // 2nd enum after filter.type, riding the block as an index (classic=0, morph=1),
   // applied at the block boundary, NOT a mod dest (modulatable:false).
-  { key: 'filter.morph', min: 0, max: 2, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
-  { key: 'filter.model', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ['classic', 'morph'] },
+  { key: 'filter.morph', min: 0, max: 2, default: 0, taper: 'linear', modulatable: true,  modScale: 1, label: 'Morph' },
+  { key: 'filter.model', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ['classic', 'morph'], label: 'Model' },
   // --- filter self-oscillation (2026-06-20, append-only). filter.drive is the
   // opt-in feedback-saturation amount (0 = clean = today). Continuous + modulatable
   // (auto-joins MOD_DESTS) so an LFO/env can sweep it. The self-oscillation itself
   // lives at the top of filter.resonance (>0.9), needing no new param.
-  { key: 'filter.drive', min: 0, max: 1, default: 0, taper: 'linear', modulatable: true,  modScale: 1 },
+  { key: 'filter.drive', min: 0, max: 1, default: 0, taper: 'linear', modulatable: true,  modScale: 1, label: 'Drive' },
   // --- LFO tempo-sync (2026-07-05, append-only). Opt-in per LFO. When sync is
   // on, the effective rate is derived on the MAIN THREAD (AudioEngine) from the
   // note division × project bpm and written into lfoN.rate before it reaches the
   // kernel — the kernel never reads these two rows, so they are dead block slots
   // kept only so the leaves auto-derive (schema / accept-list / defaults). Not
   // mod dests (modulatable:false, modScale:0), like osc sync bools / filter enums.
-  { key: 'lfo1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'lfo1.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
-  { key: 'lfo2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'lfo2.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS },
+  { key: 'lfo1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'lfo1.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS, label: 'Div' },
+  { key: 'lfo2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'lfo2.div',  min: 0, max: LFO_SYNC_LABELS.length - 1, default: LFO_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_SYNC_LABELS, label: 'Div' },
   // --- Envelope tempo-sync (2026-07-06; step-fraction vocabulary 2026-07-08,
   // in-place enumValues swap — row count/positions unchanged, so append-only
   // holds). Opt-in per ENVELOPE: one sync toggle switches that envelope's
@@ -186,24 +193,24 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // kept so the leaves auto-derive (schema/accept-list/defaults). Per-stage
   // defaults keep the old note-division defaults' durations
   // (62.5ms / 250ms / 500ms @ 120 BPM).
-  { key: 'env1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'env1.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env1.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env1.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'env2.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env2.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env2.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env3.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool' },
-  { key: 'env3.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env3.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
-  { key: 'env3.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS },
+  { key: 'env1.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'env1.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Attack Div' },
+  { key: 'env1.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Decay Div' },
+  { key: 'env1.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Release Div' },
+  { key: 'env2.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'env2.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Attack Div' },
+  { key: 'env2.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Decay Div' },
+  { key: 'env2.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Release Div' },
+  { key: 'env3.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'env3.aDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('1/2'), taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Attack Div' },
+  { key: 'env3.dDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('2'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Decay Div' },
+  { key: 'env3.rDiv', min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_LABELS.indexOf('4'),   taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Release Div' },
   // --- LFO random modes (2026-07-13, append-only). A REAL kernel enum (unlike
   // lfo*.sync/div which are main-thread-only): the Lfo kernel reads mode per
   // sample. 0 off = continuous morph; 1 s&h = per-cycle stepped random; 2 smooth
   // = linearly-interpolated random. Not modulatable. Mirrors filter.type's kind.
-  { key: 'lfo1.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS },
-  { key: 'lfo2.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS },
+  { key: 'lfo1.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS, label: 'Mode' },
+  { key: 'lfo2.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS, label: 'Mode' },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel
