@@ -4,7 +4,7 @@
 // and wires every lifecycle event (pagehide, HMR) to shutdown(). Tests create
 // one per test — fresh, isolated, no module-reset gymnastics.
 import { createPinia, type Pinia } from 'pinia';
-import type { InjectionKey } from 'vue';
+import { toRaw, type InjectionKey } from 'vue';
 import { getDeep } from '@fiddle/shared';
 import { useProjectStore } from '../stores/project';
 import { createCommandBus, type CommandBus } from '../sync/CommandBus';
@@ -48,7 +48,13 @@ export function createAppRuntime(opts: AppRuntimeOptions = {}): AppRuntime {
   // late-bind busRef (they only run on user input, long after both exist).
   let busRef: CommandBus;
   const history = createUndoHistory({
-    getLiveValue: (path) => getDeep(project as unknown as Record<string, unknown>, path),
+    // toRaw: undoHistory compares by identity (skip-if-superseded). Primitive
+    // leaves are unaffected; object leaves (trackOrder) read back as reactive
+    // proxies which would never === the raw dispatched value.
+    getLiveValue: (path) => {
+      const v = getDeep(project as unknown as Record<string, unknown>, path);
+      return typeof v === 'object' && v !== null ? toRaw(v) : v;
+    },
     dispatch: (path, value, priorValue) => busRef.dispatchLocal({
       path, value, priorValue,
       gestureEnd: gestureEndForLeaf(String(path[path.length - 1])),

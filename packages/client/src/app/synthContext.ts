@@ -1,4 +1,4 @@
-import { ref, computed, type InjectionKey } from 'vue';
+import { ref, computed, toRaw, type InjectionKey } from 'vue';
 import type { OscillatorTypeLiteral, Path } from '@fiddle/shared';
 import { getDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
 import { type EngineType, freshProject } from '../project';
@@ -36,7 +36,10 @@ export function createSynthContext(runtime: AppRuntime) {
   // pre-connect edits still drive audio + UI without trying to sync.
   function dispatchLocal(path: Path, value: unknown): void {
     const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
-    const priorValue = getDeep(project as unknown as Record<string, unknown>, path);
+    const prior = getDeep(project as unknown as Record<string, unknown>, path);
+    // toRaw: object leaves (trackOrder) must be captured raw so undo's
+    // identity comparisons (see AppRuntime getLiveValue) hold.
+    const priorValue = typeof prior === 'object' && prior !== null ? toRaw(prior) : prior;
     bus.dispatchLocal({ path, value, priorValue, gestureEnd });
   }
 

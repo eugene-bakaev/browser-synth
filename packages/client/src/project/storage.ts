@@ -19,7 +19,7 @@ import {
 } from './types';
 import { freshProject, freshTrack } from './factory';
 import { migrateToLatest } from './migrations';
-import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, STEP_BUFFER_SIZE, coerceBpm } from '@fiddle/shared';
+import { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS, STEP_BUFFER_SIZE, coerceBpm, coerceTrackOrder } from '@fiddle/shared';
 
 function reconcileSteps(loaded: unknown, defaults: Step[]): Step[] {
   if (!Array.isArray(loaded)) {
@@ -88,6 +88,8 @@ export function reconcileWithDefaults(loaded: unknown): Project {
     // Same bpm rule as the sync/server boundary (normalizeProject) — one
     // definition so offline load, file open, and snapshot apply agree.
     bpm: coerceBpm(p.bpm),
+    // Same permutation rule as the sync/server boundary (normalizeProject).
+    trackOrder: coerceTrackOrder(p.trackOrder),
     tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
       reconcileTrack(tracks[i], i < Math.max(DEFAULT_ENABLED_TRACKS, tracks.length)),
     ) as Project['tracks'],
@@ -130,6 +132,9 @@ export function deserializeProject(text: string): Project {
 export function replaceProject(target: Project, source: Project): void {
   target.schemaVersion = source.schemaVersion;
   target.bpm = source.bpm;
+  // In-place splice keeps the reactive array's identity (same policy as the
+  // nested Object.assigns below).
+  target.trackOrder.splice(0, target.trackOrder.length, ...source.trackOrder);
 
   for (let i = 0; i < TRACK_POOL_SIZE; i++) {
     const t = target.tracks[i];

@@ -4,6 +4,7 @@ import { freshProject, freshTrack } from './factory';
 import { SynthEngine } from '../engine/SynthEngine';
 import { KickEngine } from '../engine/KickEngine';
 import { PROJECT_SCHEMA_VERSION } from './types';
+import { identityTrackOrder } from '@fiddle/shared';
 
 describe('reconcileWithDefaults', () => {
   it('fills a missing engine slot from that engine\'s DEFAULT_PARAMS', () => {
@@ -197,5 +198,23 @@ describe('reconcileWithDefaults', () => {
       (healed.tracks[0].engines.synth2.matrix[0] as any).source = 'lfo1';
       expect(inputMatrix[0].source).toBe('none');
     });
+  });
+
+  it('missing trackOrder heals to identity', () => {
+    const p = freshProject() as unknown as Record<string, unknown>;
+    delete p.trackOrder;
+    expect(reconcileWithDefaults(p).trackOrder).toEqual(identityTrackOrder());
+  });
+
+  it('an invalid trackOrder heals to identity', () => {
+    const p = freshProject();
+    p.trackOrder = [1, 2, 3];
+    expect(reconcileWithDefaults(p).trackOrder).toEqual(identityTrackOrder());
+  });
+
+  it('a valid shuffled trackOrder survives', () => {
+    const p = freshProject();
+    p.trackOrder = [...p.trackOrder].reverse();
+    expect(reconcileWithDefaults(p).trackOrder).toEqual(p.trackOrder);
   });
 });

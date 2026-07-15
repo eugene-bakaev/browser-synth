@@ -137,6 +137,16 @@ describe('replaceProject', () => {
     await nextTick();
     expect(fired).toHaveBeenCalled();
   });
+
+  it('replaceProject copies trackOrder in place (array identity preserved)', () => {
+    const target = freshProject();
+    const before = target.trackOrder;
+    const source = freshProject();
+    source.trackOrder = [...source.trackOrder].reverse();
+    replaceProject(target, source);
+    expect(target.trackOrder).toEqual(source.trackOrder);
+    expect(target.trackOrder).toBe(before); // same array object, contents replaced
+  });
 });
 
 describe('reconcileWithDefaults — legacy playMode compat', () => {
