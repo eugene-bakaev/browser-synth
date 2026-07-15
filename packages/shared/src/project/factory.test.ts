@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { freshProject, freshTrack, TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS } from './factory.js';
 import { DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
+import { identityTrackOrder } from './order.js';
 
 describe('freshProject track pool', () => {
   it('returns exactly TRACK_POOL_SIZE slots', () => {
@@ -32,4 +33,8 @@ it('freshTrack carries an independent synth2 slice at defaults', () => {
 
 it('fresh tracks are unnamed (name is the empty string)', () => {
   expect(freshTrack().name).toBe('');
+});
+
+it('freshProject carries the identity trackOrder', () => {
+  expect(freshProject().trackOrder).toEqual(identityTrackOrder());
 });

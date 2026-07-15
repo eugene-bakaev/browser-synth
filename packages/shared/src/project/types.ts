@@ -59,6 +59,12 @@ export interface ProjectTrack {
 export interface Project {
   schemaVersion: 2;
   bpm: number;
+  // Display order: a permutation of pool indices (0..TRACK_POOL_SIZE-1).
+  // Position = display position, value = pool index. Presentation ONLY — the
+  // tracks pool never moves and every sync path keeps addressing pool indices.
+  // Healed to identity by normalizeProject; optional on the wire (old
+  // payloads), required here (post-normalize invariant).
+  trackOrder: number[];
   // Fixed-length pool (TRACK_POOL_SIZE) — see factory.ts. The length invariant
   // is enforced by ProjectSchema and normalizeProject, not the TS type (a
   // 32-element tuple type is not worth writing).

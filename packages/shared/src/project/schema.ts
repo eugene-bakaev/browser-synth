@@ -224,12 +224,25 @@ const TrackSchema = z.object({
   enabled: z.boolean(),
 });
 
+// Whole-array leaf (the accept-list allows `set ['trackOrder']` only as one
+// atomic write — per-element writes could create a duplicated index mid-flight).
+export const TrackOrderSchema = z
+  .array(z.number().int().min(0).max(TRACK_POOL_SIZE - 1))
+  .length(TRACK_POOL_SIZE)
+  .refine((a) => new Set(a).size === a.length, {
+    message: 'trackOrder must be a permutation of pool indices',
+  });
+
 export const ProjectSchema = z.object({
   schemaVersion: z.literal(2),
   // No engine-level BPM clamp; pick a generous-but-sane range. The sequencer
   // schedules off this directly, so we keep it as an integer. Range constants
   // are single-sourced in constants.ts (shared with coerceBpm + the factory).
   bpm: z.number().int().min(BPM_MIN).max(BPM_MAX),
+  // Optional on the wire: the server's bulk-load path parses BEFORE
+  // normalizeProject runs, so an old client's payload (no trackOrder) must
+  // still parse. normalizeProject heals absence to identity right after.
+  trackOrder: TrackOrderSchema.optional(),
   tracks: z.array(TrackSchema).length(TRACK_POOL_SIZE),
 });
 
@@ -239,6 +252,7 @@ export const ProjectSchema = z.object({
 export const Schemas = {
   Project: ProjectSchema,
   Track: TrackSchema,
+  TrackOrder: TrackOrderSchema,
   Step: StepSchema,
   Mixer: MixerSchema,
   EngineType: EngineTypeSchema,

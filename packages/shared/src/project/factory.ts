@@ -19,6 +19,7 @@ import {
   STEP_BUFFER_SIZE,
   DEFAULT_PATTERN_LENGTH,
 } from './constants.js';
+import { identityTrackOrder } from './order.js';
 
 export { TRACK_POOL_SIZE, DEFAULT_ENABLED_TRACKS };
 
@@ -61,6 +62,7 @@ export function freshProject(): Project {
   return {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     bpm: DEFAULT_BPM,
+    trackOrder: identityTrackOrder(),
     tracks: Array.from({ length: TRACK_POOL_SIZE }, (_, i) =>
       freshTrack(i < DEFAULT_ENABLED_TRACKS),
     ),

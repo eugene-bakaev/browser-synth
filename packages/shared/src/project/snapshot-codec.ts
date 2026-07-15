@@ -37,9 +37,15 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 // The sparse form persisted to the DB. `tracks` is keyed by stringified pool
 // index ("0".."31") and contains ONLY slots that carry information. Top-level
 // schemaVersion + bpm are carried through unchanged.
+//
+// `trackOrder` is optional here for the same version-skew reason it's optional
+// on ProjectSchema: an old stored snapshot won't have it. Trivial passthrough
+// for now (no sparse/identity-omission encoding, no validation) — the encoding
+// and repair-on-missing behavior are owned by a later trackOrder task.
 export interface StoredProject {
   schemaVersion: Project['schemaVersion'];
   bpm: number;
+  trackOrder?: Project['trackOrder'];
   tracks: Record<string, ProjectTrack>;
 }
 
@@ -59,7 +65,7 @@ function getPristineDisabled(): ProjectTrack {
 // throws. Structure only — invariant repair stays with normalizeProject.
 export function unpackProject(stored: unknown): Project {
   const s = (stored && typeof stored === 'object')
-    ? (stored as { schemaVersion?: unknown; bpm?: unknown; tracks?: unknown })
+    ? (stored as { schemaVersion?: unknown; bpm?: unknown; trackOrder?: unknown; tracks?: unknown })
     : {};
 
   let tracks: ProjectTrack[];
@@ -77,6 +83,7 @@ export function unpackProject(stored: unknown): Project {
   return normalizeProject({
     schemaVersion: s.schemaVersion,
     bpm: s.bpm,
+    trackOrder: s.trackOrder,
     tracks,
   } as Project);
 }
@@ -91,5 +98,5 @@ export function packProject(project: Project): StoredProject {
       tracks[String(i)] = track;
     }
   });
-  return { schemaVersion: project.schemaVersion, bpm: project.bpm, tracks };
+  return { schemaVersion: project.schemaVersion, bpm: project.bpm, trackOrder: project.trackOrder, tracks };
 }
