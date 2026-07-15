@@ -915,6 +915,41 @@ describe('variable track count', () => {
     const { ctx } = await boot();
     expect(ctx.project.tracks).toHaveLength(TRACK_POOL_SIZE);
   });
+
+  it('addTrack appends the reused slot to the end of trackOrder', async () => {
+    const { runtime, ctx } = await boot();
+    // Free a middle slot, then re-add: the slot re-enables (lowest free index)
+    // but must DISPLAY last (spec: new tracks always appear at the end).
+    ctx.removeTrack(1);
+    ctx.addTrack();
+    const { project } = runtime.store;
+    expect(project.tracks[1].enabled).toBe(true);
+    const enabledInOrder = project.trackOrder.filter((i) => project.tracks[i].enabled);
+    expect(enabledInOrder[enabledInOrder.length - 1]).toBe(1);
+  });
+
+  it('addTrack on a fresh project shows the new slot last', async () => {
+    const { runtime, ctx } = await boot();
+    // Enabling slot 4 moves it past the disabled 5..31 in the raw order array
+    // (display-equivalent — the invariant is the ENABLED projection, not the
+    // raw array).
+    ctx.addTrack();
+    const { project } = runtime.store;
+    const enabledInOrder = project.trackOrder.filter((i) => project.tracks[i].enabled);
+    expect(enabledInOrder).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('a trackOrder dispatch is undoable (object-leaf identity)', async () => {
+    const { runtime, ctx } = await boot();
+    const { project } = runtime.store;
+    const before = [...project.trackOrder];
+    const next = [...project.trackOrder].reverse();
+    ctx.dispatchLocal(['trackOrder'], next);
+    expect(project.trackOrder).toEqual(next);
+    await Promise.resolve(); // let the undo burst seal (microtask)
+    runtime.history.undo();
+    expect([...project.trackOrder]).toEqual(before);
+  });
 });
 
 describe('Project boot (S1: no localStorage path)', () => {
