@@ -29,7 +29,7 @@
 ### Task 1: `label` / `shortLabel` fields on the descriptor table
 
 **Files:**
-- Modify: `packages/shared/src/engines/synth2-descriptors.ts` (interface + all 68 rows)
+- Modify: `packages/shared/src/engines/synth2-descriptors.ts` (interface + all 67 rows)
 - Test: `packages/shared/src/engines/synth2-descriptors.test.ts` (append a describe block)
 
 **Interfaces:**
@@ -96,7 +96,7 @@ Making `label` required is deliberate: a future descriptor append without a labe
 
 - [ ] **Step 4: Add `label` (and `shortLabel`) to every row**
 
-Add `label: '<value>'` to each of the 68 rows per this complete table (and `shortLabel` only on the 12 env-stage rows). Keys are listed exhaustively; N ∈ {1,2,3} where shown:
+Add `label: '<value>'` to each of the 67 rows per this complete table (and `shortLabel` only on the 12 env-stage rows). Keys are listed exhaustively; N ∈ {1,2,3} where shown:
 
 | Rows | `label` | `shortLabel` |
 |---|---|---|
