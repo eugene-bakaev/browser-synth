@@ -50,6 +50,16 @@ describe('analyzePitch', () => {
     expect(p.minF0!).toBeLessThan(240);
     expect(p.maxF0!).toBeGreaterThan(420);
   });
+
+  it('does not fall to a subharmonic when lagMax is an exact period multiple', () => {
+    const p = analyzePitch(sine(440, 1.0), { fMin: 40 });
+    expect(Math.abs(p.medianF0! - 440)).toBeLessThan(1);
+  });
+
+  it('does not fall to a subharmonic for an exact-integer period', () => {
+    const p = analyzePitch(sine(240, 0.5));
+    expect(Math.abs(p.medianF0! - 240)).toBeLessThan(1);
+  });
 });
 
 describe('pitchSettleTime', () => {

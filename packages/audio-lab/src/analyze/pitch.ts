@@ -21,7 +21,7 @@ export function analyzePitch(
   opts: { fMin?: number; fMax?: number; hopSeconds?: number } = {},
 ): PitchAnalysis {
   const { samples, sampleRate } = clip;
-  const fMin = opts.fMin ?? 50;
+  const fMin = opts.fMin ?? 40;
   const fMax = opts.fMax ?? 2000;
   const hopSeconds = opts.hopSeconds ?? 0.01;
   const hop = Math.max(1, Math.round(hopSeconds * sampleRate));
@@ -45,6 +45,9 @@ export function analyzePitch(
 
     let bestLag = -1;
     let bestR = -1;
+    // per-lag normalized correlation, kept so we can pick the smallest
+    // near-best local maximum (subharmonic guard) instead of the global max.
+    const rs: number[] = new Array(lagMax - lagMin + 1);
     // energy of the shifted segment, updated incrementally per lag
     let energyB = 0;
     for (let i = start + lagMin; i < start + lagMin + n; i++) energyB += samples[i] * samples[i];
@@ -52,6 +55,7 @@ export function analyzePitch(
       let dot = 0;
       for (let i = 0; i < n; i++) dot += samples[start + i] * samples[start + lag + i];
       const r = dot / Math.sqrt(sq * energyB + 1e-12);
+      rs[lag - lagMin] = r;
       if (r > bestR) {
         bestR = r;
         bestLag = lag;
@@ -67,7 +71,32 @@ export function analyzePitch(
       continue;
     }
 
-    // Parabolic refinement around bestLag (recompute the two neighbors' r).
+    // Subharmonic guard: every integer multiple of the true period
+    // correlates about as well as the true period itself (a periodic signal
+    // repeats, so shifting by 2x, 3x, ... a period lines up just as well as
+    // shifting by 1x). When one of those multiples lands on an exact integer
+    // lag it can edge out the true (generally non-integer) period lag for
+    // the global max, so instead pick the SMALLEST lag that is both a local
+    // maximum and within 1% of the global-max correlation. At fMax=2000Hz/
+    // 48kHz the true-period lag can be up to 0.5 samples off-grid, giving a
+    // worst-case unrefined correlation of about cos(2*pi*2000*0.5/48000) ~=
+    // 0.991 relative to a perfectly-aligned peak, so a 0.99 threshold keeps
+    // the true peak eligible while still excluding genuinely worse peaks.
+    let chosenLag = bestLag;
+    let chosenR = bestR;
+    const rThresh = bestR * 0.99;
+    for (let i = 0; i < rs.length; i++) {
+      const left = i > 0 ? rs[i - 1] : -Infinity;
+      const right = i < rs.length - 1 ? rs[i + 1] : -Infinity;
+      const isLocalMax = rs[i] >= left && rs[i] >= right;
+      if (isLocalMax && rs[i] >= rThresh) {
+        chosenLag = lagMin + i;
+        chosenR = rs[i];
+        break;
+      }
+    }
+
+    // Parabolic refinement around chosenLag (recompute the two neighbors' r).
     const rAt = (lag: number): number => {
       if (lag < lagMin || lag > lagMax) return -1;
       let dot = 0;
@@ -78,16 +107,16 @@ export function analyzePitch(
       }
       return dot / Math.sqrt(sq * eb + 1e-12);
     };
-    const rl = rAt(bestLag - 1);
-    const rr = rAt(bestLag + 1);
-    let lag = bestLag;
-    const denom = rl - 2 * bestR + rr;
+    const rl = rAt(chosenLag - 1);
+    const rr = rAt(chosenLag + 1);
+    let lag = chosenLag;
+    const denom = rl - 2 * chosenR + rr;
     if (rl >= 0 && rr >= 0 && Math.abs(denom) > 1e-12) {
-      lag = bestLag + (0.5 * (rl - rr)) / denom;
+      lag = chosenLag + (0.5 * (rl - rr)) / denom;
     }
 
     const f0 = sampleRate / lag;
-    frames.push({ time, f0, confidence: bestR });
+    frames.push({ time, f0, confidence: chosenR });
     f0s.push(f0);
   }
 
