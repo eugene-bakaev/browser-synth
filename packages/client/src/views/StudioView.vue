@@ -48,7 +48,7 @@
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
-            :title="trackDisplayName(entry.track, entry.index)"
+            :title="trackDisplayName(entry.track, entry.displayPos)"
             :title-is-custom="entry.track.name.trim() !== ''"
             :mixer="entry.track.mixer"
             :color="trackColor(entry.index)"
@@ -87,7 +87,7 @@
           <TrackNameEditor
             ref="nameEditor"
             :name="focusedTrack!.name"
-            :displayName="trackDisplayName(focusedTrack!, activeTrackIndex)"
+            :displayName="trackDisplayName(focusedTrack!, displayPosOf(activeTrackIndex!))"
             @commit="renameTrack"
           />
         </h2>
@@ -180,7 +180,7 @@
             <Tracker
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
-              :title="trackDisplayName(focusedTrack!, activeTrackIndex)"
+              :title="trackDisplayName(focusedTrack!, displayPosOf(activeTrackIndex!))"
               :title-is-custom="focusedTrack!.name.trim() !== ''"
               :mixer="focusedTrack!.mixer"
               :color="trackColor(activeTrackIndex)"
@@ -323,6 +323,7 @@ import {
   savePresetToFile,
   openPresetFromFile,
   PRESET_SCHEMA_VERSION,
+  orderedEnabledEntries,
   type EngineParamsMap,
   type ProjectTrack,
   type Preset,
@@ -402,13 +403,21 @@ useDeselectOnInputFocus(selectionStore);
 const enabledTrackCount = computed(() => projectStore.enabledTrackCount);
 const getTrackEngineType = (index: number) => projectStore.getTrackEngineType(index);
 
-// Enabled slots paired with their true pool index (used for color, sync paths,
-// and the focused view). Disabled slots are filtered out; order is slot order.
-const enabledTrackEntries = computed(() =>
-  project.tracks
-    .map((track, index) => ({ track, index }))
-    .filter(e => e.track.enabled),
-);
+// Enabled slots in display order (trackOrder indirection). entry.index is the
+// TRUE pool index (color, sync paths, focused view); entry.displayPos numbers
+// the visible list for the `Track ${n+1}` fallback.
+const enabledTrackEntries = computed(() => orderedEnabledEntries(project));
+
+// Display position lookup for name fallbacks outside the v-for (focused
+// header, remove dialog). Falls back to the pool index if the slot is not
+// in the enabled list (cannot happen for a rendered track; belt-and-braces).
+const displayPosByPool = computed(() => {
+  const m = new Map<number, number>();
+  for (const e of enabledTrackEntries.value) m.set(e.index, e.displayPos);
+  return m;
+});
+const displayPosOf = (poolIndex: number): number =>
+  displayPosByPool.value.get(poolIndex) ?? poolIndex;
 
 // If the focused track gets disabled (e.g. a remote peer removed it), drop back
 // to the overview so we never render a disabled slot's panels.
@@ -474,7 +483,7 @@ function renameTrack(value: string): void {
 const onRemoveTrack = async (index: number) => {
   const ok = await dialog.confirm({
     title: 'Remove track',
-    message: `Remove ${trackDisplayName(project.tracks[index], index)}? Its pattern and sound settings will be cleared.`,
+    message: `Remove ${trackDisplayName(project.tracks[index], displayPosOf(index))}? Its pattern and sound settings will be cleared.`,
     confirmLabel: 'Remove',
     danger: true,
   });
