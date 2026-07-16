@@ -15,7 +15,9 @@ export interface HealthReport {
 const CLIP_LEVEL = 0.999;
 const DC_FLAG_LEVEL = 0.01;
 const SILENCE_HOP_S = 0.005;
-const MOSTLY_SILENT_RATIO = 0.9;
+// 0.85 (not 0.9): flag with margin — the canonical "mostly silent" test case is a
+// 90%-silent clip, and a 0.9 threshold puts it exactly on a float-fragile boundary.
+const MOSTLY_SILENT_RATIO = 0.85;
 
 export function analyzeHealth(clip: AudioClip): HealthReport {
   const { samples, sampleRate } = clip;
