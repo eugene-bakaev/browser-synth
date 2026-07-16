@@ -22,8 +22,12 @@ npm run lab -- render-engine synth2 --matrix lfo1:filter.cutoff:0.8 --notes "A2:
 
 # Metrics for any WAV; A/B two runs:
 npm run lab -- analyze path/to/file.wav
-npm run lab -- compare packages/audio-lab/.audio-lab/runs/<A> packages/audio-lab/.audio-lab/runs/<B>
+npm run lab -- compare .audio-lab/runs/<A> .audio-lab/runs/<B>
 ```
+
+CLI arguments resolve against `packages/audio-lab/` (npm `-w` sets the cwd), so
+pass workspace-relative paths like above — from the repo root the same run dir
+is `packages/audio-lab/.audio-lab/runs/<A>` (use that form for the Read tool).
 
 Notes syntax `NOTE:START:DUR` (seconds). NOTE is a note name (`A3`, `C#4`, `Eb2`) — raw Hz values are not accepted. `--mono` = monophonic voice
 allocation — REQUIRED for portamento/glide checks. Unknown `--set` keys fail
@@ -31,7 +35,8 @@ with the full valid-key list — that error IS the param reference.
 
 ## Reading a run
 
-Each run directory (printed to stdout; relative paths resolve under `packages/audio-lab/`, so runs land in `packages/audio-lab/.audio-lab/runs/`) contains:
+Each run directory (its path is printed to stdout; on disk it is
+`packages/audio-lab/.audio-lab/runs/<stamp>-<label>/`) contains:
 
 - `report.json` — read `summary` first: `peakDb`, `medianF0`, `f0Range`,
   `onsets`, `attackSeconds`, `decaySeconds`, `meanCentroidHz`,
