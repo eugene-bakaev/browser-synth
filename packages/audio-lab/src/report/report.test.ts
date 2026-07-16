@@ -32,6 +32,16 @@ describe('buildReport', () => {
     const r = buildReport({ samples: new Float32Array(SR / 10), sampleRate: SR });
     expect(r.summary.peakDb).toBeNull();
     expect(r.summary.medianF0).toBeNull();
+    // the -Infinity → null mapping must reach the full envelope, not just the summary
+    expect((r.envelope.peakDb as unknown)).toBeNull();
+    expect((r.envelope.rmsDb as unknown)).toBeNull();
+    for (const p of r.envelope.points) {
+      expect((p.rmsDb as unknown)).toBeNull();
+      expect((p.peakDb as unknown)).toBeNull();
+    }
+    const json = JSON.stringify(r);
+    expect(json).not.toContain('Infinity');
+    expect(json).not.toContain('NaN');
   });
 });
 
