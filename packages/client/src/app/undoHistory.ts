@@ -13,17 +13,28 @@
 //     entry, undo/redo, or clear closes it. Two drags = two steps.
 //
 // Undo policy — skip-if-superseded: a leaf is restored only when the live
-// value still === what this client wrote; anything newer (another user, a
-// nack rollback, a reconcile) wins and the leaf is skipped. A fully-stale
-// entry pops through to the next older one so a keypress always does
-// something while anything undoable remains.
+// value still equals what this client wrote; anything newer (another user, a
+// nack rollback, a reconcile) wins and the leaf is skipped. Equality is ===
+// for primitive leaves; object leaves (e.g. trackOrder) compare by deep
+// value, because a server echo of our own op rewrites the store with a
+// freshly JSON-parsed object of equal contents but different identity (see
+// sameValue below). A fully-stale entry pops through to the next older one
+// so a keypress always does something while anything undoable remains.
 
-import { pathKey, type Path } from '@fiddle/shared';
+import { deepEqual, pathKey, type Path } from '@fiddle/shared';
 
 export interface UndoLeaf { path: Path; before: unknown; after: unknown }
 export interface UndoEntry { leaves: UndoLeaf[] }
 
 export const UNDO_DEPTH = 100;
+
+// Superseded = the live VALUE differs from what this client wrote. Identity
+// (===) suffices for primitive leaves; object leaves (trackOrder) compare by
+// value because a server echo of our own op rewrites the store with a fresh
+// JSON-parsed object of equal contents (see messageDispatch 'set').
+function sameValue(a: unknown, b: unknown): boolean {
+  return a === b || (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null && deepEqual(a, b));
+}
 
 export interface UndoHistoryDeps {
   /** Read the canonical live value at path (getDeep on project). */
@@ -91,7 +102,7 @@ export function createUndoHistory(deps: UndoHistoryDeps) {
       try {
         for (let i = entry.leaves.length - 1; i >= 0; i--) {
           const leaf = entry.leaves[i];
-          if (deps.getLiveValue(leaf.path) !== leaf.after) continue; // superseded
+          if (!sameValue(deps.getLiveValue(leaf.path), leaf.after)) continue; // superseded
           deps.dispatch(leaf.path, leaf.before, leaf.after);
           applied.unshift(leaf); // forward order for the redo mirror
         }
@@ -115,7 +126,7 @@ export function createUndoHistory(deps: UndoHistoryDeps) {
       applying = true;
       try {
         for (const leaf of entry.leaves) {
-          if (deps.getLiveValue(leaf.path) !== leaf.before) continue; // superseded
+          if (!sameValue(deps.getLiveValue(leaf.path), leaf.before)) continue; // superseded
           deps.dispatch(leaf.path, leaf.after, leaf.before);
           applied.push(leaf);
         }

@@ -217,6 +217,56 @@ describe('undo/redo semantics', () => {
   });
 });
 
+describe('object-leaf identity (server echo)', () => {
+  // trackOrder is a number[] permutation — the app's first non-primitive
+  // undoable leaf. When the server echoes back an ack for our own op,
+  // messageDispatch applies it via commandBus.applyRemote, which writes a
+  // freshly JSON-parsed array into the store: same contents, different
+  // object. Undo/redo must not mistake that echo for a genuine supersession.
+  const path: Path = ['trackOrder'];
+
+  it('undo survives an echo of its own write (identity-distinct, value-equal array)', async () => {
+    const h = harness();
+    const before = [0, 1, 2, 3];
+    const after = [1, 0, 2, 3];
+    h.state.set(h.key(path), before);
+    h.edit(path, after);
+    await tick();
+    // Simulate the server echo: same contents as `after`, different object.
+    h.remote(path, JSON.parse(JSON.stringify(after)));
+    h.history.undo();
+    expect(h.state.get(h.key(path))).toEqual(before);
+  });
+
+  it('redo survives an echo of its own write (identity-distinct, value-equal array)', async () => {
+    const h = harness();
+    const before = [0, 1, 2, 3];
+    const after = [1, 0, 2, 3];
+    h.state.set(h.key(path), before);
+    h.edit(path, after);
+    await tick();
+    h.history.undo(); // restores `before` (the real object)
+    // Simulate the server echo of the undo's own dispatch: same contents as
+    // `before`, different object.
+    h.remote(path, JSON.parse(JSON.stringify(before)));
+    h.history.redo();
+    expect(h.state.get(h.key(path))).toEqual(after);
+  });
+
+  it('genuine supersession still skips: a structurally different array wins', async () => {
+    const h = harness();
+    const before = [0, 1, 2, 3];
+    const after = [1, 0, 2, 3];
+    const theirs = [3, 2, 1, 0]; // another collaborator's permutation
+    h.state.set(h.key(path), before);
+    h.edit(path, after);
+    await tick();
+    h.remote(path, theirs);
+    h.history.undo();
+    expect(h.state.get(h.key(path))).toEqual(theirs); // skipped, untouched
+  });
+});
+
 describe('lifecycle', () => {
   it('depth cap: oldest entries evicted beyond UNDO_DEPTH', async () => {
     const h = harness();
