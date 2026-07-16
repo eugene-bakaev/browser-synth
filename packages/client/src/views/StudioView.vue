@@ -44,11 +44,23 @@
           v-for="entry in enabledTrackEntries"
           :key="entry.index"
           class="track-cell"
+          :class="{
+            'drag-source': draggingPool === entry.index,
+            'drop-before': dropTarget?.pool === entry.index && dropTarget.before,
+            'drop-after': dropTarget?.pool === entry.index && !dropTarget.before,
+          }"
+          :draggable="armedPool === entry.index"
+          @pointerdown="armDrag($event, entry.index)"
+          @dragstart="onDragStart($event, entry.index)"
+          @dragover="onDragOver($event, entry.index)"
+          @dragleave="onDragLeave(entry.index)"
+          @drop="onDrop($event, entry.index)"
+          @dragend="onDragEnd"
         >
           <Tracker
             :steps="entry.track.steps"
             :currentStep="currentStep"
-            :title="trackDisplayName(entry.track, entry.index)"
+            :title="trackDisplayName(entry.track, entry.displayPos)"
             :title-is-custom="entry.track.name.trim() !== ''"
             :mixer="entry.track.mixer"
             :color="trackColor(entry.index)"
@@ -87,7 +99,7 @@
           <TrackNameEditor
             ref="nameEditor"
             :name="focusedTrack!.name"
-            :displayName="trackDisplayName(focusedTrack!, activeTrackIndex)"
+            :displayName="trackDisplayName(focusedTrack!, displayPosOf(activeTrackIndex!))"
             @commit="renameTrack"
           />
         </h2>
@@ -180,7 +192,7 @@
             <Tracker
               :steps="project.tracks[activeTrackIndex].steps"
               :currentStep="currentStep"
-              :title="trackDisplayName(focusedTrack!, activeTrackIndex)"
+              :title="trackDisplayName(focusedTrack!, displayPosOf(activeTrackIndex!))"
               :title-is-custom="focusedTrack!.name.trim() !== ''"
               :mixer="focusedTrack!.mixer"
               :color="trackColor(activeTrackIndex)"
@@ -313,7 +325,14 @@
 
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue';
-import { TRACK_POOL_SIZE, trackDisplayName, type PresetRecord, type EngineType } from '@fiddle/shared';
+import {
+  TRACK_POOL_SIZE,
+  trackDisplayName,
+  moveTrackBefore,
+  ordersEqual,
+  type PresetRecord,
+  type EngineType,
+} from '@fiddle/shared';
 import { SYNTH_CONTEXT } from '../app/synthContext';
 import { trackColor } from '../ui/trackColors';
 import {
@@ -323,6 +342,7 @@ import {
   savePresetToFile,
   openPresetFromFile,
   PRESET_SCHEMA_VERSION,
+  orderedEnabledEntries,
   type EngineParamsMap,
   type ProjectTrack,
   type Preset,
@@ -402,13 +422,21 @@ useDeselectOnInputFocus(selectionStore);
 const enabledTrackCount = computed(() => projectStore.enabledTrackCount);
 const getTrackEngineType = (index: number) => projectStore.getTrackEngineType(index);
 
-// Enabled slots paired with their true pool index (used for color, sync paths,
-// and the focused view). Disabled slots are filtered out; order is slot order.
-const enabledTrackEntries = computed(() =>
-  project.tracks
-    .map((track, index) => ({ track, index }))
-    .filter(e => e.track.enabled),
-);
+// Enabled slots in display order (trackOrder indirection). entry.index is the
+// TRUE pool index (color, sync paths, focused view); entry.displayPos numbers
+// the visible list for the `Track ${n+1}` fallback.
+const enabledTrackEntries = computed(() => orderedEnabledEntries(project));
+
+// Display position lookup for name fallbacks outside the v-for (focused
+// header, remove dialog). Falls back to the pool index if the slot is not
+// in the enabled list (cannot happen for a rendered track; belt-and-braces).
+const displayPosByPool = computed(() => {
+  const m = new Map<number, number>();
+  for (const e of enabledTrackEntries.value) m.set(e.index, e.displayPos);
+  return m;
+});
+const displayPosOf = (poolIndex: number): number =>
+  displayPosByPool.value.get(poolIndex) ?? poolIndex;
 
 // If the focused track gets disabled (e.g. a remote peer removed it), drop back
 // to the overview so we never render a disabled slot's panels.
@@ -474,7 +502,7 @@ function renameTrack(value: string): void {
 const onRemoveTrack = async (index: number) => {
   const ok = await dialog.confirm({
     title: 'Remove track',
-    message: `Remove ${trackDisplayName(project.tracks[index], index)}? Its pattern and sound settings will be cleared.`,
+    message: `Remove ${trackDisplayName(project.tracks[index], displayPosOf(index))}? Its pattern and sound settings will be cleared.`,
     confirmLabel: 'Remove',
     danger: true,
   });
@@ -580,6 +608,56 @@ const onFill = ({ trackId, interval }: { trackId: number; interval: number }) =>
 const onSetLength = ({ trackId, length }: { trackId: number; length: number }) => {
   dispatchLocal(['tracks', trackId, 'patternLength'], length);
 };
+
+// --- Drag & drop track reordering (overview grid only; spec §2) ---
+// Armed from the card header so inner controls never start a drag. A drop
+// emits ONE atomic trackOrder op ("move dragged pool id before anchor pool
+// id"), computed against the CURRENT order at drop time — resilient to a
+// peer's concurrent reorder; LWW settles simultaneous drags.
+const armedPool = ref<number | null>(null);     // header pressed — draggable
+const draggingPool = ref<number | null>(null);  // drag in flight
+const dropTarget = ref<{ pool: number; before: boolean } | null>(null);
+
+function armDrag(e: PointerEvent, pool: number): void {
+  const el = e.target as HTMLElement | null;
+  armedPool.value = el?.closest('.tracker-header-bar') ? pool : null;
+}
+function onDragStart(e: DragEvent, pool: number): void {
+  if (armedPool.value !== pool) { e.preventDefault(); return; }
+  draggingPool.value = pool;
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(pool));
+  }
+}
+function onDragOver(e: DragEvent, pool: number): void {
+  if (draggingPool.value === null || draggingPool.value === pool) return;
+  e.preventDefault(); // required — without it the browser refuses the drop
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  dropTarget.value = { pool, before: e.clientX < rect.left + rect.width / 2 };
+}
+function onDragLeave(pool: number): void {
+  if (dropTarget.value?.pool === pool) dropTarget.value = null;
+}
+function onDrop(e: DragEvent, pool: number): void {
+  e.preventDefault();
+  const moved = draggingPool.value;
+  const target = dropTarget.value;
+  if (moved === null || target === null || target.pool !== pool) return;
+  // "after card X" = "before the enabled card that follows X" (null = end).
+  const entries = enabledTrackEntries.value;
+  const ti = entries.findIndex((en) => en.index === target.pool);
+  const anchor = target.before ? target.pool : ti === -1 ? null : (entries[ti + 1]?.index ?? null);
+  const next = moveTrackBefore(project.trackOrder, moved, anchor);
+  if (!ordersEqual(next, project.trackOrder)) dispatchLocal(['trackOrder'], next);
+}
+function onDragEnd(): void {
+  // Fires on drop, cancel (Escape), and drop-outside alike — single cleanup.
+  armedPool.value = null;
+  draggingPool.value = null;
+  dropTarget.value = null;
+}
 
 const onNew = async () => {
   const ok = await dialog.confirm({
@@ -804,6 +882,24 @@ const onInitPatch = async () => {
   border-color: #00f0ff;
   background: #141414;
 }
+
+.track-cell { position: relative; }
+.track-cell.drag-source { opacity: 0.45; }
+.track-cell.drop-before::before,
+.track-cell.drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #00f0ff;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.track-cell.drop-before::before { left: -6px; }
+.track-cell.drop-after::after { right: -6px; }
+/* Grab affordance on the drag handle (child component ⇒ :deep). */
+.tracks-grid :deep(.tracker-header-bar) { cursor: grab; }
 
 /* Focused track layout */
 .focused-container {

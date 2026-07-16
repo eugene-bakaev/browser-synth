@@ -8,6 +8,13 @@ export { activeParams } from './types.js';
 export { freshStep, freshTrack, freshProject } from './factory.js';
 export { trackDisplayName } from './display.js';
 export { normalizeProject, coerceBpm } from './normalize.js';
+export {
+  identityTrackOrder,
+  isValidTrackOrder,
+  coerceTrackOrder,
+  ordersEqual,
+  moveTrackBefore,
+} from './order.js';
 export { packProject, unpackProject, deepEqual } from './snapshot-codec.js';
 export type { StoredProject } from './snapshot-codec.js';
 export {

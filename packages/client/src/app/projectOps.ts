@@ -180,6 +180,10 @@ export function createProjectOps(deps: ProjectOpsDeps) {
     }
   }
 
+  // NOTE: trackOrder is deliberately NOT diffed here. This fallback only runs
+  // against servers without the bulk-load capability, which also predate the
+  // trackOrder accept-list entry — they would nack the path (and a nack rolls
+  // back local state). The bulk `load` message carries trackOrder wholesale.
   function enqueueWholeProjectDiff(before: ProjectSyncSnapshot): void {
     if (project.bpm !== before.bpm) deps.enqueue(['bpm'], project.bpm, before.bpm, gestureEndForLeaf('bpm'));
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {

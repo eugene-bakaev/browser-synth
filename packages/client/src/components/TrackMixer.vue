@@ -28,7 +28,7 @@
         <!-- Strip Header with Label & LED -->
         <div class="strip-header">
           <div class="track-info">
-            <span class="track-number">{{ trackDisplayName(chan.track, chan.index) }}</span>
+            <span class="track-number">{{ trackDisplayName(chan.track, chan.displayPos) }}</span>
             <span class="track-type">{{ chan.track.engineType.toUpperCase() }}</span>
           </div>
           <!-- Pulse LED on note trigger -->
@@ -101,10 +101,13 @@ const props = defineProps<{
   currentStep: number;
 }>();
 
+// Display order comes from the shared trackOrder indirection — same rule as
+// StudioView's overview grid (see project/trackEntries.ts).
 const enabledChannels = computed(() =>
-  props.trackStates
-    .map((track, index) => ({ track, index }))
-    .filter(c => c.track.enabled),
+  synthCtx.project.trackOrder
+    .map((index) => ({ track: props.trackStates[index], index }))
+    .filter((c) => c.track?.enabled)
+    .map((c, displayPos) => ({ ...c, displayPos })),
 );
 
 // Pre-create one WritableComputedRef per track slot so the v-for Knob can

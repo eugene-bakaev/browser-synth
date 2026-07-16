@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { freshProject, freshTrack } from './factory.js';
 import { ProjectSchema, Schemas, SYNTH2_LEAF_SCHEMAS } from './schema.js';
 import { SYNTH2_DESCRIPTORS, DEFAULT_SYNTH2_PARAMS } from '../engines/index.js';
-import { TRACK_NAME_MAX_LENGTH } from './constants.js';
+import { TRACK_NAME_MAX_LENGTH, TRACK_POOL_SIZE } from './constants.js';
 
 describe('ProjectSchema', () => {
   it('accepts freshProject()', () => {
@@ -294,5 +294,38 @@ describe('track name schema', () => {
     expect(Schemas.Track.safeParse({ ...freshTrack(), name: 42 }).success).toBe(false);
     const { name: _n, ...noName } = freshTrack();
     expect(Schemas.Track.safeParse(noName).success).toBe(false);
+  });
+});
+
+describe('trackOrder', () => {
+  it('freshProject parses (identity order)', () => {
+    expect(ProjectSchema.safeParse(freshProject()).success).toBe(true);
+  });
+  it('a shuffled permutation parses', () => {
+    const p = freshProject();
+    p.trackOrder = [...p.trackOrder].reverse();
+    expect(ProjectSchema.safeParse(p).success).toBe(true);
+  });
+  it('a project WITHOUT trackOrder still parses (old-client bulk load)', () => {
+    const p = freshProject() as unknown as Record<string, unknown>;
+    delete p.trackOrder;
+    expect(ProjectSchema.safeParse(p).success).toBe(true);
+  });
+  it('duplicates are rejected', () => {
+    const p = freshProject();
+    p.trackOrder = [...p.trackOrder];
+    p.trackOrder[1] = 0;
+    expect(ProjectSchema.safeParse(p).success).toBe(false);
+  });
+  it('wrong length is rejected', () => {
+    const p = freshProject();
+    p.trackOrder = p.trackOrder.slice(1);
+    expect(ProjectSchema.safeParse(p).success).toBe(false);
+  });
+  it('out-of-range index is rejected', () => {
+    const p = freshProject();
+    p.trackOrder = [...p.trackOrder];
+    p.trackOrder[0] = TRACK_POOL_SIZE;
+    expect(ProjectSchema.safeParse(p).success).toBe(false);
   });
 });

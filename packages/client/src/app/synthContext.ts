@@ -1,6 +1,6 @@
-import { ref, computed, type InjectionKey } from 'vue';
+import { ref, computed, toRaw, type InjectionKey } from 'vue';
 import type { OscillatorTypeLiteral, Path } from '@fiddle/shared';
-import { getDeep, TRACK_POOL_SIZE } from '@fiddle/shared';
+import { getDeep, TRACK_POOL_SIZE, moveTrackBefore, ordersEqual } from '@fiddle/shared';
 import { type EngineType, freshProject } from '../project';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
 import { roster, selfClientId } from '../sync/presence';
@@ -36,7 +36,10 @@ export function createSynthContext(runtime: AppRuntime) {
   // pre-connect edits still drive audio + UI without trying to sync.
   function dispatchLocal(path: Path, value: unknown): void {
     const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
-    const priorValue = getDeep(project as unknown as Record<string, unknown>, path);
+    const prior = getDeep(project as unknown as Record<string, unknown>, path);
+    // toRaw: object leaves (trackOrder) must be captured raw so undo's
+    // identity comparisons (see AppRuntime getLiveValue) hold.
+    const priorValue = typeof prior === 'object' && prior !== null ? toRaw(prior) : prior;
     bus.dispatchLocal({ path, value, priorValue, gestureEnd });
   }
 
@@ -163,10 +166,15 @@ export function createSynthContext(runtime: AppRuntime) {
   const enabledTrackCount = computed(() => project.tracks.filter(t => t.enabled).length);
 
   // Add a track = enable the lowest-index disabled slot (fills a freed hole if
-  // any). No-op when the pool is full.
+  // any) AND move that slot to the end of the display order (new tracks always
+  // appear last — spec 2026-07-15-track-reorder-design). Both dispatches share
+  // one synchronous task, so the undo burst rule makes them ONE undo entry.
   const addTrack = (): void => {
     const idx = project.tracks.findIndex(t => !t.enabled);
-    if (idx !== -1) dispatchLocal(['tracks', idx, 'enabled'], true);
+    if (idx === -1) return;
+    dispatchLocal(['tracks', idx, 'enabled'], true);
+    const next = moveTrackBefore(project.trackOrder, idx, null);
+    if (!ordersEqual(next, project.trackOrder)) dispatchLocal(['trackOrder'], next);
   };
 
   // Remove a track = disable that slot (non-destructive; step/param data stays
