@@ -56,7 +56,9 @@ describe('renderEngine', () => {
       });
       const health = analyzeHealth(clip);
       expect(health.nonFiniteSamples, engine).toBe(0);
-      expect(health.flags, engine).not.toContain('MOSTLY_SILENT');
+      // A short percussive default (hat2 decays in ~0.1s) legitimately leaves most
+      // of the window silent — assert audibility directly, not the silence heuristic.
+      expect(analyzeEnvelope(clip).peakDb, engine).toBeGreaterThan(-40);
     }
   });
 
