@@ -19,7 +19,8 @@
     "typecheck:server": "npm run typecheck -w @fiddle/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test:e2e:server": "npm run test:e2e -w @fiddle/server",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "lab": "npm run lab -w @fiddle/audio-lab --"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

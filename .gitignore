@@ -42,3 +42,6 @@ screenshot*.png
 
 # Visual brainstorming companion (superpowers)
 .superpowers/
+
+# audio-lab run outputs
+.audio-lab/
