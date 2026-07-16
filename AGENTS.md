@@ -42,6 +42,8 @@ Run from the repo root; they fan out to workspaces via `-w`.
   **Excludes** `*.e2e.test.ts`.
 - `npm run test:e2e:server` — the real-socket server protocol e2e suite.
 - `npm run build` — build client then server.
+- `npm run lab -- <command>` — offline audio lab: render the `*2` kernel
+  engines in Node and analyze the sound (no browser, no speakers).
 
 **Gate before any merge:** `npm run typecheck && npm test && npm run build` must
 be green.
@@ -62,6 +64,14 @@ be green.
   on your own initiative. Do the work on a feature branch and stop there; only
   merge when the user explicitly tells you to. Keep feature branches as-is unless
   told otherwise.
+- **Audible-behavior changes — verify with the audio lab:** any change that
+  affects sound (DSP, engines, envelopes, filters, LFOs) must be checked with
+  the offline audio lab: `npm run lab -- render-engine <engine> ...` renders
+  the real `*2` kernels and reports metrics (pitch track, envelope, spectral
+  centroid, health flags) plus spectrogram/waveform images an agent can read.
+  Use the baseline→change→`compare` A/B workflow. Full command reference and
+  interpretation guide: [`.claude/skills/audio-lab/SKILL.md`](./.claude/skills/audio-lab/SKILL.md).
+  This complements — never replaces — the browser verification below.
 - **Browser verification:** before telling the user that work is done, verify
   the result in the browser using the Playwright MCP (or the claude-in-chrome
   MCP) — drive the running dev app (`npm run dev`), exercise the changed flow,
