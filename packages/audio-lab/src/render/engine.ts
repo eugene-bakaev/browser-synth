@@ -2,6 +2,11 @@
 // entries do (packages/client/src/engine/<name>/worklet-entry.ts) and renders
 // in the same 128-frame blocks. Times are seconds from render start; the
 // kernels convert to frames internally (noteOn rounds t * sampleRate).
+//
+// These deep imports into @fiddle/client/src/** resolve only because the
+// client package has no `exports` field (workspace symlink + moduleResolution
+// bundler). Adding an exports map to @fiddle/client without a "./src/*"
+// wildcard breaks every kernel import below.
 import { Synth2Kernel } from '@fiddle/client/src/engine/synth2/kernel/Synth2Kernel';
 import {
   PARAM_INDEX as SYNTH2_PARAM_INDEX,
