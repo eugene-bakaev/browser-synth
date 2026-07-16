@@ -648,7 +648,7 @@ function onDrop(e: DragEvent, pool: number): void {
   // "after card X" = "before the enabled card that follows X" (null = end).
   const entries = enabledTrackEntries.value;
   const ti = entries.findIndex((en) => en.index === target.pool);
-  const anchor = target.before ? target.pool : (entries[ti + 1]?.index ?? null);
+  const anchor = target.before ? target.pool : ti === -1 ? null : (entries[ti + 1]?.index ?? null);
   const next = moveTrackBefore(project.trackOrder, moved, anchor);
   if (!ordersEqual(next, project.trackOrder)) dispatchLocal(['trackOrder'], next);
 }

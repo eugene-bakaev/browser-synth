@@ -1,4 +1,3 @@
-//
 // Track display-order helpers. `trackOrder` is a permutation of pool indices
 // (0..TRACK_POOL_SIZE-1): position in the array = display position, value =
 // pool index. The tracks pool itself NEVER moves — track identity is the pool
