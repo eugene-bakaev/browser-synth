@@ -12,6 +12,8 @@ export { analyzeSpectrum } from './analyze/spectrum';
 export type { SpectrumAnalysis, SpectralPeak, SpectrogramData } from './analyze/spectrum';
 export { analyzeHealth } from './analyze/health';
 export type { HealthReport } from './analyze/health';
+export { modDepth } from './analyze/moddepth';
+export type { ModDepthResult } from './analyze/moddepth';
 export { compareReports } from './analyze/compare';
 export type { CompareResult, MetricDelta } from './analyze/compare';
 export { buildReport, writeRunDir, defaultRunDir } from './report/report';
