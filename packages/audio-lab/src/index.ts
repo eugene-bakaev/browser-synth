@@ -14,6 +14,8 @@ export { analyzeHealth } from './analyze/health';
 export type { HealthReport } from './analyze/health';
 export { modDepth } from './analyze/moddepth';
 export type { ModDepthResult } from './analyze/moddepth';
+export { bandEnergyRatio } from './analyze/bands';
+export type { BandRatios } from './analyze/bands';
 export { compareReports } from './analyze/compare';
 export type { CompareResult, MetricDelta } from './analyze/compare';
 export { buildReport, writeRunDir, defaultRunDir } from './report/report';
