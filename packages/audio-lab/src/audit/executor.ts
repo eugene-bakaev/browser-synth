@@ -107,8 +107,11 @@ export async function runCheck(check: CheckSpec, opts: RunCheckOpts): Promise<Ch
       else if (Math.abs(settle - a.knobSeconds) > a.toleranceSeconds) {
         problems.push(`settle ${fmt(settle)}s vs knob ${a.knobSeconds}s (tol ${a.toleranceSeconds}s)`);
       }
+    } else if (a.kind === 'health') {
+      renderLeg('render', check.baseline);
     } else {
-      renderLeg('render', check.baseline); // health-only
+      const exhaustive: never = a;
+      throw new Error(`unhandled assertion kind ${(exhaustive as { kind: string }).kind}`);
     }
 
     // --- health policy: every rendered leg ---
