@@ -18,11 +18,6 @@
       >
         POLY
       </button>
-      <div class="glide-control">
-        <Knob v-if="!params.glide.sync" :label="knobLabel('glide.time')" :min="0.001" :max="2" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.glide.time" :modelValue="params.glide.time" @update:modelValue="ks.set(['glide', 'time'], $event)" :syncPath="ks.pathFor(['glide', 'time'])" @gesture-end="ks.end(['glide', 'time'])" />
-        <Knob v-else :label="knobLabel('glide.time')" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.glide.div)" :modelValue="envDivisionLabelToIndex(params.glide.div)" @update:modelValue="ks.set(['glide', 'div'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['glide', 'div'])" @gesture-end="ks.end(['glide', 'div'])" />
-        <button type="button" class="glide-sync-btn" :class="{ active: params.glide.sync }" @click="ks.set(['glide', 'sync'], !params.glide.sync)">SYNC</button>
-      </div>
     </div>
 
     <!-- Column 1: Oscillator 1 -->
@@ -115,6 +110,14 @@
           <Knob :label="knobLabel('fm.osc2')" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.fm.osc2" :modelValue="params.fm.osc2" @update:modelValue="ks.set(['fm', 'osc2'], $event)" :syncPath="ks.pathFor(['fm', 'osc2'])" @gesture-end="ks.end(['fm', 'osc2'])" />
           <Knob :label="knobLabel('fm.osc3')" :min="0" :max="4" :step="0.01" :defaultValue="DEFAULTS.fm.osc3" :modelValue="params.fm.osc3" @update:modelValue="ks.set(['fm', 'osc3'], $event)" :syncPath="ks.pathFor(['fm', 'osc3'])" @gesture-end="ks.end(['fm', 'osc3'])" />
         </div>
+      </div>
+      <div class="module-group glide-panel">
+        <h3>GLIDE</h3>
+        <div class="knob-row env-knob-row">
+          <Knob v-if="!params.glide.sync" :label="knobLabel('glide.time')" :min="0.001" :max="2" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.glide.time" :modelValue="params.glide.time" @update:modelValue="ks.set(['glide', 'time'], $event)" :syncPath="ks.pathFor(['glide', 'time'])" @gesture-end="ks.end(['glide', 'time'])" />
+          <Knob v-else :label="knobLabel('glide.time')" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.glide.div)" :modelValue="envDivisionLabelToIndex(params.glide.div)" @update:modelValue="ks.set(['glide', 'div'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['glide', 'div'])" @gesture-end="ks.end(['glide', 'div'])" />
+        </div>
+        <button type="button" class="glide-sync-btn" :class="{ active: params.glide.sync }" @click="ks.set(['glide', 'sync'], !params.glide.sync)">SYNC</button>
       </div>
     </div>
 
@@ -270,37 +273,11 @@ defineProps<{
   --knob-value-width: 56px;
 }
 
-/* Glide (portamento) rides the shared mode-selector row. The selector's flex
-   styling is global (App.vue, shared with synth1); these scoped rules only
-   affect synth2's instance. Knob centers against the taller row; step labels
-   ("1/16 st") need the wider readout, same as the env rows. */
-.synth-mode-selector { align-items: center; }
-.glide-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  --knob-value-width: 56px;
-}
-.glide-sync-btn {
-  background: #181818;
-  color: #666;
-  border: 1px solid #2a2a2a;
-  border-radius: 4px;
-  padding: 5px 10px;
-  font-family: monospace;
-  font-size: 0.7rem;
-  font-weight: bold;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.glide-sync-btn:hover { color: #aaa; border-color: #444; }
-.glide-sync-btn.active { background: #222; color: #fff; border-color: #555; }
-
 .sync-btn,
 .loop-btn,
 .lfo-sync-btn,
-.env-sync-btn {
+.env-sync-btn,
+.glide-sync-btn {
   width: 100%;
   margin-top: 6px;
   background: #181818;
@@ -318,11 +295,13 @@ defineProps<{
 .sync-btn:hover,
 .loop-btn:hover,
 .lfo-sync-btn:hover,
-.env-sync-btn:hover { color: #aaa; border-color: #444; }
+.env-sync-btn:hover,
+.glide-sync-btn:hover { color: #aaa; border-color: #444; }
 .sync-btn.active,
 .loop-btn.active,
 .lfo-sync-btn.active,
-.env-sync-btn.active { background: #222; color: #fff; border-color: #555; }
+.env-sync-btn.active,
+.glide-sync-btn.active { background: #222; color: #fff; border-color: #555; }
 .filter-type-selector {
   display: flex;
   gap: 6px;

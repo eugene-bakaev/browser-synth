@@ -409,11 +409,12 @@ describe('Synth2Panel envelope tempo-sync', () => {
 });
 
 describe('Synth2Panel glide (portamento) control', () => {
-  it('renders the Glide knob and SYNC toggle in the mode-selector row', () => {
+  it('renders the Glide knob and SYNC toggle in their own GLIDE module panel', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     const el = mountPanel(params);
-    const cell = el.querySelector('.synth-mode-selector .glide-control');
+    const cell = el.querySelector('.module-group.glide-panel');
     expect(cell).not.toBeNull();
+    expect(cell!.querySelector('h3')!.textContent?.trim()).toBe('GLIDE');
     const labels = Array.from(cell!.querySelectorAll('.knob-label')).map(n => n.textContent?.trim());
     expect(labels).toContain('Glide');
     expect(cell!.querySelector('.glide-sync-btn')!.textContent?.trim()).toBe('SYNC');
@@ -430,7 +431,7 @@ describe('Synth2Panel glide (portamento) control', () => {
     const params = structuredClone(Synth2Engine.DEFAULT_PARAMS) as any;
     params.glide.sync = true;
     const el = mountPanel(params);
-    const readout = el.querySelector('.glide-control .knob-value')?.textContent?.trim();
+    const readout = el.querySelector('.glide-panel .knob-value')?.textContent?.trim();
     expect(readout).toBe('1 st'); // default div '1' rendered via ENV_SYNC_KNOB_LABELS
   });
 });
