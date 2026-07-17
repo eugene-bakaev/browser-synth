@@ -34,6 +34,12 @@ dist-ssr
 .playwright-mcp/
 screenshot*.png
 
+# Stray verification artifacts dropped in the repo root (no tracked assets live here)
+/*.png
+/*.jpg
+/*.gif
+/studio-*.md
+
 # Playwright E2E artifacts
 /test-results/
 /playwright-report/
