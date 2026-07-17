@@ -304,3 +304,79 @@ describe('Voice filter.drive routing (self-oscillation)', () => {
     expect(rms).toBeGreaterThan(0.005); // the filter is singing despite muted oscs
   });
 });
+
+describe('Voice portamento (spec 2026-07-16)', () => {
+  const SR = 48000;
+
+  // Rising zero-crossing frequency estimate over out[from..to). Valid for the
+  // clean single-sine voice configured below (no noise, filter wide open).
+  function measureFreq(out: Float32Array, from: number, to: number): number {
+    let first = -1; let last = -1; let count = 0;
+    for (let i = from + 1; i < to; i++) {
+      if (out[i - 1] <= 0 && out[i] > 0) {
+        if (first < 0) first = i; else last = i;
+        count++;
+      }
+    }
+    return count < 2 ? 0 : ((count - 1) * SR) / (last - first);
+  }
+
+  // Single sine through a wide-open static filter: env1 sustain 1 for steady
+  // amplitude, env2→cutoff off so pitch is the only thing moving.
+  function sineVoice(glideTime: number): Voice {
+    const v = new Voice(SR, 1);
+    const set = (key: string, val: number) => v.slots[PARAM_INDEX[key]].setBase(val);
+    set('osc1.morph', 0);
+    set('osc2.level', 0);
+    set('osc3.level', 0);
+    set('noise.level', 0);
+    set('filter.cutoff', 20000);
+    set('filter.resonance', 0);
+    set('filter.envAmount', 0);
+    set('env1.a', 0.001);
+    set('env1.s', 1);
+    set('glide.time', glideTime);
+    return v;
+  }
+
+  // 1s of the second note after 0.2s of the first (slot smoothers settled).
+  function secondNote(v: Voice, freq1: number, freq2: number, mono = true): Float32Array {
+    v.noteOn(freq1, 1, SR);
+    const warm = new Float32Array(9600);
+    v.renderAdd(warm, 0, 9600);
+    v.noteOn(freq2, 1, SR, mono);
+    const out = new Float32Array(SR);
+    v.renderAdd(out, 0, SR);
+    return out;
+  }
+
+  it('mono retrigger glides: mid-glide pitch sits between the notes, then lands on target', () => {
+    const out = secondNote(sineVoice(0.1), 110, 220);
+    const mid = measureFreq(out, 480, 1920);       // 10–40ms into a 100ms glide
+    expect(mid).toBeGreaterThan(115);
+    expect(mid).toBeLessThan(205);
+    const settled = measureFreq(out, 7200, 12000); // 150–250ms: glide done
+    expect(Math.abs(settled - 220)).toBeLessThan(3);
+  });
+
+  it('default glide time (1ms) is an inaudible snap: pitch at target immediately', () => {
+    const out = secondNote(sineVoice(0.001), 110, 220);
+    const early = measureFreq(out, 240, 2640);     // 5–55ms window
+    expect(Math.abs(early - 220)).toBeLessThan(3);
+  });
+
+  it('poly notes (mono=false) never glide', () => {
+    const out = secondNote(sineVoice(0.1), 110, 220, false);
+    const early = measureFreq(out, 240, 2640);
+    expect(Math.abs(early - 220)).toBeLessThan(3);
+  });
+
+  it('first-ever note snaps even with a long glide time', () => {
+    const v = sineVoice(1.0);
+    v.noteOn(220, 1, SR);
+    const out = new Float32Array(4800);
+    v.renderAdd(out, 0, 4800);
+    const early = measureFreq(out, 240, 2640);
+    expect(Math.abs(early - 220)).toBeLessThan(3);
+  });
+});
