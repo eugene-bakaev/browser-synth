@@ -10,28 +10,16 @@ import { runCheck } from './executor';
 import { writeAuditReport } from './report';
 import { KNOWN_ISSUES } from './known-issues';
 import type { CheckResult, CheckSpec } from './types';
-import { drumBase } from './checks/baselines';
-// task-6..10 imports go here:
-// import { kick2Checks } from './checks/kick2.checks';
+import { kick2Checks } from './checks/kick2.checks';
+import { snare2Checks } from './checks/snare2.checks';
+// task-7..10 imports go here:
 // …
 
 const FAST = process.env.AUDIT_FAST === '1';
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const AUDIT_DIR = join(import.meta.dirname, '..', '..', '.audio-lab', 'audit', STAMP);
 
-// TEMPORARY smoke checks proving the pipeline end-to-end against real
-// kernels. Task 6's kick2 table subsumes these; remove then.
-// kick2's default patch legitimately clips (raw kernel, no mixer gain
-// staging — same known truth as SYNTH2_LEVELS above), so CLIPPING is
-// allowed alongside MOSTLY_SILENT rather than a DSP change to fix it.
-const checks: CheckSpec[] = [
-  { id: 'smoke.kick2.audible', engine: 'kick2', title: 'default kick is audible',
-    baseline: drumBase('kick2'), assertion: { kind: 'absolute', metric: 'peakDb', min: -30 },
-    allowedHealth: ['MOSTLY_SILENT', 'CLIPPING'] },
-  { id: 'smoke.kick2.decay', engine: 'kick2', title: 'decay knob lengthens decay',
-    baseline: drumBase('kick2'), allowedHealth: ['MOSTLY_SILENT', 'CLIPPING'],
-    assertion: { kind: 'directional', param: 'decay', from: 0.1, to: 1.0, metric: 'decaySeconds', direction: 'up', minDelta: 0.15 } },
-];
+const checks: CheckSpec[] = [...kick2Checks, ...snare2Checks];
 
 const saveFailure = async (id: string, spec: EngineRenderSpec, clip: AudioClip): Promise<string> => {
   const dir = join(AUDIT_DIR, 'failures', id);
