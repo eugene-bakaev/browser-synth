@@ -12,14 +12,16 @@ import { KNOWN_ISSUES } from './known-issues';
 import type { CheckResult, CheckSpec } from './types';
 import { kick2Checks } from './checks/kick2.checks';
 import { snare2Checks } from './checks/snare2.checks';
-// task-7..10 imports go here:
+import { hat2Checks } from './checks/hat2.checks';
+import { clap2Checks } from './checks/clap2.checks';
+// task-8..10 imports go here:
 // …
 
 const FAST = process.env.AUDIT_FAST === '1';
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const AUDIT_DIR = join(import.meta.dirname, '..', '..', '.audio-lab', 'audit', STAMP);
 
-const checks: CheckSpec[] = [...kick2Checks, ...snare2Checks];
+const checks: CheckSpec[] = [...kick2Checks, ...snare2Checks, ...hat2Checks, ...clap2Checks];
 
 const saveFailure = async (id: string, spec: EngineRenderSpec, clip: AudioClip): Promise<string> => {
   const dir = join(AUDIT_DIR, 'failures', id);
