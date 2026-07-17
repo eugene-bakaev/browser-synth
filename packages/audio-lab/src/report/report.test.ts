@@ -70,3 +70,41 @@ describe('defaultRunDir', () => {
     expect(defaultRunDir('mytest')).toMatch(/^\.audio-lab\/runs\/\d{8}-\d{6}-mytest$/);
   });
 });
+
+function sineClip(freq: number, seconds: number, sampleRate = 44100) {
+  const n = Math.round(seconds * sampleRate);
+  const samples = new Float32Array(n);
+  for (let i = 0; i < n; i++) samples[i] = 0.5 * Math.sin((2 * Math.PI * freq * i) / sampleRate);
+  return { samples, sampleRate };
+}
+
+describe('report null-safety + new fields', () => {
+  it('silent clip serializes envelope dB as null, not -Infinity', () => {
+    const clip = { samples: new Float32Array(44100), sampleRate: 44100 };
+    const r = buildReport(clip);
+    expect(r.envelope.peakDb).toBeNull();
+    expect(r.envelope.rmsDb).toBeNull();
+    expect(r.envelope.points.every((p) => p.rmsDb === null && p.peakDb === null)).toBe(true);
+    // must survive JSON round-trip without "null"-as-string or Infinity
+    const round = JSON.parse(JSON.stringify(r));
+    expect(round.envelope.peakDb).toBeNull();
+  });
+
+  it('spectrum block carries the per-frame centroid series and its hop', () => {
+    const r = buildReport(sineClip(440, 1));
+    expect(r.spectrum.hopSeconds).toBeGreaterThan(0);
+    expect(r.spectrum.centroidHz.length).toBeGreaterThan(10);
+    const mid = r.spectrum.centroidHz[Math.floor(r.spectrum.centroidHz.length / 2)];
+    expect(mid).not.toBeNull();
+  });
+
+  it('summary.pitchSettle appears when noteTargets are given', () => {
+    const clip = sineClip(220, 1);
+    const r = buildReport(clip, { noteTargets: [{ time: 0, freq: 220 }] });
+    expect(r.summary.pitchSettle).not.toBeNull();
+    expect(r.summary.pitchSettle![0].targetHz).toBe(220);
+    expect(r.summary.pitchSettle![0].settleSeconds).not.toBeNull();
+    // and absent (null) when not given
+    expect(buildReport(clip).summary.pitchSettle).toBeNull();
+  });
+});

@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { EngineRenderSpec, NoteEvent, MatrixRoute, EngineId } from './render/engine';
-import { renderEngine, ENGINE_IDS } from './render/engine';
+import { renderEngine, noteToFreq, ENGINE_IDS } from './render/engine';
 import { compareReports } from './analyze/compare';
 import { writeRunDir, defaultRunDir, type RunReport } from './report/report';
 import { decodeWav } from './report/wav';
@@ -131,7 +131,11 @@ export async function runCli(cmd: CliCommand): Promise<{ dir?: string; summaryTe
   if (cmd.kind === 'render-engine') {
     const clip = renderEngine(cmd.spec);
     const dir = cmd.out ?? defaultRunDir(cmd.label);
-    const report = await writeRunDir({ dir, spec: cmd.spec, clip });
+    const noteTargets = cmd.spec.notes.map((n) => ({
+      time: n.time,
+      freq: n.freq ?? noteToFreq(n.note!),
+    }));
+    const report = await writeRunDir({ dir, spec: cmd.spec, clip, noteTargets });
     return { dir, summaryText: summaryText(report) };
   }
   if (cmd.kind === 'analyze') {

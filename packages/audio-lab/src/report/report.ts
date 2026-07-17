@@ -6,12 +6,24 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AudioClip } from '../types';
-import { analyzeEnvelope, type EnvelopeAnalysis } from '../analyze/envelope';
-import { analyzePitch, type PitchFrame } from '../analyze/pitch';
+import { analyzeEnvelope } from '../analyze/envelope';
+import { analyzePitch, pitchSettleTime, type PitchFrame } from '../analyze/pitch';
 import { analyzeSpectrum, type SpectralPeak } from '../analyze/spectrum';
 import { analyzeHealth, type HealthReport } from '../analyze/health';
 import { encodeWav } from './wav';
 import { waveformPng, spectrogramPng, envelopeSvg, pitchSvg } from './plots';
+
+export interface ReportEnvelopePoint { time: number; rmsDb: number | null; peakDb: number | null }
+export interface ReportEnvelope {
+  hopSeconds: number;
+  points: ReportEnvelopePoint[];
+  peakDb: number | null;
+  rmsDb: number | null;
+  onsets: number[];
+  attackSeconds: number | null;
+  decaySeconds: number | null;
+}
+export interface PitchSettleEntry { time: number; targetHz: number; settleSeconds: number | null }
 
 export interface RunSummary {
   seconds: number;
@@ -26,11 +38,12 @@ export interface RunSummary {
   meanCentroidHz: number | null;
   spectralPeaks: SpectralPeak[];
   healthFlags: string[];
+  pitchSettle: PitchSettleEntry[] | null;
 }
 
 export interface RunReport {
   summary: RunSummary;
-  envelope: EnvelopeAnalysis;
+  envelope: ReportEnvelope;
   pitch: {
     frames: PitchFrame[];
     medianF0: number | null;
@@ -39,8 +52,10 @@ export interface RunReport {
   };
   spectrum: {
     binHz: number;
+    hopSeconds: number;
     averageMagnitudeDb: number[];
     peaks: SpectralPeak[];
+    centroidHz: (number | null)[];
     meanCentroidHz: number | null;
   };
   health: HealthReport;
@@ -48,24 +63,34 @@ export interface RunReport {
 
 const finite = (x: number): number | null => (Number.isFinite(x) ? x : null);
 
-export function buildReport(clip: AudioClip): RunReport {
+export interface BuildReportOpts { noteTargets?: Array<{ time: number; freq: number }> }
+
+export function buildReport(clip: AudioClip, opts: BuildReportOpts = {}): RunReport {
   const envelope = analyzeEnvelope(clip);
   const pitch = analyzePitch(clip);
   const spectrum = analyzeSpectrum(clip);
   const health = analyzeHealth(clip);
 
-  // JSON-safe envelope: -Infinity dB → null (typed as number in EnvelopeAnalysis,
-  // patched at the serialization boundary here).
-  const safeEnvelope: EnvelopeAnalysis = {
-    ...envelope,
-    peakDb: (finite(envelope.peakDb) ?? null) as number,
-    rmsDb: (finite(envelope.rmsDb) ?? null) as number,
-    points: envelope.points.map((p) => ({
-      time: p.time,
-      rmsDb: (finite(p.rmsDb) ?? null) as unknown as number,
-      peakDb: (finite(p.peakDb) ?? null) as unknown as number,
-    })),
+  // JSON-safe envelope: -Infinity dB → null, honestly typed as number | null
+  // (rather than cast back to number) so downstream consumers can't forget
+  // to guard against silence.
+  const safeEnvelope: ReportEnvelope = {
+    hopSeconds: envelope.hopSeconds,
+    onsets: envelope.onsets,
+    attackSeconds: envelope.attackSeconds,
+    decaySeconds: envelope.decaySeconds,
+    peakDb: finite(envelope.peakDb),
+    rmsDb: finite(envelope.rmsDb),
+    points: envelope.points.map((p) => ({ time: p.time, rmsDb: finite(p.rmsDb), peakDb: finite(p.peakDb) })),
   };
+
+  const pitchSettle: PitchSettleEntry[] | null = opts.noteTargets
+    ? opts.noteTargets.map((t) => ({
+        time: t.time,
+        targetHz: t.freq,
+        settleSeconds: pitchSettleTime(pitch.frames, t.time, t.freq),
+      }))
+    : null;
 
   return {
     summary: {
@@ -81,6 +106,7 @@ export function buildReport(clip: AudioClip): RunReport {
       meanCentroidHz: spectrum.meanCentroidHz,
       spectralPeaks: spectrum.peaks,
       healthFlags: health.flags,
+      pitchSettle,
     },
     envelope: safeEnvelope,
     pitch: {
@@ -91,8 +117,10 @@ export function buildReport(clip: AudioClip): RunReport {
     },
     spectrum: {
       binHz: spectrum.binHz,
+      hopSeconds: spectrum.hopSeconds,
       averageMagnitudeDb: spectrum.averageMagnitudeDb,
       peaks: spectrum.peaks,
+      centroidHz: spectrum.centroidHz,
       meanCentroidHz: spectrum.meanCentroidHz,
     },
     health,
@@ -111,9 +139,10 @@ export async function writeRunDir(opts: {
   dir: string;
   spec: unknown;
   clip: AudioClip;
+  noteTargets?: BuildReportOpts['noteTargets'];
 }): Promise<RunReport> {
-  const { dir, spec, clip } = opts;
-  const report = buildReport(clip);
+  const { dir, spec, clip, noteTargets } = opts;
+  const report = buildReport(clip, { noteTargets });
   const spectrum = analyzeSpectrum(clip);
   const envelope = analyzeEnvelope(clip);
   const pitch = analyzePitch(clip);

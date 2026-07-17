@@ -15,5 +15,12 @@ export type { HealthReport } from './analyze/health';
 export { compareReports } from './analyze/compare';
 export type { CompareResult, MetricDelta } from './analyze/compare';
 export { buildReport, writeRunDir, defaultRunDir } from './report/report';
-export type { RunReport, RunSummary } from './report/report';
+export type {
+  RunReport,
+  RunSummary,
+  ReportEnvelope,
+  ReportEnvelopePoint,
+  PitchSettleEntry,
+  BuildReportOpts,
+} from './report/report';
 export { encodeWav, decodeWav } from './report/wav';
