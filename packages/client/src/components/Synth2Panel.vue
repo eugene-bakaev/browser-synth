@@ -18,6 +18,11 @@
       >
         POLY
       </button>
+      <div class="glide-control">
+        <Knob v-if="!params.glide.sync" :label="knobLabel('glide.time')" :min="0.001" :max="2" :step="0.001" format="ms" curve="exp" :defaultValue="DEFAULTS.glide.time" :modelValue="params.glide.time" @update:modelValue="ks.set(['glide', 'time'], $event)" :syncPath="ks.pathFor(['glide', 'time'])" @gesture-end="ks.end(['glide', 'time'])" />
+        <Knob v-else :label="knobLabel('glide.time')" :min="0" :max="ENV_SYNC_LABELS.length - 1" :step="1" :labels="ENV_SYNC_KNOB_LABELS" :defaultValue="envDivisionLabelToIndex(DEFAULTS.glide.div)" :modelValue="envDivisionLabelToIndex(params.glide.div)" @update:modelValue="ks.set(['glide', 'div'], ENV_SYNC_LABELS[$event])" :syncPath="ks.pathFor(['glide', 'div'])" @gesture-end="ks.end(['glide', 'div'])" />
+        <button type="button" class="glide-sync-btn" :class="{ active: params.glide.sync }" @click="ks.set(['glide', 'sync'], !params.glide.sync)">SYNC</button>
+      </div>
     </div>
 
     <!-- Column 1: Oscillator 1 -->
@@ -264,6 +269,33 @@ defineProps<{
 .env-knob-row {
   --knob-value-width: 56px;
 }
+
+/* Glide (portamento) rides the shared mode-selector row. The selector's flex
+   styling is global (App.vue, shared with synth1); these scoped rules only
+   affect synth2's instance. Knob centers against the taller row; step labels
+   ("1/16 st") need the wider readout, same as the env rows. */
+.synth-mode-selector { align-items: center; }
+.glide-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --knob-value-width: 56px;
+}
+.glide-sync-btn {
+  background: #181818;
+  color: #666;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.glide-sync-btn:hover { color: #aaa; border-color: #444; }
+.glide-sync-btn.active { background: #222; color: #fff; border-color: #555; }
 
 .sync-btn,
 .loop-btn,
