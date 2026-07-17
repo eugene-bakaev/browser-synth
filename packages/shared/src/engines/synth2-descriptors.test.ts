@@ -8,7 +8,7 @@ import { ENV_SYNC_LABELS } from './env-sync.js';
 
 // The complete set of discrete (non-continuous) descriptor keys. Continuous
 // rows are everything else. Update this when appending discrete params.
-const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div', 'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv', 'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv', 'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv', 'lfo1.mode', 'lfo2.mode'];
+const DISCRETE_KEYS = ['osc1.sync', 'osc2.sync', 'osc3.sync', 'filter.type', 'env1.loop', 'env2.loop', 'env3.loop', 'filter.model', 'lfo1.sync', 'lfo1.div', 'lfo2.sync', 'lfo2.div', 'env1.sync', 'env1.aDiv', 'env1.dDiv', 'env1.rDiv', 'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv', 'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv', 'lfo1.mode', 'lfo2.mode', 'glide.sync', 'glide.div'];
 
 describe('SYNTH2_DESCRIPTORS', () => {
   it('has unique keys in <module>.<field> form', () => {
@@ -83,6 +83,7 @@ describe('SYNTH2_DESCRIPTORS', () => {
       'env2.sync', 'env2.aDiv', 'env2.dDiv', 'env2.rDiv',
       'env3.sync', 'env3.aDiv', 'env3.dDiv', 'env3.rDiv',
       'lfo1.mode', 'lfo2.mode',
+      'glide.time', 'glide.sync', 'glide.div',
     ]);
   });
 
@@ -335,5 +336,18 @@ describe('display labels (2026-07-15 label unification)', () => {
     expect(byKey['filter.keyTrack'].label).toBe('KeyTrk');
     expect(byKey['fm.osc2'].label).toBe('FM 1→2');
     expect(byKey['fm.osc3'].label).toBe('FM 2→3');
+  });
+});
+
+describe('portamento glide descriptor rows (2026-07-16)', () => {
+  it('glide.time is a mod dest; glide.sync/div are dead main-thread slots (portamento 2026-07-16)', () => {
+    expect(MOD_DESTS).toContain('glide.time');
+    expect(MOD_DESTS).not.toContain('glide.sync');
+    expect(MOD_DESTS).not.toContain('glide.div');
+    const time = SYNTH2_DESCRIPTORS.find(d => d.key === 'glide.time')!;
+    expect(time).toMatchObject({ min: 0.001, max: 2, default: 0.001, taper: 'expOctaves', modulatable: true, modScale: 4, curve: 'exp', label: 'Glide' });
+    const div = SYNTH2_DESCRIPTORS.find(d => d.key === 'glide.div')!;
+    expect(div.enumValues).toEqual(ENV_SYNC_LABELS);
+    expect(ENV_SYNC_LABELS[div.default]).toBe('1');
   });
 });

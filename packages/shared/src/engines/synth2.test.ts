@@ -82,4 +82,9 @@ describe('DEFAULT_SYNTH2_PARAMS', () => {
       expect(env.rDiv).toBe('4');
     }
   });
+
+  it('defaults glide to a 1ms (inaudible) free-run slide over a 1-step division (portamento 2026-07-16)', () => {
+    expect(DEFAULT_SYNTH2_PARAMS.glide).toEqual({ time: 0.001, sync: false, div: '1' });
+    expect(typeof DEFAULT_SYNTH2_PARAMS.glide.sync).toBe('boolean');
+  });
 });
