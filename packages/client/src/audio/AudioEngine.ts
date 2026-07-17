@@ -92,6 +92,19 @@ function effectiveEnvTimes(
   return { a: t(env.aDiv), d: t(env.dDiv), r: t(env.rDiv) };
 }
 
+// A synced glide's time is derived on the main thread from its step division
+// and the project BPM (the kernel is tempo-agnostic); a free glide uses its
+// stored seconds. The clamp ceiling is the glide.time descriptor max (2s) —
+// at 40 BPM a 32-step division derives 12s, so it is load-bearing at the
+// slow extreme; the floor is defensive.
+function effectiveGlideTime(
+  glide: { sync?: boolean; div?: string; time: number },
+  bpm: number,
+): number {
+  if (!glide.sync) return glide.time;
+  return Math.min(2, Math.max(0.001, envDivisionToSeconds(glide.div ?? ENV_SYNC_DEFAULT_LABEL, bpm)));
+}
+
 export interface AudioState {
   ctx: AudioContext;
   trackAnalysers: AnalyserNode[];
@@ -231,7 +244,7 @@ export class AudioEngine {
 
       const params = track.engines[targetType] as Record<string, any>;
       if (targetType === 'synth2') {
-        const s2 = params as unknown as { lfo1: any; lfo2: any; env1: any; env2: any; env3: any };
+        const s2 = params as unknown as { lfo1: any; lfo2: any; env1: any; env2: any; env3: any; glide: any };
         engines[i]!.applyParams({
           ...params,
           lfo1: { ...s2.lfo1, rate: effectiveLfoRate(s2.lfo1, project.bpm) },
@@ -239,6 +252,7 @@ export class AudioEngine {
           env1: { ...s2.env1, ...effectiveEnvTimes(s2.env1, project.bpm) },
           env2: { ...s2.env2, ...effectiveEnvTimes(s2.env2, project.bpm) },
           env3: { ...s2.env3, ...effectiveEnvTimes(s2.env3, project.bpm) },
+          glide: { ...s2.glide, time: effectiveGlideTime(s2.glide, project.bpm) },
         });
       } else {
         engines[i]!.applyParams(params);
@@ -299,6 +313,10 @@ export class AudioEngine {
             if (!env.sync) continue;
             engine.applyParams({ [key]: { ...snapshot(env), ...effectiveEnvTimes(env, project.bpm) } });
           }
+          const glide = project.tracks[i].engines.synth2.glide;
+          if (glide.sync) {
+            engine.applyParams({ glide: { ...snapshot(glide), time: effectiveGlideTime(glide, project.bpm) } });
+          }
         }
         return;
       }
@@ -334,6 +352,11 @@ export class AudioEngine {
           if (slice === 'synth2' && (key === 'env1' || key === 'env2' || key === 'env3')) {
             const env = liveSlice[key] as { sync?: boolean; aDiv?: string; dDiv?: string; rDiv?: string; a: number; d: number; r: number };
             engine.applyParams({ [key]: { ...snapshot(env), ...effectiveEnvTimes(env, project.bpm) } });
+            return;
+          }
+          if (slice === 'synth2' && key === 'glide') {
+            const glide = liveSlice[key] as { sync?: boolean; div?: string; time: number };
+            engine.applyParams({ [key]: { ...snapshot(glide), time: effectiveGlideTime(glide, project.bpm) } });
             return;
           }
           engine.applyParams({ [key]: snapshot(liveSlice[key]) } as Record<string, any>);
