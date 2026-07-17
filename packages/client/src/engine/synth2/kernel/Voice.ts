@@ -14,6 +14,7 @@ import { ClassicFilter } from './ClassicFilter';
 import { MorphFilter } from './MorphFilter';
 import type { FilterModule } from './FilterModule';
 import { Lfo } from './Lfo';
+import { Glide } from './Glide';
 import { PARAM_INDEX } from './params';
 import { SYNTH2_DESCRIPTORS, MOD_SOURCES } from '@fiddle/shared';
 import { ModMatrix } from './ModMatrix';
@@ -65,6 +66,8 @@ export class Voice {
   private readonly matrix = new ModMatrix();
   private readonly lfo1: Lfo;
   private readonly lfo2: Lfo;
+  private readonly glide: Glide;
+  private readonly glideSlot: ParamSlot;
   private readonly sources = new Float32Array(MOD_SOURCES.length);
   private env1Prev = 0;
   private env2Prev = 0;
@@ -108,6 +111,8 @@ export class Voice {
     this.driveSlot = slot('filter.drive');
     this.lfo1 = new Lfo(slot('lfo1.rate'), slot('lfo1.shape'), slot('lfo1.mode'), sampleRate, (seed ^ 0xa5a5a5a5) | 0);
     this.lfo2 = new Lfo(slot('lfo2.rate'), slot('lfo2.shape'), slot('lfo2.mode'), sampleRate, (seed ^ 0x5a5a5a5a) | 0);
+    this.glideSlot = slot('glide.time');
+    this.glide = new Glide(sampleRate);
   }
 
   /** Block-boundary discrete update: osc2 syncs to osc1's wraps, osc3 to osc2's.
@@ -146,7 +151,7 @@ export class Voice {
     return this.env1.active;
   }
 
-  noteOn(freq: number, velocity: number, gateFrames: number): void {
+  noteOn(freq: number, velocity: number, gateFrames: number, mono = true): void {
     // I4 belt: guarantee finite, in-range internals for any direct caller. The
     // kernel choke point is the authoritative coercion and runs first in
     // production; this only secures Voice against bad input reaching it directly.
@@ -157,6 +162,10 @@ export class Voice {
     // runs first in production, so this belt's exact target is immaterial.
     this.velocity = velocity >= 0 ? (velocity > 1 ? 1 : velocity) : 0;
     this.keyTrackOctaves = Math.log2(this.freq / KEYTRACK_REF_HZ); // this.freq now safe
+    // Portamento (spec 2026-07-16): mono notes glide from the last played
+    // pitch; poly notes and the first-ever note snap. Keytrack stays latched
+    // to the TARGET pitch (above), so the filter doesn't re-sweep mid-glide.
+    this.glide.noteOn(this.freq, mono);
     // Reset prev-sample source memory so a reused/stolen voice doesn't carry the
     // prior note's tail into the matrix for one sample.
     this.env1Prev = 0;
@@ -193,16 +202,20 @@ export class Voice {
 
       const e = this.env1.next();
       const env2v = this.env2.next();
+      // Portamento: per-sample gliding master frequency. The glide.time slot
+      // is consumed every sample (exactly-once contract) so matrix mod
+      // reaches a glide in progress; non-gliding voices pay one comparison.
+      const freq = this.glide.next(this.freq, this.glideSlot.next());
       // TZFM + hard-sync chain: osc1 master → osc2 → osc3. Each ParamSlot.next()
       // called exactly once per sample. A slave resets when its master wrapped
       // this sample AND its sync toggle is on.
-      const o1 = this.osc1.next(this.freq);
+      const o1 = this.osc1.next(freq);
       const o2 = this.osc2.next(
-        this.freq, o1, this.fmOsc2.next(),
+        freq, o1, this.fmOsc2.next(),
         this.osc2Sync && this.osc1.wrapped ? this.osc1.wrapFrac : -1,
       );
       const o3 = this.osc3.next(
-        this.freq, o2, this.fmOsc3.next(),
+        freq, o2, this.fmOsc3.next(),
         this.osc3Sync && this.osc2.wrapped ? this.osc2.wrapFrac : -1,
       );
       const nz = this.noise.next(this.noiseColor.next());

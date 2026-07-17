@@ -303,3 +303,59 @@ describe('AudioEngine — envelope tempo-sync time derivation', () => {
     expect(spy).toHaveBeenCalledWith({ env1: expect.objectContaining({ d: 0.125 }) }); // 1 step @120
   });
 });
+
+describe('AudioEngine — glide tempo-sync time derivation', () => {
+  async function synth2GlideEngine(glide: Partial<{ sync: boolean; div: string; time: number }>) {
+    const h = makeEngine();
+    h.project.bpm = 120;
+    h.project.tracks[0].engineType = 'synth2';
+    Object.assign(h.project.tracks[0].engines.synth2.glide, glide);
+    const state = await h.engine.ensureAudio();
+    const spy = vi.spyOn(state.engines[0]!, 'applyParams');
+    spy.mockClear();
+    return { ...h, state, spy };
+  }
+
+  it('re-pushes a derived glide time on BPM change (default div "1" = one step)', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: true });
+    set(['bpm'], 120);
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 0.125 }) }); // 1 step @120
+  });
+
+  it('does NOT re-push a free-mode glide on BPM change', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: false });
+    set(['bpm'], 120);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('derives the time when a synced glide div changes', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: true });
+    set(['tracks', 0, 'engines', 'synth2', 'glide', 'div'], '2'); // 2 steps @120 → 250ms
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 0.25 }) });
+  });
+
+  it('derives the time when SYNC is turned on', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: false });
+    set(['tracks', 0, 'engines', 'synth2', 'glide', 'sync'], true);
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 0.125 }) });
+  });
+
+  it('passes raw seconds through for a free-mode time edit', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: false });
+    set(['tracks', 0, 'engines', 'synth2', 'glide', 'time'], 0.3);
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 0.3 }) });
+  });
+
+  it('clamps the derived time at the 2s knob ceiling (long division, slow BPM)', async () => {
+    const { set, spy } = await synth2GlideEngine({ sync: true, div: '32' }); // 32 steps @40 BPM = 12s
+    set(['bpm'], 40);
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 2 }) });
+  });
+
+  it('a raw time write on a SYNCED glide still reaches audio derived (leaf preserved, derived wins)', async () => {
+    const { set, spy, project } = await synth2GlideEngine({ sync: true });
+    set(['tracks', 0, 'engines', 'synth2', 'glide', 'time'], 1.7);
+    expect(spy).toHaveBeenCalledWith({ glide: expect.objectContaining({ time: 0.125 }) });
+    expect(project.tracks[0].engines.synth2.glide.time).toBe(1.7);
+  });
+});

@@ -135,7 +135,7 @@ export class Synth2Kernel {
       this.renderActive(out, cursor, offset);
       cursor = offset;
       const v = ev.mono ? 0 : this.allocate();
-      this.voices[v].noteOn(ev.freq, ev.velocity, ev.gateFrames);
+      this.voices[v].noteOn(ev.freq, ev.velocity, ev.gateFrames, ev.mono);
       this.head = (this.head + 1) % MAX_EVENTS;
       this.count--;
     }

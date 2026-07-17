@@ -512,3 +512,42 @@ describe('Synth2Kernel voice-steal click guard (I4)', () => {
     expect(stealMaxDiff).toBeLessThan(steadyMaxDiff * 4 + 0.05);
   });
 });
+
+describe('Synth2Kernel portamento pass-through (spec 2026-07-16)', () => {
+  // Same zero-crossing estimator as Voice.test.ts (12 lines, duplicated by
+  // convention — kernel tests stay self-contained).
+  function measureFreq(out: Float32Array, from: number, to: number, sr: number): number {
+    let first = -1; let last = -1; let count = 0;
+    for (let i = from + 1; i < to; i++) {
+      if (out[i - 1] <= 0 && out[i] > 0) {
+        if (first < 0) first = i; else last = i;
+        count++;
+      }
+    }
+    return count < 2 ? 0 : ((count - 1) * sr) / (last - first);
+  }
+
+  it('mono events glide with glide.time from the param block (full applyParams path)', () => {
+    const k = new Synth2Kernel(48000);
+    const block = defaultParamBlock();
+    const set = (key: string, val: number) => { block[PARAM_INDEX[key]] = val; };
+    set('osc1.morph', 0);
+    set('osc2.level', 0);
+    set('osc3.level', 0);
+    set('noise.level', 0);
+    set('filter.cutoff', 20000);
+    set('filter.resonance', 0);
+    set('filter.envAmount', 0);
+    set('env1.s', 1);
+    set('glide.time', 0.5);
+    k.applyParams(block);
+    k.noteOn(0, 110, 0.3, 1, true);
+    k.noteOn(0.3, 220, 0.6, 1, true);
+    const out = new Float32Array(48000);
+    for (let f = 0; f < out.length; f += 128) k.process(out.subarray(f, f + 128), 128, f);
+    // 0.35–0.42s = 50–120ms into a 500ms glide: pitch has left 110 but is far from 220.
+    const mid = measureFreq(out, 16800, 20160, 48000);
+    expect(mid).toBeGreaterThan(112);
+    expect(mid).toBeLessThan(160);
+  });
+});

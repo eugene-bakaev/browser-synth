@@ -9,7 +9,7 @@ import { SYNTH2_DESCRIPTORS, type Synth2ModSource } from './synth2-descriptors.j
  *  (the fm rows carry their own routing name, 'FM 1→2'). */
 export const SYNTH2_MODULE_LABELS: Readonly<Record<string, string | null>> = {
   osc1: 'Osc 1', osc2: 'Osc 2', osc3: 'Osc 3',
-  noise: 'Noise', fm: null,
+  noise: 'Noise', fm: null, glide: null,
   env1: 'Env 1', env2: 'Env 2', env3: 'Env 3',
   filter: 'Filter', lfo1: 'LFO 1', lfo2: 'LFO 2',
 };

@@ -10,7 +10,7 @@
 
 import type { KnobCurve } from './knob-curve.js';
 import { LFO_SYNC_LABELS, LFO_SYNC_DEFAULT_INDEX } from './lfo-sync.js';
-import { ENV_SYNC_LABELS } from './env-sync.js';
+import { ENV_SYNC_LABELS, ENV_SYNC_DEFAULT_INDEX } from './env-sync.js';
 
 /** LFO Mode enum (2026-07-13). Off = continuous morph; S&H = stepped random;
  *  Smooth = interpolated random. Stored as the label; kernel reads the index. */
@@ -211,6 +211,20 @@ export const SYNTH2_DESCRIPTORS: ReadonlyArray<Synth2ParamDescriptor> = [
   // = linearly-interpolated random. Not modulatable. Mirrors filter.type's kind.
   { key: 'lfo1.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS, label: 'Mode' },
   { key: 'lfo2.mode', min: 0, max: 2, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: LFO_MODE_LABELS, label: 'Mode' },
+  // --- Portamento (2026-07-16, append-only). glide.time is the mono-mode
+  // pitch-glide duration (constant-time, log2-pitch domain; see the Glide
+  // kernel module). Modulatable like env times (expOctaves, ±4 oct at full
+  // depth) so velocity→glide / LFO→glide work through the matrix. glide.sync
+  // and glide.div are MAIN-THREAD-ONLY dead block slots exactly like
+  // env*.sync/env*.aDiv: when sync is on, AudioEngine derives seconds from
+  // the step division × bpm (envDivisionToSeconds) and writes them into
+  // glide.time before the block reaches the kernel — the kernel never reads
+  // these two rows. Default div '1' = the glide spans exactly one sequencer
+  // step (the TB-303 slide), scaling with BPM. min = default = 0.001 s is the
+  // same "effectively instant ⇒ off" convention as env attack.
+  { key: 'glide.time', min: 0.001, max: 2, default: 0.001, taper: 'expOctaves', modulatable: true,  modScale: 4, curve: 'exp', label: 'Glide' },
+  { key: 'glide.sync', min: 0, max: 1, default: 0, taper: 'linear', modulatable: false, modScale: 0, kind: 'bool', label: 'Sync' },
+  { key: 'glide.div',  min: 0, max: ENV_SYNC_LABELS.length - 1, default: ENV_SYNC_DEFAULT_INDEX, taper: 'linear', modulatable: false, modScale: 0, kind: 'enum', enumValues: ENV_SYNC_LABELS, label: 'Glide Div' },
 ];
 
 /** key → enum value set, for the descriptors that declare one. Engine + kernel

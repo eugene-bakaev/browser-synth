@@ -70,4 +70,10 @@ describe('knobLabel', () => {
       expect(SYNTH2_MODULE_LABELS[mod], d.key).not.toBeUndefined();
     }
   });
+
+  it('renders glide rows bare (module prefix null, like fm)', () => {
+    expect(SYNTH2_MODULE_LABELS.glide).toBeNull();
+    expect(modDestLabel('glide.time')).toBe('Glide');
+    expect(knobLabel('glide.time')).toBe('Glide');
+  });
 });

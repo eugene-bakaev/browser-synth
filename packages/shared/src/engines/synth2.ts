@@ -60,6 +60,13 @@ export interface Synth2FilterParams {
   drive: number;               // 0..1 feedback saturation (self-osc character)
 }
 
+export interface Synth2GlideParams {
+  time: number;  // seconds — free-mode glide; when sync is on the kernel receives
+                 // a main-thread-derived duration instead (this leaf is never overwritten)
+  sync: boolean; // tempo-sync on/off (time derived from div × bpm on the main thread)
+  div: string;   // step-division label from ENV_SYNC_DIVISIONS (used when sync is on)
+}
+
 export interface Synth2MatrixSlot {
   source: Synth2ModSource;
   dest: string;   // 'none' | modulatable descriptor key (see MOD_DESTS)
@@ -78,6 +85,7 @@ export interface Synth2EngineParams {
   env2: Synth2EnvParams;
   env3: Synth2EnvParams; // I3c: third envelope — matrix source only, not hardwired
   filter: Synth2FilterParams;
+  glide: Synth2GlideParams; // portamento — mono-mode pitch slide (2026-07-16)
   // Play mode — sequencer-level, like engines.synth.mode. Not a descriptor
   // (it's not a Float32Array param); lives here so presets carry their mode.
   mode: 'mono' | 'poly';
