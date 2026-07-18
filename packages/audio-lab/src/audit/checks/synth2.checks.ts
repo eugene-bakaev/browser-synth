@@ -116,6 +116,16 @@
 //    margin): osc*.coarse.dir minDelta 150->100, osc*.fine.dir 60->50,
 //    env1.s.dir 6->5, filter.keyTrack.dir 200->150, filter.envAmount.dir
 //    250->200, lfo1/2.rate.dir 3->2.5.
+//  - filter.morph.chg (post-review fix): PASSED all along but had no
+//    recorded calibration evidence — the one directional check missing
+//    from this changelog and the report table. Measured: from(morph=0)
+//    1128.94Hz -> to(morph=2) 6321.48Hz, delta 5192.53, clean health both
+//    legs, monotonic across 0/0.5/1/1.5/2. Against the original minDelta
+//    200 that's a 25.96x margin — the slackest in the whole table, loose
+//    enough to hide a regression down to ~4% of the real effect. Raised
+//    minDelta 200->1500 (3.46x margin) so the check actually tests
+//    something, matching the same "meaningful, not vacuous" judgment
+//    applied to filter.model.enum's minSpread above.
 //  - No check in this table allows CLIPPING — every clip found during
 //    calibration was routed around (lower levels / different cutoff)
 //    rather than scoped, since the Global Constraint expects synth2 to stay
@@ -242,7 +252,11 @@ export const synth2Checks: CheckSpec[] = [
   c('filter.model.enum', 'classic vs morph model both sound (morph:2 so they diverge — both are identical at morph:0, see header)',
     { kind: 'enum', param: 'filter.model', values: [0, 1], minPeakDb: -40, distinct: { metric: 'meanCentroidHz', minSpread: 1500 } },
     { 'filter.cutoff': 800, 'filter.resonance': 0.5, 'filter.morph': 2, 'osc1.level': 0.12, 'osc2.level': 0.12, 'osc3.level': 0 }),
-  c('filter.morph.chg', 'morph-model sweep reshapes the spectrum', dir('filter.morph', 0, 2, 'meanCentroidHz', 'change', 200), { 'filter.model': 1, 'filter.cutoff': 800 }),
+  // minDelta 200->1500 (post-review fix): measured delta 5192.53 gave a
+  // 25.96x margin, the slackest in the table — high enough to hide a
+  // regression down to ~4% of the real effect. 1500 keeps a comfortable
+  // 3.46x margin while actually testing something (see header changelog).
+  c('filter.morph.chg', 'morph-model sweep reshapes the spectrum', dir('filter.morph', 0, 2, 'meanCentroidHz', 'change', 1500), { 'filter.model': 1, 'filter.cutoff': 800 }),
   // --- LFOs (audible only through a route) ---
   c('lfo1.rate.dir', 'lfo1 rate speeds the wobble', dir('lfo1.rate', 0.5, 6, 'modRateCentroidHz', 'up', 2.5), { 'filter.cutoff': 1200 }, true, LFO1_CUT),
   // shape's depth response over 0-4 is NON-monotonic (dips at shape=2,
