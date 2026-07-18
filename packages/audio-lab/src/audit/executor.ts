@@ -101,7 +101,11 @@ export async function runCheck(check: CheckSpec, opts: RunCheckOpts): Promise<Ch
       const notes = check.baseline.notes;
       if (notes.length !== 2) throw new Error(`pitchSettle needs exactly 2 notes, got ${notes.length}`);
       const target = noteFreq(notes[1]);
-      const settle = pitchSettleTime(leg.bundle.pitch.frames, notes[1].time, target);
+      const settleAbs = pitchSettleTime(leg.bundle.pitch.frames, notes[1].time, target);
+      // pitchSettleTime returns an ABSOLUTE clip time (frame.time), not time
+      // elapsed since note 2's onset — subtract notes[1].time so this is
+      // comparable to knobSeconds (types.ts: "from note 2 onset ~ knobSeconds").
+      const settle = settleAbs == null ? null : settleAbs - notes[1].time;
       values['pitchSettleSeconds'] = settle;
       if (settle == null) problems.push('pitch never settled on note 2');
       else if (Math.abs(settle - a.knobSeconds) > a.toleranceSeconds) {

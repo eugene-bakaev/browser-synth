@@ -19,6 +19,27 @@ const brokenRender = (spec: EngineRenderSpec) => {
   c.samples[100] = Number.NaN;
   return c;
 };
+// Two-segment clip: holds notes[0]'s freq, then glides linearly to notes[1]'s
+// freq starting at notes[1].time over params['glide.time'] seconds (0 = instant).
+import { noteToFreq } from '../render/engine';
+function glideRender(spec: EngineRenderSpec) {
+  const notes = spec.notes;
+  const freq1 = notes[0].freq ?? noteToFreq(notes[0].note!);
+  const freq2 = notes[1].freq ?? noteToFreq(notes[1].note!);
+  const glideSeconds = spec.params?.['glide.time'] ?? 0;
+  const t2 = notes[1].time;
+  const n = Math.round(spec.seconds * SR);
+  const samples = new Float32Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const f = t < t2 ? freq1 : glideSeconds <= 0 || t >= t2 + glideSeconds
+      ? freq2 : freq1 + (freq2 - freq1) * ((t - t2) / glideSeconds);
+    phase += (2 * Math.PI * f) / SR;
+    samples[i] = 0.5 * Math.sin(phase);
+  }
+  return { samples, sampleRate: SR };
+}
 
 const base = (params: Record<string, number> = {}): EngineRenderSpec => ({
   engine: 'synth2', params, notes: [{ time: 0, note: 'A3', duration: 0.5 }], seconds: 1,
@@ -82,6 +103,31 @@ describe('runCheck', () => {
     expect((await runCheck(failing, { ...opts, knownIssues: known })).status).toBe('KNOWN');
     const passing = check({ id: 'k2' });
     expect((await runCheck(passing, { ...opts, knownIssues: known })).status).toBe('STALE_KNOWN');
+  });
+  it('pitchSettle measures elapsed time from note 2 onset, not absolute clip time', async () => {
+    const spec: EngineRenderSpec = {
+      engine: 'synth2', params: { 'glide.time': 0.1 },
+      notes: [{ time: 0, note: 'A2', duration: 0.4 }, { time: 0.5, note: 'A3', duration: 0.5 }],
+      seconds: 1.2,
+    };
+    const chk = check({ baseline: spec, assertion: { kind: 'pitchSettle', knobSeconds: 0.1, toleranceSeconds: 0.03 } });
+    const r = await runCheck(chk, { ...opts, render: glideRender });
+    expect(r.status).toBe('PASS');
+    // If this regressed to comparing an absolute clip time against knobSeconds,
+    // pitchSettleSeconds would read ~0.6 (0.5 note-2 onset + ~0.1 glide), not ~0.1.
+    expect(r.values['pitchSettleSeconds']).not.toBeNull();
+    expect(Math.abs((r.values['pitchSettleSeconds'] as number) - 0.1)).toBeLessThan(0.03);
+  });
+  it('pitchSettle FAILs when the elapsed settle time misses the knob', async () => {
+    const spec: EngineRenderSpec = {
+      engine: 'synth2', params: { 'glide.time': 0.5 },
+      notes: [{ time: 0, note: 'A2', duration: 0.4 }, { time: 0.5, note: 'A3', duration: 0.8 }],
+      seconds: 1.6,
+    };
+    const chk = check({ baseline: spec, assertion: { kind: 'pitchSettle', knobSeconds: 0.05, toleranceSeconds: 0.02 } });
+    const r = await runCheck(chk, { ...opts, render: glideRender });
+    expect(r.status).toBe('FAIL');
+    expect(r.detail).toContain('settle');
   });
   it('writes a failure dir when saveFailure is provided and the check FAILs', async () => {
     const saved: string[] = [];
