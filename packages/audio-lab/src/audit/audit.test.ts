@@ -16,8 +16,7 @@ import { hat2Checks } from './checks/hat2.checks';
 import { clap2Checks } from './checks/clap2.checks';
 import { synth2Checks } from './checks/synth2.checks';
 import { synth2PerfChecks } from './checks/synth2-perf.checks';
-// task-10 imports go here:
-// …
+import { synth2MatrixChecks } from './checks/synth2-matrix';
 
 const FAST = process.env.AUDIT_FAST === '1';
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -25,6 +24,7 @@ const AUDIT_DIR = join(import.meta.dirname, '..', '..', '.audio-lab', 'audit', S
 
 const checks: CheckSpec[] = [
   ...kick2Checks, ...snare2Checks, ...hat2Checks, ...clap2Checks, ...synth2Checks, ...synth2PerfChecks,
+  ...synth2MatrixChecks(FAST),
 ];
 
 const saveFailure = async (id: string, spec: EngineRenderSpec, clip: AudioClip): Promise<string> => {
