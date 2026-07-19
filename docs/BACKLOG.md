@@ -524,6 +524,38 @@ blocker to the sync path, those allowances become stale and should be removed
 (the STALE_KNOWN-style hygiene is manual here; the allowance doesn't
 auto-expire).
 
+### audio-lab: `summary.pitchSettle.settleSeconds` in report.json is absolute clip time, executor reports elapsed — same name, two meanings
+**Reported:** 2026-07-19 (v2 engine audit, lab findings register) · **Status:** open · **Area:** `packages/audio-lab/src/report/report.ts` (`buildReport` pitchSettle summary) vs `packages/audio-lab/src/audit/executor.ts` (pitchSettle assertion)
+
+Residual of the executor glide bug fixed in `87dcae3`: `pitchSettleTime()`
+(`src/analyze/pitch.ts`) returns an ABSOLUTE clip time (raw `frame.time`). The
+audit executor now correctly converts to elapsed-since-note-onset before
+comparing to `knobSeconds` (that was the bug — every glide check would have been
+nonsense). But the CLI/report path was NOT touched: `buildReport`'s
+`summary.pitchSettle[].settleSeconds` still stores the raw absolute value. So the
+same conceptual field means "elapsed glide time" in audit-report.json check
+values (`pitchSettleSeconds`) and "absolute clip time" in a run dir's
+report.json — e.g. the audit's ear-pass synth2 render reports
+`{time: 1.2, settleSeconds: 1.2}` (settled instantly, absolute) which reads as a
+1.2s glide if you assume elapsed. Anyone (human or agent) reading run-dir
+reports for glide behavior will misread it exactly the way the executor did.
+
+Fix sketch (report-layer only, no analyzer change): subtract the note's `time`
+in `buildReport` when populating `PitchSettleEntry` (making it elapsed,
+matching the executor and the field's natural reading), or rename the report
+field to `settleAtSeconds` if absolute is intended. Either way update the
+audio-lab skill doc (`.claude/skills/audio-lab/SKILL.md` portamento section)
+which tells readers how to interpret it. Covered by `report.test.ts` (Task 1
+added pitchSettle summary tests — they pin current absolute behavior and would
+be updated with the fix).
+
+Related analyzer characteristic recorded in the same audit (informational, no
+fix planned): the onset detector merges hits whose tails never drop below the
+onset-off floor — clap2's 4-hit ear-pass clip reports `onsets: 1` because the
+default room tail bridges the gaps. Matters when reading multi-hit lab clips;
+judge hit counts from the waveform/spectrogram, not `onsets`, for sustained-tail
+content.
+
 ### synth2 LFO `shape` morph is non-monotonic in modulation depth (0→4 endpoints nearly cancel)
 **Reported:** 2026-07-19 (v2 engine audit, finding F7) · **Status:** open (informational, no action planned) · **Area:** `packages/client/src/engine/synth2/kernel/Lfo.ts` shape crossfade
 
