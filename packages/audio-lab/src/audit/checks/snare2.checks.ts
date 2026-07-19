@@ -4,9 +4,12 @@
 //
 // CALIBRATED (Task 6, two consecutive `npm run lab:audit` runs, numbers in the
 // commit body / task-6-report.md). Deviations from the original plan draft:
-//  - PERC allows CLIPPING: at snappy=0.9 (a noise-dominant patch, needed to
-//    isolate tone/noiseHp from the shell), extreme tone/noiseHp values clip
-//    the raw, unstaged kernel — same known truth as kick2, not a bug.
+//  - CLIPPING allowance is scoped to tone.dir/noiseHp.dir only (final-review
+//    hardening): their snappy=0.9 patches (needed to isolate tone/noiseHp
+//    from the shell) clip the raw, unstaged kernel at extreme knob values —
+//    same known truth as kick2, not a bug. The other 7 checks measured clean
+//    in calibration, so they keep the strict MOSTLY_SILENT-only gate and a
+//    future clipping regression there fails loudly.
 //  - tone.dir: meanCentroidHz moved the WRONG direction (Δ-264Hz — the
 //    per-frame unweighted centroid is dominated by the always-bright
 //    "wires" noise band regardless of `tone`) -> switched to domPeakHz,
@@ -24,10 +27,11 @@
 import type { CheckSpec } from '../types';
 import { drumBase } from './baselines';
 
-const PERC = ['MOSTLY_SILENT', 'CLIPPING'];
-const d = (id: string, title: string, a: CheckSpec['assertion'], params: Record<string, number> = {}, seconds = 1.2): CheckSpec => ({
+const PERC = ['MOSTLY_SILENT'];
+const PERC_CLIP = [...PERC, 'CLIPPING'];
+const d = (id: string, title: string, a: CheckSpec['assertion'], params: Record<string, number> = {}, seconds = 1.2, allowedHealth: string[] = PERC): CheckSpec => ({
   id: `snare2.${id}`, engine: 'snare2', title, baseline: drumBase('snare2', params, seconds),
-  assertion: a, allowedHealth: PERC,
+  assertion: a, allowedHealth,
 });
 
 export const snare2Checks: CheckSpec[] = [
@@ -38,7 +42,7 @@ export const snare2Checks: CheckSpec[] = [
   d('bodyDecay.dir', 'body decay lengthens the tail (body-dominant patch)', { kind: 'directional', param: 'bodyDecay', from: 0.03, to: 0.38, metric: 'decaySeconds', direction: 'up', minDelta: 0.08 }, { snappy: 0.1 }),
   d('noiseDecay.dir', 'noise decay lengthens the tail (noise-dominant patch)', { kind: 'directional', param: 'noiseDecay', from: 0.03, to: 0.48, metric: 'decaySeconds', direction: 'up', minDelta: 0.1 }, { snappy: 0.9 }),
   d('snappy.dir', 'snappy shifts balance toward bright noise', { kind: 'directional', param: 'snappy', from: 0.1, to: 0.9, metric: 'meanCentroidHz', direction: 'up', minDelta: 250 }),
-  d('tone.dir', 'tone brightens the noise band (dominant peak shifts up)', { kind: 'directional', param: 'tone', from: 1200, to: 7000, metric: 'domPeakHz', direction: 'up', minDelta: 2000 }, { snappy: 0.9 }),
-  d('noiseHp.dir', 'noise highpass shifts energy out of the mid band', { kind: 'directional', param: 'noiseHp', from: 0, to: 1, metric: 'bandMid', direction: 'down', minDelta: 0.03 }, { snappy: 0.9 }),
+  d('tone.dir', 'tone brightens the noise band (dominant peak shifts up)', { kind: 'directional', param: 'tone', from: 1200, to: 7000, metric: 'domPeakHz', direction: 'up', minDelta: 2000 }, { snappy: 0.9 }, 1.2, PERC_CLIP),
+  d('noiseHp.dir', 'noise highpass shifts energy out of the mid band', { kind: 'directional', param: 'noiseHp', from: 0, to: 1, metric: 'bandMid', direction: 'down', minDelta: 0.03 }, { snappy: 0.9 }, 1.2, PERC_CLIP),
   d('level.dir', 'level raises output', { kind: 'directional', param: 'level', from: 0.3, to: 0.9, metric: 'peakDb', direction: 'up', minDelta: 4 }),
 ];
