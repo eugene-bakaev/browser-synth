@@ -389,7 +389,7 @@ export function synth2MatrixChecks(fast: boolean): CheckSpec[] {
 
       // Fast mode: "one dest per family per source" (source:family only —
       // NOT source:family:isInert). EXPECTED_INERT organically grew during
-      // calibration (11 -> 19 entries; exactly what the plan calls out as
+      // calibration (2 -> 18 entries; exactly what the plan calls out as
       // expected), and an isInert-aware key means every family where a
       // source's FIRST-encountered dest and a LATER dest disagree on inert
       // status contributes a second representative — that pushed the fast
