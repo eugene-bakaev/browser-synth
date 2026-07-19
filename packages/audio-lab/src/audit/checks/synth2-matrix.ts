@@ -199,6 +199,12 @@ const MIN_DELTA_OVERRIDE: Partial<Record<string, { minDepth?: number; minScalar?
   // periodic source, see EXPECTED_INERT) measured 81.8; env-owners measured
   // 18-62, velocity 163 — the family defaults (80/100) fail on both fronts.
   'filter.drive': { minDepth: 35, minScalar: 9 },
+  // resonance's depth response has high seed-to-seed variance for the noise
+  // source (30 fresh renders: min 58, median 131, max 198 — 3/30 dipped
+  // under the family default 80, the audit's first observed flake) and lfo2
+  // sits thin too (85.3, only 1.07x over 80). 25 gives noise's worst seed
+  // 2.3x and lfo2 3.4x while staying far above the inert floor (~0-5).
+  'filter.resonance': { minDepth: 25 },
 };
 
 const solo = (which: 1 | 2 | 3, level: number): Record<string, number> => ({
