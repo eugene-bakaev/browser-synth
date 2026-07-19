@@ -502,15 +502,19 @@ export function synth2MatrixChecks(fast: boolean): CheckSpec[] {
       // (synth2.checks.ts) — measured ~2.7% of fresh renders there; the
       // directional metric itself is never at risk.
       if (source === 'noise' && dest === 'noise.color') check.allowedHealth = ['DC_OFFSET'];
-      // filter.drive (F1 fix, 2026-07-19): a large, CONSTANT drive
-      // contribution held for the whole plateau (env1/env2/velocity's `on`/
-      // hard leg) saturates through tanh long enough to trip DC_OFFSET —
-      // same genuine small artifact as the non-matrix filter.drive.dir check
-      // (synth2.checks.ts). lfo1/lfo2/noise/env3 don't hit it in practice
-      // (oscillating or weaker contribution), but scoping the whole dest is
-      // simpler and harmless — it only widens what health flags are
-      // permitted, never relaxes the depth/scalar assertion above.
-      if (dest === 'filter.drive') check.allowedHealth = ['DC_OFFSET'];
+      // filter.drive (F1 fix, 2026-07-19; narrowed per review, 2026-07-19): a
+      // large, CONSTANT drive contribution held for the whole plateau
+      // saturates through tanh long enough to trip DC_OFFSET — same genuine
+      // small artifact as the non-matrix filter.drive.dir check
+      // (synth2.checks.ts). Measured per-pair (task-3-report.md): only
+      // env1/env2/velocity's `on`/hard leg actually trips it; lfo1/lfo2/
+      // noise/env3 measured health-clean. Scoped to exactly those pairs
+      // (not the whole dest) so a future genuine DC bias on a currently-
+      // clean cell still fails loudly, matching the noise->noise.color
+      // pair-scoping convention above.
+      if (dest === 'filter.drive' && (source === 'env1' || source === 'env2' || source === 'velocity')) {
+        check.allowedHealth = ['DC_OFFSET'];
+      }
       checks.push(check);
     }
   }

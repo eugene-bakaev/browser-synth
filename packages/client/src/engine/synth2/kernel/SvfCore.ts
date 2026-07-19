@@ -24,7 +24,12 @@
 // the normal (non-oscillating) path, gated on `drive > 0` — it was previously
 // read but never used below resonance 0.9 (~90% of the range), a dead knob.
 // resonance <= 0.9 WITH drive 0 stays bit-identical to the original linear
-// filter (Approach A): the saturator is gated on drive > 0 on both paths.
+// filter (Approach A). Note the two paths are NOT gated identically: the
+// normal path skips the saturator entirely at drive 0 (no branch even
+// entered, hence bit-identical); the self-oscillation path (below, gated
+// only on oscZone > 0) runs tanh(D·x) unconditionally once in the zone, so
+// at drive 0 it still applies tanh(x) — D=1, a small real compression, not
+// a bypassed/identity pass.
 //
 
 const K09 = 1 / 9.05;        // k at resonance 0.9 (= 1/(0.5+0.9*9.5)) — ramp anchor
