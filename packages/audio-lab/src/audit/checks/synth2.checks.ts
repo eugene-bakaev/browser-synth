@@ -13,10 +13,14 @@
 // in the commit body / task-8-report.md). Deviations from the plan draft,
 // found by rendering both legs directly (throwaway probes, not committed):
 //
-//  - osc1.sync.chg -> DEMOTED to `{ kind: 'health' }`. Voice.setSync's own
-//    comment says it: "osc1.sync is inert — osc1 is the master." Measured
-//    delta is exactly 0.000 (bit-identical renders) confirming it. This is a
-//    real, permanent no-op, not a calibration miss — flagged for Task 12.
+//  - osc1.sync.chg -> DEMOTED to `{ kind: 'health', param: 'osc1.sync' }`.
+//    Voice.setSync's own comment says it: "osc1.sync is inert — osc1 is the
+//    master." Measured delta is exactly 0.000 (bit-identical renders)
+//    confirming it. This is a real, permanent no-op, not a calibration miss
+//    — flagged for Task 12. The `param` tag (Task 11) tells the completeness
+//    meta-test this key HAS a check (just not one that moves a metric), so
+//    it isn't forced into the blind-spot registry alongside the genuinely
+//    check-less main-thread-derived *.sync/*.div slots.
 //  - osc2.sync.chg / osc3.sync.chg: PASS on delta already (margin ~2.4x) but
 //    both `to` legs flag DC_OFFSET (~-0.0147, just over the 0.01 threshold).
 //    Hard-syncing a detuned slave produces a per-cycle-asymmetric waveform
@@ -182,7 +186,7 @@ export const synth2Checks: CheckSpec[] = [
   // osc1.sync is inert by design — osc1 is the master oscillator and is
   // never reset by a sync target (Voice.setSync doc comment). Measured
   // delta is exactly 0.000 (bit-identical renders). Health-only per plan.
-  c('osc1.sync.chg', 'osc1 hard sync is a documented no-op (osc1 is the master, never a sync slave)', { kind: 'health' }, { ...solo1, 'osc1.coarse': 7 }),
+  c('osc1.sync.chg', 'osc1 hard sync is a documented no-op (osc1 is the master, never a sync slave)', { kind: 'health', param: 'osc1.sync' }, { ...solo1, 'osc1.coarse': 7 }),
   // --- oscillator 2 / 3 (solo; same shapes as osc1) ---
   c('osc2.morph.dir', 'morph sweeps brighter', dir('osc2.morph', 0, 3, 'meanCentroidHz', 'up', 200), solo2),
   c('osc2.pulseWidth.dir', 'narrow pulse brighter', dir('osc2.pulseWidth', 0.5, 0.08, 'meanCentroidHz', 'up', 150), { ...solo2, 'osc2.morph': 3 }),

@@ -30,7 +30,13 @@ export type Assertion =
       compare: 'off-vs-on' | 'velocity-pair';
       metric: MetricId; direction: Direction; minDelta: number }
   // Health-only: render must obey the health policy, nothing else asserted.
-  | { kind: 'health' };
+  // `param`: set when this check is a demoted directional/enum check for a
+  // specific descriptor key (a discovered no-op, e.g. osc1.sync) — the
+  // completeness meta-test's coveredParams() still credits the key as
+  // covered (it HAS a check; just not one that moves a metric), rather than
+  // forcing it into the blind-spot registry alongside genuinely check-less
+  // main-thread-derived slots.
+  | { kind: 'health'; param?: string };
 
 export interface CheckSpec {
   id: string;                      // 'synth2.filter.cutoff.dir'
