@@ -257,6 +257,17 @@ longer `exp(room)` reverberant tail, balanced by `mix`. Deterministic xorshift32
 
 Fold into the broader drum-voicing polish stage alongside snare2/kick2/hat2.
 
+**2026-07-19 v2-engine-audit note (finding F8):** the audit's mechanical pass is
+now complete — every clap2 control verifiably does what it claims (bursts/spread/
+body/room/mix all calibrated, 8 checks green; see
+`packages/audio-lab/src/audit/checks/clap2.checks.ts`). Two mechanical facts for
+the eventual voicing pass: (1) the inter-burst gap NEVER dips below the onset
+detector's floor at any in-range spread (the burst train reads as one continuous
+event — consistent with the "too uniform / merged" hypothesis above); (2)
+`roomGain = 0.2 + 0.8*mix` floors at 0.2, so the room tail is never fully off
+even at mix=0. Ear-pass render attached in the audit conversation; the voicing
+question itself stays exactly as written above.
+
 ### local-init.sql missing the 0005_presets table
 **Reported:** 2026-07-02 · **Status:** open · **Area:** `packages/server/db/local-init.sql`, `supabase/migrations/0005_presets.sql`
 
@@ -404,6 +415,128 @@ arguably should NOT clear) and a document-level click listener that does not
 swallow or race the `.col-step` click handlers — likely a capture-phase or
 composedPath()-based check. Design it together with the drag-select entry
 above so the two gestures share one mouse-interaction model.
+
+### synth2 `filter.drive` is totally inert below resonance ≈ 0.9 (silent dead knob)
+**Reported:** 2026-07-19 (v2 engine audit, finding F1) · **Status:** open · **Area:** `packages/client/src/engine/synth2/kernel/SvfCore.ts` (+ Synth2Panel filter section)
+
+`SvfCore.tick` applies the `tanh(D·x)` drive saturator ONLY inside the
+self-oscillation zone (`resonance > 0.9`, per its own doc comment); on the normal
+path the `drive` param is read but never used. The audit measured **exactly 0.000
+delta** on every metric for drive sweeps at any resonance ≤ 0.9 — for ~90% of the
+resonance range the Drive knob does literally nothing, silently. Users turning it
+up hear no change and get no hint why. The audit's own drive checks had to move to
+resonance 0.95 (self-osc zone, near-zero osc levels) to observe any effect at all
+(there it works: meanCentroidHz Δ264 over the sweep).
+
+Options (an engine change is out of audit scope, so undecided): (a) extend the
+saturator to the normal filter path (real DSP change — needs its own ear pass and
+audit A/B via `npm run lab -- render-engine`); (b) keep the DSP and surface the
+constraint in the UI (disable/dim Drive below the zone, or annotate); (c) declare
+it intended ("drive = self-osc character knob") and document. Evidence:
+`docs/superpowers/audits/2026-07-17-v2-engine-audit.md` F1; check
+`synth2.filter.drive.dir` in `packages/audio-lab/src/audit/checks/synth2.checks.ts`
+(engineered baseline documents the zone), matrix overrides in `synth2-matrix.ts`
+(`MIN_DELTA_OVERRIDE['filter.drive']`, plus `lfo2/noise→filter.drive` in
+`EXPECTED_INERT` — mod routes into drive are equally dead below the zone).
+
+### synth2 cold-start ParamSlot glide — first note of a fresh voice glides from compiled defaults
+**Reported:** 2026-07-19 (v2 engine audit, finding F2) · **Status:** open · **Area:** `packages/client/src/engine/synth2/kernel/` (ParamSlot smoothing + `Synth2Kernel.renderActive` voice gating)
+
+Every continuous param's `ParamSlot` smoother initializes `current` to the
+*compiled descriptor default* and only advances while its Voice is actively
+rendering (`renderActive` gates `voice.renderAdd` on `voice.active`) — running
+`applyParams()` beforehand does NOT pre-settle it. So the first note played on any
+freshly-constructed voice (first note of a session; first time poly allocation
+reaches an unused voice slot) audibly glides ~5-20ms from the compiled default
+toward the session's actual value, for every param where they differ. The audit
+measured it as a ~0.5-peak, ~20ms onset transient that dominated `peakDb` when
+target levels were low (default `osc1.level` 0.8 vs a patch at 0.1 → the transient
+IS the peak); it also pollutes absolute peak measurements generally (Task 9 found
+it skews fingerprint peaks, not just directional deltas).
+
+Impact ranges from inaudible (patch ≈ defaults) to a distinct first-note "blip"
+(patch far from defaults, e.g. low levels or closed filter). Fix sketch: snap
+`ParamSlot.current` to the target on `noteOn` for a voice that has been inactive
+(or on first activation), rather than smoothing from the stale/compiled value —
+smoothing should protect against clicks WITHIN a running voice, not smear the
+first note. Needs a lab A/B (the audit's `osc*.level.dir` checks were switched
+from peakDb to rmsDb specifically to dodge this — they'd be the regression net).
+Evidence: audit doc F2; root-cause narrative in
+`packages/audio-lab/src/audit/checks/synth2.checks.ts` header + task-8/9 reports.
+
+### synth2 `osc1.sync` is a permanent no-op but the panel still shows the control
+**Reported:** 2026-07-19 (v2 engine audit, finding F3) · **Status:** open (UI decision) · **Area:** `packages/shared/src/engines/synth2-descriptors.ts` (`osc1.sync` row) + Synth2Panel osc section; kernel `Voice.setSync`
+
+osc1 is architecturally always the sync MASTER — `Voice.setSync`'s own comment
+says "osc1.sync is inert — osc1 is the master", and `Synth2Kernel.applyParams`
+never even reads the param. Audit measured exactly 0.000 delta (check demoted to
+health-only). But the descriptor row exists, so the panel renders a SYNC toggle
+on osc1 that has never done anything and never can. Decide: (a) hide/disable the
+control for osc1 in the panel (descriptor stays for wire compat — it's already
+sync-synced in old sessions); (b) leave it and tooltip it as master. Note the
+audit's completeness meta-test covers `osc1.sync` via a tagged health check
+(`packages/audio-lab/src/audit/checks/synth2.checks.ts`, `param: 'osc1.sync'`
+annotation) — if the row is ever removed from descriptors, the completeness test
+will point at the leftover check.
+
+### hat2 `ring` raises output ~+7.3dB uncompensated across its range
+**Reported:** 2026-07-19 (v2 engine audit, finding F4) · **Status:** open · **Area:** `packages/client/src/engine/hat2/kernel/Hat2Kernel.ts` (ring-mod mix, ~line 157)
+
+`ring` crossfades the 6-member square-cluster AVERAGE (sum/6) toward the pure
+2-member ring-mod PRODUCT (`s0*s3`); averaging six ±1 squares is much quieter
+than a single ±1 product, so peak output rises monotonically from −14.86dBFS
+(ring=0) to −7.59dBFS (ring=1) — **Δ+7.28dB of loudness ride** on a knob whose
+job is timbre (the audit asserts its real timbral effect: centroid drops ~1.5kHz
+as ring-mod sum/difference energy comes in). Musically this makes ring hard to
+use: turning it up mostly reads as "louder". Fix sketch: normalize the ring-mod
+branch (e.g. scale the product term by ~0.42 ≈ 10^(−7.28/20), or level-match the
+two branches at equal RMS before the crossfade) — a real DSP change needing a
+lab A/B (`hat2.ring.dir` + `hat2.fingerprint.*` checks are the regression net;
+fingerprint peak bound was calibrated at −18..0 with the CURRENT levels).
+Evidence: audit doc F4; measured sweep in task-7 report / `hat2.checks.ts` header.
+
+### v2 defaults clip the RAW kernels (synth2 +7.4dBFS, kick2 +0.1dBFS) — Tier-1 truth, in-app staging absorbs it
+**Reported:** 2026-07-19 (v2 engine audit, finding F5) · **Status:** open (documentation/decision, low priority) · **Area:** `packages/shared/src/engines/synth2-descriptors.ts` + `kick2.ts` defaults; `packages/audio-lab` Tier-1 renderer
+
+At true default patches the raw kernels (no mixer gain staging) clip: synth2
+default `osc1.level+osc2.level = 0.8+0.8` peaks **+7.4dBFS** (ear-pass render;
+CLIPPING health flag), kick2 default `level 0.9` peaks **+0.09dBFS** on virtually
+every render. In the app the track mixer stages these down, so this is NOT a
+user-facing bug — it's a property of the raw kernel path the offline lab renders.
+Recorded so nobody "discovers" it repeatedly: the audit standardizes on osc
+levels ≤ 0.25 for synth2 audit patches, and only the true-default fingerprint
+checks allow CLIPPING (`synth2-perf.checks.ts`, kick2 PERC constant). Optional
+future decision: whether kernels should self-stage (headroom trim like clap2's
+`OUT_TRIM = 0.5`) so raw-kernel output is also sane — that's a sound-changing
+DSP decision, not a cleanup.
+
+### synth2 hard-sync DC bias (~−0.015) on osc2/osc3 sync with detuned slave
+**Reported:** 2026-07-19 (v2 engine audit, finding F6) · **Status:** open (informational, no action planned) · **Area:** `packages/client/src/engine/synth2/kernel/` oscillator hard-sync path
+
+Hard-syncing a detuned slave truncates its waveform every master cycle; the
+asymmetric per-cycle shape integrates to a small real DC component, measured
+~−0.0147 — just over the analyzer's 0.01 `DC_OFFSET` flag threshold. This is a
+normal, expected hard-sync artifact (any naive hard sync does it); downstream
+AC-coupling makes it inaudible. Recorded because the audit had to scope
+`allowedHealth: ['DC_OFFSET']` onto exactly the two sync checks
+(`osc2/osc3.sync.chg` in `synth2.checks.ts`) — if a future DSP change adds a DC
+blocker to the sync path, those allowances become stale and should be removed
+(the STALE_KNOWN-style hygiene is manual here; the allowance doesn't
+auto-expire).
+
+### synth2 LFO `shape` morph is non-monotonic in modulation depth (0→4 endpoints nearly cancel)
+**Reported:** 2026-07-19 (v2 engine audit, finding F7) · **Status:** open (informational, no action planned) · **Area:** `packages/client/src/engine/synth2/kernel/Lfo.ts` shape crossfade
+
+Measured modulation depth (centroid mod-depth via LFO→cutoff) across the shape
+morph 0..4 runs 2489.5 → 2361.3 → 2135.8 → 2174.6 → 2471.5 — a dip in the middle
+and near-identical endpoints (0→4 delta only −18). Not a bug: crossfading
+dissimilar waveforms legitimately produces non-monotonic depth; every shape is
+audible and distinct. Recorded because (a) it surprised the calibration (the
+draft 0→4 sweep measured "dead" and had to be narrowed to 0→2 — see
+`lfo1/2.shape.chg` in `synth2.checks.ts`), and (b) it's useful sound-design
+knowledge: mid-morph positions modulate measurably less deeply than the pure
+shapes. If a future LFO rework equal-power-compensates the crossfade, recalibrate
+those two checks.
 
 ## Resolved
 

@@ -165,7 +165,20 @@ here relitigates it.
 | hat2 | -14.7 | Six short bright metallic ticks, fast decay, energy centered ~11kHz |
 | clap2 | -10.8 | Four broadband bursts with long room tails (tails merge the onset count — see lab register) |
 
-## Triage outcomes
+## Triage outcomes (user decision 2026-07-19)
 
-(To be filled after the user conversation: each F-item becomes fix-now /
-backlog / known-issue per the user's call.)
+User call: **"write everything to backlog with detailed descriptions."**
+All eight findings recorded in `docs/BACKLOG.md` (Open section):
+- F1 filter.drive dead zone, F2 cold-start ParamSlot glide, F3 osc1.sync
+  no-op control, F4 hat2 ring loudness ride — actionable entries with fix
+  sketches and the audit checks named as each fix's regression net.
+- F5 raw-kernel default clipping, F6 hard-sync DC bias, F7 LFO-shape
+  non-monotonicity — informational/decision entries (documented so the
+  facts and their scoped audit allowances aren't rediscovered).
+- F8 clap2 voicing — appended the audit's mechanical findings (merged
+  onset train, roomGain 0.2 floor) to the existing clap2 BACKLOG entry;
+  the aesthetic question stays open there.
+
+No fix-now branches spawned; `known-issues.ts` remains empty (nothing is
+an expected FAILURE — the suite is 438/438 green; the findings are engine
+behaviors the checks correctly measure).
