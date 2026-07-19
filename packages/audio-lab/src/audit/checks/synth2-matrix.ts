@@ -83,6 +83,32 @@
 //  - Self-reference cells beyond the plan's lfoN->lfoN.shape: env3->env3.s
 //    (its own default-0 sustain gives it nothing to reference) and
 //    lfo2->env3.s (measured negative/near-zero even after retuning).
+//
+// RECALIBRATED (F2 fix, 2026-07-19, audit-fix campaign Task 2; two
+// consecutive `npm run lab:audit` runs, both fully green): Voice.noteOn now
+// snaps every ParamSlot to its target on a cold voice instead of gliding
+// from the compiled default (ParamSlot.ts / Voice.ts) — see synth2.checks.ts
+// header for the full mechanism. ENVTIME_SPEC['env2.a']'s baseline left
+// env2.d/env2.s at their compiled defaults (0.2 / 0.5), so the note's own
+// attack-THEN-decay-to-sustain arc (env2 modulates cutoff via the 2.4
+// default filter.envAmount) produced a big, nonlinear rise-then-fall
+// centroid trajectory — present in every render regardless of any matrix
+// route. modDepth's linear-detrend residual (analyze/moddepth.ts) can't
+// separate that curvature from a genuine periodic modulation, so it
+// dominated: off=272.0, on=271.7 (lfo2 routed), delta -0.29, nowhere near
+// minDepth 8. This was ALWAYS true of the baseline's shape (not something
+// the F2 fix introduced) — it was masked before the fix because the
+// cold-start glide added its own transient noise on top, which happened to
+// make the two legs differ by enough to clear the old (too-low, coincidental)
+// margin. Fixed by adding env2.d:0.01, env2.s:1 — env2 now ramps up during
+// attack and HOLDS at full level (no decay-back-down arc), isolating the
+// attack-shape effect. Measured (env2.a baseline only, amount 0.8, direct
+// probing before committing): off=213.74, on(lfo2)=252.56, delta 38.83 (4.85x
+// minDepth 8). Verified this baseline change doesn't regress env2.a's other
+// 6 real (non-inert) sources sharing the same object — all improved or held
+// comfortable margins: lfo1 depth delta 14.00->57.50; env1/env2/env3/
+// velocity/noise scalar (meanCentroidHz) deltas all stayed in the
+// hundreds, minScalar 4.5 unchanged.
 import { MOD_DESTS, MOD_SOURCES } from '@fiddle/shared';
 import type { CheckSpec, MetricId } from '../types';
 import type { EngineRenderSpec, MatrixRoute, NoteEvent } from '../../render/engine';
@@ -326,8 +352,12 @@ const ENVTIME_SPEC: Record<string, EnvSpec> = {
     baseline: synth2Base({ params: { 'env1.r': 0.1 }, notes: [note('A3', 0.43)], seconds: 1.8 }),
   },
   'env2.a': {
+    // env2.d:0.01, env2.s:1 (F2 recalibration, 2026-07-19, see header): holds
+    // env2 at full level after attack instead of decaying back down, so the
+    // centroid trajectory isolates the attack-shape effect instead of being
+    // dominated by env2's own decay-to-sustain arc.
     kind: 'split', depthMetric: 'modDepthCentroid', minDepth: 8, scalarMetric: 'meanCentroidHz', minScalar: 4.5,
-    baseline: synth2Base({ params: { 'filter.cutoff': 300, 'env2.a': 0.15, 'lfo2.rate': 4 },
+    baseline: synth2Base({ params: { 'filter.cutoff': 300, 'env2.a': 0.15, 'env2.d': 0.01, 'env2.s': 1, 'lfo2.rate': 4 },
       notes: [note('A3', 0.37)], seconds: 0.47 }),
   },
   'env2.d': {

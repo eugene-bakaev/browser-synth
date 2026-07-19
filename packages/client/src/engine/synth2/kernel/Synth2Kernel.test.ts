@@ -93,6 +93,27 @@ describe('Synth2Kernel', () => {
     expect(pb).toBeGreaterThan(0);
     expect(pb / pa).toBeCloseTo(0.25, 1);
   });
+
+  it('first note of a fresh voice starts at session values, not compiled defaults (F2)', () => {
+    const kernel = new Synth2Kernel(SR);
+    const block = defaultParamBlock();
+    block[PARAM_INDEX['osc1.level']] = 0.1; // far below the 0.8 compiled default
+    block[PARAM_INDEX['osc2.level']] = 0;
+    block[PARAM_INDEX['osc3.level']] = 0;
+    kernel.applyParams(block);
+    kernel.noteOn(0, 440, 0.5, 1);
+    const out = renderBlocks(kernel, 0, 16); // ~42ms @ 48k
+    const peakOf = (from: number, to: number) => {
+      let p = 0;
+      for (let i = from; i < to; i++) { const a = Math.abs(out[i]); if (a > p) p = a; }
+      return p;
+    };
+    const onsetPeak = peakOf(0, Math.floor(SR * 0.025));
+    const steadyPeak = peakOf(Math.floor(SR * 0.025), out.length);
+    // Before the fix, osc levels glide 0.8→0.1 over ~5ms and the onset
+    // transient dominates (~several× steady). After: same order as steady.
+    expect(onsetPeak).toBeLessThan(steadyPeak * 1.5);
+  });
 });
 
 function activeCount(kernel: Synth2Kernel): number {

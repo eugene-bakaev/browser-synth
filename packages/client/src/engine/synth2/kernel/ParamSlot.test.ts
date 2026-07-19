@@ -105,4 +105,11 @@ describe('ParamSlot', () => {
     s.mod = Infinity;
     expect(Number.isFinite(s.next())).toBe(true);
   });
+
+  it('snap jumps the smoother straight to its target (cold-voice noteOn)', () => {
+    const s = new ParamSlot(lin, SR);
+    s.setBase(1);       // far from the 0.5 default
+    s.snap();
+    expect(s.next()).toBeCloseTo(1, 6); // no 5ms glide from the default
+  });
 });

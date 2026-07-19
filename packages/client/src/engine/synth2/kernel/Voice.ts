@@ -179,6 +179,10 @@ export class Voice {
     if (!this.env1.active) {
       this.osc1.reset(); this.osc2.reset(); this.osc3.reset();
       this.activeFilter.reset();
+      // F2: snap every param smoother — an inactive voice's slots have been
+      // receiving setBase broadcasts but never advancing (renderActive gates
+      // on voice.active), so `current` still sits at construction values.
+      for (const s of this.slots) s.snap();
     }
     this.env1.noteOn(gateFrames);
     this.env2.noteOn(gateFrames);
