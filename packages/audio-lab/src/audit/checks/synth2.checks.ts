@@ -49,15 +49,18 @@
 //    Fixed: solo the CARRIER (osc2/osc3) and detune the MODULATOR
 //    (osc1/osc2). Range widened 0->3 to 0->4 (full descriptor range) for
 //    a comfortable margin.
-//  - filter.drive.dir: dead at the default resonance (delta 0.000).
-//    SvfCore.tick only applies the tanh(D·x) drive saturator inside the
-//    resonance>0.9 self-oscillation zone (see SvfCore.ts comment) — below
-//    that, `drive` is read but never used. Moved the check's resonance to
-//    0.95 (self-osc zone) with near-zero oscillator levels so the drive
-//    knob's effect on the (regulated, cutoff-independent-amplitude)
-//    self-oscillation is audible without also stacking oscillator energy
-//    into a clip. Real UX note for Task 12: the Drive knob is a total no-op
-//    across ~90% of the resonance range; nothing in this task changes that.
+//  - filter.drive.dir: WAS dead at the default (normal-path) resonance
+//    (delta 0.000) because SvfCore.tick only applied the tanh(D·x) drive
+//    saturator inside the resonance>0.9 self-oscillation zone — below that,
+//    `drive` was read but never used (this task's original engineered
+//    fix moved the check's resonance to 0.95 to reach the zone). FIXED
+//    (audit-fix campaign Task 3, 2026-07-19): SvfCore.ts now applies the
+//    same output-only tanh saturator on the normal path too, gated on
+//    `drive > 0` so `drive` at its 0 default keeps the res<=0.9 compat
+//    invariant byte-for-byte. The check now uses a normal moderate-
+//    resonance patch (0.4) instead of the self-oscillation zone — see the
+//    check's own comment for the measured numbers and the DC_OFFSET scoping
+//    note below.
 //  - filter.model.enum: classic (filter.type default lp) and morph
 //    (filter.morph default 0) are BIT-IDENTICAL at their descriptor
 //    defaults — MorphFilter.process(m=0) returns `1*svf.low + 0*svf.band`,
@@ -287,11 +290,18 @@ export const synth2Checks: CheckSpec[] = [
   c('filter.keyTrack.dir', 'keytrack opens the filter on a high note', dir('filter.keyTrack', 0, 1, 'meanCentroidHz', 'up', 150),
     { 'filter.cutoff': 300 }), // note override below
   c('filter.envAmount.dir', 'env amount opens the filter', dir('filter.envAmount', 0, 4, 'meanCentroidHz', 'up', 200), { 'filter.cutoff': 300 }),
-  // drive is a no-op outside the resonance>0.9 self-oscillation zone
-  // (SvfCore only applies its tanh saturator there) — moved into that zone
-  // with near-zero oscillator levels so drive's effect on the regulated
-  // self-oscillation is audible without stacking a separate clip source.
-  c('filter.drive.dir', 'drive adds harmonics (self-oscillation zone — drive is a no-op below resonance 0.9, see header)', dir('filter.drive', 0, 1, 'meanCentroidHz', 'up', 120), { 'filter.cutoff': 800, 'filter.resonance': 0.95, 'osc1.level': 0.1, 'osc2.level': 0.1, 'osc3.level': 0 }),
+  // F1 fix (2026-07-19): drive now saturates the normal (non-oscillating)
+  // path too (SvfCore.ts), so this no longer needs the resonance>0.9
+  // self-oscillation-zone engineering — a normal, moderate-resonance patch
+  // is enough. Measured (task-3 lab calibration): meanCentroidHz 1178.12
+  // (drive=0) -> 1679.44 (drive=1), delta 501.32 vs minDelta 200 (2.5x
+  // margin); rmsDb also rises +9.2dB (-18.43 -> -9.19), confirming louder +
+  // brighter, not an inverse effect. drive=1 leg trips DC_OFFSET (0.018,
+  // just over the 0.01 threshold) — a genuine small saturation artifact
+  // (measured even with a single solo oscillator, so it isn't beating
+  // between osc1/osc2), same category as the scoped hard-sync/noise-color
+  // DC_OFFSET cases below — allowedHealth scoped, not re-parameterized.
+  c('filter.drive.dir', 'drive saturates and brightens the filter output (normal path)', dir('filter.drive', 0, 1, 'meanCentroidHz', 'up', 200), { 'filter.cutoff': 800, 'filter.resonance': 0.4, 'osc1.level': 0.25, 'osc2.level': 0.25, 'osc3.level': 0 }),
   c('filter.type.enum', 'lp/bp/hp are audible and spectrally ordered',
     { kind: 'enum', param: 'filter.type', values: [0, 1, 2], minPeakDb: -40, distinct: { metric: 'meanCentroidHz', minSpread: 600 } },
     { 'filter.cutoff': 800 }),
@@ -377,6 +387,11 @@ loop1.baseline = { ...loop1.baseline, notes: [{ time: 0, note: 'A3', duration: 6
 // exactly the two checks that hard-sync a detuned slave.
 find('synth2.osc2.sync.chg').allowedHealth = ['DC_OFFSET'];
 find('synth2.osc3.sync.chg').allowedHealth = ['DC_OFFSET'];
+
+// filter.drive.dir (F1, 2026-07-19): the tanh saturator's `to` (drive=1) leg
+// measures dcOffset 0.018, just over the 0.01 flag threshold — a genuine
+// small saturation artifact (see check comment above), not a bug.
+find('synth2.filter.drive.dir').allowedHealth = ['DC_OFFSET'];
 
 // MOSTLY_SILENT is expected at this legitimate zero/near-zero boundary.
 // (noise.level.dir's own MOSTLY_SILENT scoping was removed in the F2

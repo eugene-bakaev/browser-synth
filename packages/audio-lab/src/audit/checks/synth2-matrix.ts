@@ -49,10 +49,14 @@
 //    under the minDelta of 8). medianF0 (the shifted value itself) measured
 //    145.6 for the same cell — matches the metric already used by the
 //    calibrated non-matrix osc1.coarse.dir/osc1.fine.dir checks.
-//  - filter.drive needs the same resonance:0.95 self-oscillation-zone
-//    engineering as its calibrated non-matrix check (Task 8): the drive
-//    saturator is a no-op below resonance 0.9, so a mod route into it is
-//    inert at the generic baseline's default resonance.
+//  - filter.drive: WAS engineered into the resonance:0.95 self-oscillation
+//    zone (Task 8/10) because the drive saturator used to be a no-op below
+//    resonance 0.9. FIXED (audit-fix campaign Task 3, 2026-07-19): SvfCore.ts
+//    now saturates the normal path too, so this dest uses the same normal
+//    moderate-resonance patch as every other filter-family cell. Un-inerted
+//    lfo2 and noise (both now measurably live — see MIN_DELTA_OVERRIDE and
+//    EXPECTED_INERT for the numbers); see synth2.checks.ts's filter.drive.dir
+//    for the full drive-curve measurement.
 //  - ENVTIME family (env1/2/3 x a/d/s/r, 12 dests) needed the most
 //    engineering — see the ENVTIME_SPEC table below and the report for the
 //    full per-dest writeup. Short version: 'a'/'d'/'r' are one-shot-per-note
@@ -174,11 +178,6 @@ export const EXPECTED_INERT: ReadonlyArray<readonly [string, string]> = [
   // that still fits lfo1/lfo2's real (10-30) range — same nondeterminism
   // caution as the other noise entries above.
   ['noise', 'filter.keyTrack'],
-  // filter.drive's self-oscillation-zone baseline: lfo2 measured -3.1
-  // (near-zero) and noise measured 14.1 (real but too close to the noise
-  // floor to trust across seeds) — lfo1 alone (81.8) carries the periodic
-  // side of this dest.
-  ['lfo2', 'filter.drive'], ['noise', 'filter.drive'],
   // envtime noise cases weaker than the env-owner sources the scalar
   // threshold was calibrated to: env2.d measured -90.3 (needs <=130 margin
   // from env-owners) and env3.a measured 0.9 (needs <=40) — both far under
@@ -221,10 +220,23 @@ const MIN_DELTA_OVERRIDE: Partial<Record<string, { minDepth?: number; minScalar?
   // lfo1/lfo2 measured 16.9/32.8 (family default 80 fails both); env-owners
   // measured 66-79 (family default 100 fails all three).
   'filter.keyTrack': { minDepth: 8, minScalar: 33 },
-  // drive's self-oscillation-zone baseline: lfo1 (the one surviving
-  // periodic source, see EXPECTED_INERT) measured 81.8; env-owners measured
-  // 18-62, velocity 163 — the family defaults (80/100) fail on both fronts.
-  'filter.drive': { minDepth: 35, minScalar: 9 },
+  // filter.drive (F1 fix, 2026-07-19): re-baselined off the self-oscillation
+  // zone onto the normal-path patch (see baselineFor + synth2.checks.ts).
+  // Periodic sources (modDepthCentroid, off-vs-on): lfo1 138.05, lfo2 8.815
+  // (weakest — both fully deterministic, repeat-verified), noise worst-seed
+  // 26.98 over 60 fresh renders (nondeterministic mod-source RNG, same
+  // caveat as elsewhere in this file). minDepth 4 gives lfo2 2.2x, noise's
+  // worst seed 6.7x, lfo1 34x. Scalar sources (meanCentroidHz): env1/env2
+  // 163.27 (identical — both sit at the same default sustain plateau for
+  // most of the held note), env3 40.89 (weakest — env3.s defaults to 0, a
+  // smaller sustained drive contribution), velocity 352.34. minScalar 20
+  // gives env3 2.04x margin (deterministic — no seed risk), the rest 8-18x.
+  // The `on`/hard leg for env1/env2/velocity (a large, CONSTANT drive
+  // contribution held for the whole plateau, unlike lfo1/lfo2's oscillating
+  // contribution) trips DC_OFFSET — same saturation artifact as the
+  // non-matrix filter.drive.dir check; scoped via allowedHealth below, not
+  // re-parameterized.
+  'filter.drive': { minDepth: 4, minScalar: 20 },
   // resonance's depth response has high seed-to-seed variance for the noise
   // source (30 fresh renders: min 58, median 131, max 198 — 3/30 dipped
   // under the family default 80, the audit's first observed flake) and lfo2
@@ -272,10 +284,13 @@ function baselineFor(dest: string): CheckSpec['baseline'] {
   if (dest === 'fm.osc2') return synth2Held({ ...solo(2, 0.25), 'osc1.coarse': 19, 'filter.cutoff': 1200, 'env3.s': 0.4 });
   if (dest === 'fm.osc3') return synth2Held({ ...solo(3, 0.25), 'osc2.coarse': 19, 'filter.cutoff': 1200, 'env3.s': 0.4 });
 
-  // --- filter.drive is a no-op outside the resonance>0.9 self-oscillation
-  // zone (Task 8 finding) — engineer the baseline into that zone. ---
+  // --- filter.drive (F1 fix, 2026-07-19): drive now saturates the normal
+  // (non-oscillating) path too (SvfCore.ts), so this no longer needs the
+  // resonance>0.9 self-oscillation-zone engineering (Task 8) — a normal
+  // moderate-resonance patch is enough, matching the calibrated non-matrix
+  // filter.drive.dir check (synth2.checks.ts). ---
   if (dest === 'filter.drive') {
-    return synth2Held({ 'osc1.level': 0.1, 'osc2.level': 0.1, 'osc3.level': 0, 'filter.cutoff': 800, 'filter.resonance': 0.95 });
+    return synth2Held({ 'osc1.level': 0.25, 'osc2.level': 0.25, 'osc3.level': 0, 'filter.cutoff': 800, 'filter.resonance': 0.4 });
   }
 
   // --- filter.morph is BIT-IDENTICAL to classic at filter.model's default
@@ -487,6 +502,15 @@ export function synth2MatrixChecks(fast: boolean): CheckSpec[] {
       // (synth2.checks.ts) — measured ~2.7% of fresh renders there; the
       // directional metric itself is never at risk.
       if (source === 'noise' && dest === 'noise.color') check.allowedHealth = ['DC_OFFSET'];
+      // filter.drive (F1 fix, 2026-07-19): a large, CONSTANT drive
+      // contribution held for the whole plateau (env1/env2/velocity's `on`/
+      // hard leg) saturates through tanh long enough to trip DC_OFFSET —
+      // same genuine small artifact as the non-matrix filter.drive.dir check
+      // (synth2.checks.ts). lfo1/lfo2/noise/env3 don't hit it in practice
+      // (oscillating or weaker contribution), but scoping the whole dest is
+      // simpler and harmless — it only widens what health flags are
+      // permitted, never relaxes the depth/scalar assertion above.
+      if (dest === 'filter.drive') check.allowedHealth = ['DC_OFFSET'];
       checks.push(check);
     }
   }

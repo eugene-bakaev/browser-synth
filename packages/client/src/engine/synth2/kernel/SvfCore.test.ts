@@ -129,6 +129,31 @@ describe('SvfCore', () => {
   });
 });
 
+describe('drive on the normal path (F1)', () => {
+  it('drive > 0 saturates the normal-path output (was a dead knob)', () => {
+    const x = sine(220, 12000);
+    const clean = new SvfCore(SR);
+    const driven = new SvfCore(SR);
+    let diff = 0;
+    for (let i = 0; i < x.length; i++) {
+      clean.tick(2 * x[i], 800, 0.5, 0);   // hot input so tanh has something to grab
+      driven.tick(2 * x[i], 800, 0.5, 1);
+      if (i >= 4000) diff += Math.abs(clean.low - driven.low);
+    }
+    expect(diff).toBeGreaterThan(1); // before the fix: exactly 0.000
+  });
+
+  it('drive = 0 stays bit-identical to the linear reference (compat invariant)', () => {
+    const x = noiseBuf(8000);
+    const svf = new SvfCore(SR);
+    const ref = refLinearLow(x, 800, 0.5);
+    for (let i = 0; i < x.length; i++) {
+      svf.tick(x[i], 800, 0.5, 0);
+      expect(svf.low).toBe(ref[i]);
+    }
+  });
+});
+
 describe('SvfCore self-oscillation (2026-06-20)', () => {
   it('res<=0.9 with drive 0 is bit-identical to the original linear SVF', () => {
     const x = noiseBuf(4000);
