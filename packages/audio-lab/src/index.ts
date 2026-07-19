@@ -12,8 +12,19 @@ export { analyzeSpectrum } from './analyze/spectrum';
 export type { SpectrumAnalysis, SpectralPeak, SpectrogramData } from './analyze/spectrum';
 export { analyzeHealth } from './analyze/health';
 export type { HealthReport } from './analyze/health';
+export { modDepth } from './analyze/moddepth';
+export type { ModDepthResult } from './analyze/moddepth';
+export { bandEnergyRatio } from './analyze/bands';
+export type { BandRatios } from './analyze/bands';
 export { compareReports } from './analyze/compare';
 export type { CompareResult, MetricDelta } from './analyze/compare';
 export { buildReport, writeRunDir, defaultRunDir } from './report/report';
-export type { RunReport, RunSummary } from './report/report';
+export type {
+  RunReport,
+  RunSummary,
+  ReportEnvelope,
+  ReportEnvelopePoint,
+  PitchSettleEntry,
+  BuildReportOpts,
+} from './report/report';
 export { encodeWav, decodeWav } from './report/wav';

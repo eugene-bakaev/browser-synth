@@ -7,7 +7,9 @@
   "scripts": {
     "lab": "tsx src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "audit": "vitest run --config vitest.audit.config.ts",
+    "audit:fast": "AUDIT_FAST=1 vitest run --config vitest.audit.config.ts"
   },
   "dependencies": {
     "@fiddle/client": "*",
