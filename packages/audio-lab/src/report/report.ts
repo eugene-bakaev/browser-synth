@@ -85,11 +85,14 @@ export function buildReport(clip: AudioClip, opts: BuildReportOpts = {}): RunRep
   };
 
   const pitchSettle: PitchSettleEntry[] | null = opts.noteTargets
-    ? opts.noteTargets.map((t) => ({
-        time: t.time,
-        targetHz: t.freq,
-        settleSeconds: pitchSettleTime(pitch.frames, t.time, t.freq),
-      }))
+    ? opts.noteTargets.map((t) => {
+        // pitchSettleTime returns an ABSOLUTE clip time (raw frame.time).
+        // Report elapsed-since-note-onset — the field's natural reading and
+        // the audit executor's semantics (fix 87dcae3); keeping report.json
+        // absolute caused the same misread the executor bug did.
+        const abs = pitchSettleTime(pitch.frames, t.time, t.freq);
+        return { time: t.time, targetHz: t.freq, settleSeconds: abs === null ? null : abs - t.time };
+      })
     : null;
 
   return {
