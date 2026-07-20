@@ -1,7 +1,7 @@
 import { ref, computed, toRaw, type InjectionKey } from 'vue';
 import type { OscillatorTypeLiteral, Path } from '@fiddle/shared';
 import { getDeep, TRACK_POOL_SIZE, moveTrackBefore, ordersEqual } from '@fiddle/shared';
-import { type EngineType, freshProject } from '../project';
+import { type EngineType, freshProject, freshTrack } from '../project';
 import { setRoomInUrl, clearRoomFromUrl, setFocusedTrackInUrl } from '../sync/roomId';
 import { roster, selfClientId } from '../sync/presence';
 import { gestureEndForLeaf } from '../sync/dispatchPolicy';
@@ -34,11 +34,11 @@ export function createSynthContext(runtime: AppRuntime) {
   // command bus: the bus writes state + emits to the audio stream; the outbound
   // enqueue is gated on the room being live inside session.enqueue, so
   // pre-connect edits still drive audio + UI without trying to sync.
-  function dispatchLocal(path: Path, value: unknown): void {
-    const gestureEnd = gestureEndForLeaf(String(path[path.length - 1]));
+  function dispatchLocal(path: Path, value: unknown, gestureEndOverride?: boolean): void {
+    const gestureEnd = gestureEndOverride ?? gestureEndForLeaf(String(path[path.length - 1]));
     const prior = getDeep(project as unknown as Record<string, unknown>, path);
-    // toRaw: object leaves (trackOrder) must be captured raw so undo's
-    // identity comparisons (see AppRuntime getLiveValue) hold.
+    // toRaw: object leaves (trackOrder, a whole track) must be captured raw so
+    // undo's identity/deepEqual comparisons (see AppRuntime getLiveValue) hold.
     const priorValue = typeof prior === 'object' && prior !== null ? toRaw(prior) : prior;
     bus.dispatchLocal({ path, value, priorValue, gestureEnd });
   }
@@ -172,13 +172,22 @@ export function createSynthContext(runtime: AppRuntime) {
   const addTrack = (): void => {
     const idx = project.tracks.findIndex(t => !t.enabled);
     if (idx === -1) return;
-    dispatchLocal(['tracks', idx, 'enabled'], true);
+    // Overwrite the reused slot with a fresh, ENABLED track in ONE atomic op.
+    // freshTrack(true).enabled === true, so this enables AND clears together:
+    // a per-leaf reset would op-storm past the rate limiter, and a bare
+    // enabled=true would resurrect the deleted track's content. gestureEnd=true
+    // (discrete action → flush immediately). dispatchLocal captures the prior
+    // (the deleted track) for nack rollback + undo. Both dispatches share one
+    // synchronous task → ONE undo entry (burst rule).
+    dispatchLocal(['tracks', idx], freshTrack(true), true);
     const next = moveTrackBefore(project.trackOrder, idx, null);
     if (!ordersEqual(next, project.trackOrder)) dispatchLocal(['trackOrder'], next);
   };
 
   // Remove a track = disable that slot (non-destructive; step/param data stays
-  // so re-adding restores it). Refused when it would leave zero enabled tracks.
+  // in the slot, and Undo restores the deleted track — but a fresh addTrack now
+  // BLANKS the reused slot, so re-adding no longer resurrects the old content).
+  // Refused when it would leave zero enabled tracks.
   const removeTrack = (index: number): void => {
     if (index < 0 || index >= TRACK_POOL_SIZE) return;
     if (!project.tracks[index].enabled) return;

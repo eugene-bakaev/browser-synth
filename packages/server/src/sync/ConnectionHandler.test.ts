@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, TRACK_POOL_SIZE, STEP_BUFFER_SIZE } from '@fiddle/shared';
+import { PROJECT_SCHEMA_VERSION, HANDLES, freshProject, freshTrack, TRACK_POOL_SIZE, STEP_BUFFER_SIZE } from '@fiddle/shared';
 import { SESSION_LOAD_TIMEOUT_MS, HELLO_DEADLINE_MS } from './ConnectionHandler.js';
 import { GRACE_MS } from '../room/RoomStore.js';
 import type { ServerMessage } from '@fiddle/shared';
@@ -1036,6 +1036,46 @@ describe('ConnectionHandler', () => {
       } finally {
         nowSpy.mockRestore();
       }
+    });
+  });
+
+  describe('whole-track atomic write', () => {
+    it('applies an in-range whole-track set and broadcasts it (no nack)', async () => {
+      const sockA = makeMockSocket();
+      const sockB = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sockA);
+      pool.add('room1', sockB);
+      const handlerA = new ConnectionHandler('room1', sockA, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      const handlerB = new ConnectionHandler('room1', sockB, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handlerA.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      await handlerB.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      sockA.sent.length = 0;
+      sockB.sent.length = 0;
+
+      // Slot 5 is disabled in a fresh project; reset it to a fresh ENABLED track.
+      await handlerA.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['tracks', 5], value: freshTrack(true) });
+
+      expect(sockA.sent.find((m) => m.type === 'nack')).toBeUndefined();
+      expect((await store.peekProject('room1'))?.tracks[5].enabled).toBe(true);
+      // Peer B receives the broadcast whole-track set.
+      const bcast = sockB.sent.find((m) => m.type === 'set' && JSON.stringify(m.path) === JSON.stringify(['tracks', 5]));
+      expect(bcast).toBeDefined();
+    });
+
+    it('nacks an out-of-range whole-track set (path.invalid)', async () => {
+      const sock = makeMockSocket();
+      const pool = new FakePool();
+      pool.add('room1', sock);
+      const handler = new ConnectionHandler('room1', sock, store, pool, noopLog, rejectAll, new InMemoryProfileStore());
+      await handler.onMessage({ v: 1, type: 'hello', schemaVersion: PROJECT_SCHEMA_VERSION });
+      sock.sent.length = 0;
+
+      await handler.onMessage({ v: 1, type: 'set', clientSeq: 1, path: ['tracks', TRACK_POOL_SIZE], value: freshTrack(true) });
+
+      const nack = sock.sent.find((m) => m.type === 'nack');
+      expect(nack).toBeDefined();
+      if (nack && nack.type === 'nack') expect(nack.code).toBe('path.invalid');
     });
   });
 });

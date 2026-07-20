@@ -33,6 +33,11 @@ export const PATTERNS: ReadonlyArray<ReadonlyArray<string>> = [
   // Whole-array atomic write — the ONLY way to change display order (a
   // per-element pattern could produce a duplicated index mid-flight).
   ['trackOrder'],
+  // Whole-track atomic write — the ONLY non-leaf track write. "Add track" uses
+  // it to reset a reused pool slot to a fresh track in ONE op; a per-leaf reset
+  // would be an op-storm past the rate limiter (nack → rollback → data loss).
+  // The value is validated against the full Track schema (resolveLeafSchema).
+  ['tracks', '*'],
   ['tracks', '*', 'engineType'],
   ['tracks', '*', 'patternLength'],
   ['tracks', '*', 'enabled'],
@@ -184,6 +189,9 @@ export function resolveLeafSchema(path: string): z.ZodTypeAny | null {
   // Everything else starts with `tracks.<i>.…`.
   if (tokens[0] !== 'tracks') return null;
   if (!/^\d+$/.test(tokens[1])) return null;
+  // Whole-track atomic write: path is exactly `tracks.<i>` (length 2). Validate
+  // the entire Track object.
+  if (tokens.length === 2) return Schemas.Track;
   // From here on we're inside a Track. Field at index 2 picks the subtree.
   const trackKey = tokens[2];
   const trackShape = Schemas.Track.shape;

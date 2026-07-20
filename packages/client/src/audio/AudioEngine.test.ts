@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { reactive, nextTick } from 'vue';
-import { freshProject, type Project } from '../project';
+import { freshProject, freshTrack, type Project } from '../project';
 import { setDeep, TRACK_POOL_SIZE, type Path } from '@fiddle/shared';
 import type { AppliedCommand } from '../project/appliedCommand';
 
@@ -152,6 +152,24 @@ describe('AudioEngine', () => {
     set(['tracks', 0, 'engineType'], 'kick');
     expect(state.engines[0]).not.toBe(before);
     expect(state.engines[0]!.engineType).toBe('kick');
+  });
+
+  it('a whole-track set rebuilds an enabled slot from the new state (kick → fresh synth)', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    set(['tracks', 0, 'engineType'], 'kick');
+    expect(state.engines[0]!.engineType).toBe('kick');
+    set(['tracks', 0], freshTrack(true)); // reset to a fresh (synth) track
+    expect(state.engines[0]!.engineType).toBe('synth');
+  });
+
+  it('a whole-track set on a disabled slot builds its engine (fresh + enabled)', async () => {
+    const { engine, set } = makeEngine();
+    const state = await engine.ensureAudio();
+    expect(state.engines[10]).toBeUndefined(); // slot 10 disabled in a fresh project
+    set(['tracks', 10], freshTrack(true));
+    expect(state.engines[10]).toBeDefined();
+    expect(state.engines[10]!.engineType).toBe('synth');
   });
 
   it('a replace event re-syncs every slot from current state', async () => {
