@@ -459,6 +459,40 @@ knowledge: mid-morph positions modulate measurably less deeply than the pure
 shapes. If a future LFO rework equal-power-compensates the crossfade, recalibrate
 those two checks.
 
+### synth2 filter.drive has a small output discontinuity when a mod route crosses drive = 0
+**Reported:** 2026-07-19 (audit-fix campaign 1 final review) · **Status:** open (informational, accepted tradeoff) · **Area:** `packages/client/src/engine/synth2/kernel/SvfCore.ts` (normal-path drive saturator, F1)
+
+The F1 fix (`d9962af`) made `filter.drive` saturate on the filter's normal path
+via `tanh(D·x)`, hard-gated on `drive > 0` to keep the `drive = 0`/`resonance ≤
+0.9` path byte-for-byte identical to the original linear filter (a load-bearing
+invariant — descriptor default is 0). A consequence of that hard gate: if a mod
+route drives `filter.drive` through exactly 0 (requires base drive ≈ 0 AND a
+bipolar mod into drive) while the filter output is hot, the output steps by
+`|low − tanh(low)|` at each modulation zero-crossing — at `drive = +ε`, `D ≈ 1`
+so the output is `tanh(low)`, which does not converge to the linear `low`. The
+step is tiny for small signals (~`low³/3`) and up to ~0.24 for a full-scale
+`low`; it's a faint per-crossing tick, empirically sub-CLIPPING and health-clean
+(the now-live `lfo2/noise→filter.drive` audit cells modulate drive from base 0
+across the boundary and render clean). Not a merge blocker — it's the necessary
+cost of the bit-identical invariant. Fix sketch (if ever wanted): blend the
+saturator in smoothly over a small drive window near 0 instead of hard-gating —
+but that reshapes the drive curve near 0 and needs its own lab A/B, so it's
+deferred, not done. Evidence: campaign-1 final whole-branch review.
+
+### audit: `noise->env3.s` matrix cell is a hairline flake (~39.75 vs threshold 40)
+**Reported:** 2026-07-19 (audit-fix campaign 1) · **Status:** open (informational, latent flake) · **Area:** `packages/audio-lab/src/audit/checks/synth2-matrix.ts` (`noise→env3.s` cell)
+
+A pre-existing nondeterministic matrix cell (noise is seeded per-construction from
+`Math.random`) measures a modulation depth right at its threshold — observed
+~39.75 against a `minDepth`-derived floor of 40 — so it occasionally FAILs a
+single audit run and clears on the next. It did not block campaign 1 (both gating
+runs for every task were green), but it's a latent hazard for the "two consecutive
+clean `lab:audit` runs" calibration rule: a future task can hit a spurious red
+here through no fault of its own. Fix sketch: soak the cell (20–300 renders) to
+measure its true worst-case depth and either lower its `MIN_DELTA_OVERRIDE` with
+margin, or move it to `EXPECTED_INERT` if the effect is genuinely marginal.
+Evidence: surfaced in Task 2 recalibration + campaign-1 final review.
+
 ## Resolved
 
 ### synth2 `filter.drive` is totally inert below resonance ≈ 0.9 (silent dead knob)
