@@ -185,7 +185,9 @@ export function createSynthContext(runtime: AppRuntime) {
   };
 
   // Remove a track = disable that slot (non-destructive; step/param data stays
-  // so re-adding restores it). Refused when it would leave zero enabled tracks.
+  // in the slot, and Undo restores the deleted track — but a fresh addTrack now
+  // BLANKS the reused slot, so re-adding no longer resurrects the old content).
+  // Refused when it would leave zero enabled tracks.
   const removeTrack = (index: number): void => {
     if (index < 0 || index >= TRACK_POOL_SIZE) return;
     if (!project.tracks[index].enabled) return;
