@@ -18,6 +18,16 @@ const TWO_PI = Math.PI * 2;
 // HatEngine). Enharmonic on purpose — the inharmonic beating is the metal timbre.
 const CLUSTER = [205.3, 369.6, 304.4, 522.7, 370.0, 800.0];
 
+// F4 (2026-07-19): level-match the ring-mod branch. A single ±1 product is far
+// louder than the 6-square average (measured +7.28dB peak ride ring 0→1).
+// 10^(-7.28/20) ≈ 0.43 is the naive amplitude-ratio guess, but this is peak-
+// matching a square-ish product against a 6-square average through the same
+// HP/LP/env chain, so the two don't scale 1:1 — 0.43 measured +1.43dB (thin
+// margin against the 1.5dB test bound). Nudged down to 0.40, measured
+// +1.02dB peak ride ring 0→1 — comfortably inside the bound and `ring` is a
+// timbre knob, not a volume ride.
+const RING_TRIM = 0.40;
+
 const I_TONE = PARAM_INDEX['tone'];
 const I_DECAY = PARAM_INDEX['decay'];
 const I_HPF = PARAM_INDEX['hpf'];
@@ -155,7 +165,7 @@ export class Hat2Kernel {
         else if (k === 3) s3 = sq;
       }
       const ringMod = s0 * s3;
-      const cluster = (sum / nClus) * (1 - ring) + ringMod * ring;
+      const cluster = (sum / nClus) * (1 - ring) + ringMod * RING_TRIM * ring;
 
       // crossfade metal cluster vs white noise, then band-shape the whole source
       const src = cluster * metallic + this.noise() * (1 - metallic);
