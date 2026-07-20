@@ -322,6 +322,14 @@ export class AudioEngine {
       }
       if (p[0] !== 'tracks' || typeof p[1] !== 'number') return; // bpm etc.: sequencer pulls per tick
       const i = p[1];
+      // Whole-track atomic write (reset-on-add): path is exactly ['tracks', i]
+      // with no field key — rebuild the slot from the new state, the same
+      // reaction engineType / enabled / `replace` use.
+      if (p.length === 2) {
+        syncTrackToEngine(i);
+        updateMixerGains();
+        return;
+      }
       switch (p[2]) {
         case 'engineType':
           syncTrackToEngine(i);
