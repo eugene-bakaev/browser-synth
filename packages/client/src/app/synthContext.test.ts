@@ -315,12 +315,17 @@ describe('sync integration', () => {
     expect(fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', 0, 'engineType']))).toBeUndefined();
   });
 
-  it('addTrack emits an enabled op via dispatch', async () => {
+  it('addTrack emits ONE whole-track reset op (fresh + enabled), not a bare enabled op', async () => {
     const { ctx, fake } = await bootWithFakeSocket();
     const firstDisabled = ctx.project.tracks.findIndex((t: any) => !t.enabled);
     ctx.addTrack();
-    const onOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', firstDisabled, 'enabled']));
-    expect(onOp?.value).toBe(true);
+    const trackOp = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', firstDisabled]));
+    expect(trackOp).toBeDefined();
+    expect(trackOp.value.enabled).toBe(true);
+    expect(trackOp.value.engineType).toBe('synth');
+    // No per-leaf enabled op any more (that path resurrected the deleted track).
+    const leafEnabled = fake.sent.find((o: any) => JSON.stringify(o.path) === JSON.stringify(['tracks', firstDisabled, 'enabled']));
+    expect(leafEnabled).toBeUndefined();
   });
 
   it('emits mixer muted (immediate) and volume (throttled) as leaf ops via dispatch', async () => {
@@ -873,7 +878,7 @@ describe('variable track count', () => {
     return { runtime, ctx, built };
   }
 
-  it('addTrack enables the lowest-index disabled slot and emits a leaf op', async () => {
+  it('addTrack enables the lowest-index disabled slot and emits a whole-track reset op', async () => {
     const { ctx, built } = await boot();
     ctx.connectToSession('room-a');
     built[0]._opts.onMessage({ v: 1, type: 'snapshot', opId: 0, project: freshProject() });
@@ -885,8 +890,10 @@ describe('variable track count', () => {
 
     expect(ctx.project.tracks[4].enabled).toBe(true);
     expect(ctx.enabledTrackCount.value).toBe(5);
+    // Atomic whole-track reset op, not a bare leaf 'enabled' write (that path
+    // resurrected the deleted track's content — see the reset-on-add fix).
     expect(
-      built[0].sent.some((m: any) => m.path.join('.') === 'tracks.4.enabled' && m.value === true),
+      built[0].sent.some((m: any) => m.path.join('.') === 'tracks.4' && m.value.enabled === true),
     ).toBe(true);
   });
 
@@ -949,6 +956,34 @@ describe('variable track count', () => {
     await Promise.resolve(); // let the undo burst seal (microtask)
     runtime.history.undo();
     expect([...project.trackOrder]).toEqual(before);
+  });
+});
+
+describe('add-track reset-on-add (F-bug: add resurrects the deleted track)', () => {
+  it('add after delete gives a BLANK track, not the deleted one', async () => {
+    const { ctx } = makeCtx();
+    // Dirty slot 3 (a default-enabled track): a note + a non-default engine.
+    ctx.dispatchLocal(['tracks', 3, 'steps', 0, 'note'], 'C');
+    ctx.dispatchLocal(['tracks', 3, 'engineType'], 'kick');
+    ctx.removeTrack(3);           // disable slot 3 (enabledCount 4 → 3, allowed)
+    ctx.addTrack();               // reuses the lowest disabled slot = 3
+    expect(ctx.project.tracks[3].enabled).toBe(true);
+    expect(ctx.project.tracks[3].engineType).toBe('synth');   // reset, not kick
+    expect(ctx.project.tracks[3].steps[0].note).toBeNull();   // blank, not 'C'
+  });
+
+  it('undo of add restores the deleted track (content + disabled state)', async () => {
+    const { runtime, ctx } = makeCtx();
+    ctx.dispatchLocal(['tracks', 3, 'steps', 0, 'note'], 'C');
+    await nextTick();             // seal as its own undo entry
+    ctx.removeTrack(3);
+    await nextTick();
+    ctx.addTrack();
+    await nextTick();             // seal the add (reset + trackOrder) as one entry
+    expect(ctx.project.tracks[3].steps[0].note).toBeNull();   // blank after add
+    runtime.history.undo();       // undo ONLY the add
+    expect(ctx.project.tracks[3].enabled).toBe(false);        // deleted again
+    expect(ctx.project.tracks[3].steps[0].note).toBe('C');    // content restored
   });
 });
 
