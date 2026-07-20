@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { pathIsWritable, indicesInRange, validatePathAndValue } from './accept-list.js';
 import { SYNTH2_DESCRIPTORS, decodeBool, decodeEnum } from '../engines/index.js';
 import { identityTrackOrder } from './index.js';
+import { freshTrack } from './factory.js';
 
 describe('pathIsWritable', () => {
   it('allows top-level bpm', () => {
@@ -321,5 +322,33 @@ describe('trackOrder path', () => {
     const r = validatePathAndValue('trackOrder', identityTrackOrder().slice(1));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('value.invalid');
+  });
+});
+
+describe('whole-track atomic write (reset-on-add)', () => {
+  it('marks tracks.<i> writable (the one non-leaf track path)', () => {
+    expect(pathIsWritable('tracks.0')).toBe(true);
+    expect(pathIsWritable('tracks.31')).toBe(true);
+  });
+
+  it('accepts a valid whole Track value in range', () => {
+    expect(validatePathAndValue('tracks.0', freshTrack(true))).toEqual({ ok: true });
+    expect(validatePathAndValue('tracks.5', freshTrack(false))).toEqual({ ok: true });
+  });
+
+  it('rejects an out-of-range track index (path.invalid)', () => {
+    const r = validatePathAndValue('tracks.32', freshTrack(true));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('path.invalid');
+  });
+
+  it('rejects a malformed track value (value.invalid)', () => {
+    const r = validatePathAndValue('tracks.0', { enabled: true });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('value.invalid');
+  });
+
+  it('still rejects whole-ENGINE writes (leaf-only rule holds below the track)', () => {
+    expect(pathIsWritable('tracks.0.engines.synth')).toBe(false);
   });
 });
