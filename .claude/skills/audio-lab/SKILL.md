@@ -56,6 +56,7 @@ Each run directory (its path is printed to stdout; on disk it is
   onset. Quantify with `pitchSettleTime` (exported from `@fiddle/audio-lab`)
   or compare `f0Range` across knob settings. No portamento = f0 jumps within
   1-2 frames (~10-20ms); portamento = settle time scales with the knob.
+  `summary.pitchSettle[].settleSeconds` in report.json is ELAPSED time since that note's onset (not absolute clip time).
 - **Filter cutoff:** `meanCentroidHz` drops as cutoff drops. LFO→cutoff
   wobble shows as periodic centroid movement and visible bands in the
   spectrogram.

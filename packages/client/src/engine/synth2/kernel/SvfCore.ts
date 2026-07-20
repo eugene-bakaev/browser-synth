@@ -19,8 +19,17 @@
 //   • `drive` is a real drive: it pushes the OUTPUT through tanh(D·x) (no feedback
 //     into the core, so the oscillator stays stable), getting louder and grittier
 //     — squarer, more harmonics — as it rises. drive 0 ≈ clean sine.
-// resonance <= 0.9 with drive 0 stays bit-identical to the original linear filter
-// (Approach A): all of the above is gated on the oscillation zone.
+//
+// F1 (2026-07-19): the same output-only tanh(D·x) saturator also applies on
+// the normal (non-oscillating) path, gated on `drive > 0` — it was previously
+// read but never used below resonance 0.9 (~90% of the range), a dead knob.
+// resonance <= 0.9 WITH drive 0 stays bit-identical to the original linear
+// filter (Approach A). Note the two paths are NOT gated identically: the
+// normal path skips the saturator entirely at drive 0 (no branch even
+// entered, hence bit-identical); the self-oscillation path (below, gated
+// only on oscZone > 0) runs tanh(D·x) unconditionally once in the zone, so
+// at drive 0 it still applies tanh(x) — D=1, a small real compression, not
+// a bypassed/identity pass.
 //
 
 const K09 = 1 / 9.05;        // k at resonance 0.9 (= 1/(0.5+0.9*9.5)) — ramp anchor
@@ -115,6 +124,17 @@ export class SvfCore {
     this.low = v2;
     this.band = v1;
     this.high = x - k * v1 - v2;
+
+    // F1 (2026-07-19): drive now works on the normal path too — same
+    // output-only saturator as the oscillation zone (never fed back into the
+    // integrators; state and stability untouched). Gated on drive > 0 so
+    // drive-at-0 keeps the bit-identical compat invariant above.
+    if (drive > 0 && oscZone <= 0) {
+      const D = 1 + drive * DRIVE_PRE;
+      this.low = Math.tanh(D * this.low);
+      this.band = Math.tanh(D * this.band);
+      this.high = Math.tanh(D * this.high);
+    }
 
     if (oscZone > 0) {
       const target = OSC_TARGET * oscZone;

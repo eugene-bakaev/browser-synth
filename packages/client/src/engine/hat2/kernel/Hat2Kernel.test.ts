@@ -124,3 +124,18 @@ describe('Hat2Kernel', () => {
     expect(rmsDiff(r1, r0, 0, Math.floor(SR * 0.05))).toBeGreaterThan(1e-3);
   });
 });
+
+describe('ring level-match (F4)', () => {
+  it('ring=1 peaks within ~1.5dB of ring=0 (timbre knob, not a volume ride)', () => {
+    const peak = (buf: Float32Array) => {
+      let p = 0;
+      for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > p) p = a; }
+      return p;
+    };
+    const p0 = peak(renderHit({ ring: 0, decay: 0.3 }, 0.8));
+    const p1 = peak(renderHit({ ring: 1, decay: 0.3 }, 0.8));
+    const deltaDb = 20 * Math.log10(p1 / p0);
+    // measured pre-fix: +7.28dB
+    expect(Math.abs(deltaDb)).toBeLessThan(1.5);
+  });
+});

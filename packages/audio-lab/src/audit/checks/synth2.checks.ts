@@ -49,15 +49,18 @@
 //    Fixed: solo the CARRIER (osc2/osc3) and detune the MODULATOR
 //    (osc1/osc2). Range widened 0->3 to 0->4 (full descriptor range) for
 //    a comfortable margin.
-//  - filter.drive.dir: dead at the default resonance (delta 0.000).
-//    SvfCore.tick only applies the tanh(D·x) drive saturator inside the
-//    resonance>0.9 self-oscillation zone (see SvfCore.ts comment) — below
-//    that, `drive` is read but never used. Moved the check's resonance to
-//    0.95 (self-osc zone) with near-zero oscillator levels so the drive
-//    knob's effect on the (regulated, cutoff-independent-amplitude)
-//    self-oscillation is audible without also stacking oscillator energy
-//    into a clip. Real UX note for Task 12: the Drive knob is a total no-op
-//    across ~90% of the resonance range; nothing in this task changes that.
+//  - filter.drive.dir: WAS dead at the default (normal-path) resonance
+//    (delta 0.000) because SvfCore.tick only applied the tanh(D·x) drive
+//    saturator inside the resonance>0.9 self-oscillation zone — below that,
+//    `drive` was read but never used (this task's original engineered
+//    fix moved the check's resonance to 0.95 to reach the zone). FIXED
+//    (audit-fix campaign Task 3, 2026-07-19): SvfCore.ts now applies the
+//    same output-only tanh saturator on the normal path too, gated on
+//    `drive > 0` so `drive` at its 0 default keeps the res<=0.9 compat
+//    invariant byte-for-byte. The check now uses a normal moderate-
+//    resonance patch (0.4) instead of the self-oscillation zone — see the
+//    check's own comment for the measured numbers and the DC_OFFSET scoping
+//    note below.
 //  - filter.model.enum: classic (filter.type default lp) and morph
 //    (filter.morph default 0) are BIT-IDENTICAL at their descriptor
 //    defaults — MorphFilter.process(m=0) returns `1*svf.low + 0*svf.band`,
@@ -152,6 +155,40 @@
 //    LFO mode 0 (Lfo.ts: `mode<=0` is the deterministic periodic path,
 //    S&H/Smooth's RNG is untouched), so it stays exactly as deterministic
 //    as Tasks 6-7 assumed.
+//
+// RECALIBRATED (F2 fix, 2026-07-19, audit-fix campaign Task 2; two
+// consecutive `npm run lab:audit` runs, both fully green): Voice.noteOn now
+// snaps every ParamSlot to its target on a cold voice instead of gliding
+// from the compiled default over ~5ms (ParamSlot.ts / Voice.ts). Two checks
+// in this table had, without realizing it, calibrated around that removed
+// transient:
+//  - noise.level.dir: `from`=0 (noise.level=0, all osc off) used to render a
+//    quiet-but-nonzero residual (the old osc-level cold-start blip fading
+//    out), which is exactly why it needed `allowedHealth: ['MOSTLY_SILENT']`
+//    — see the now-obsolete note this replaces, just above. Post-fix, that
+//    same config is REAL digital silence (rmsDb -> null, not just quiet),
+//    so the check no longer has a valid `from` reading at all. Moved `from`
+//    0 -> 0.01: renders clean (no health flags), rmsDb -53.35dB; `to`=0.35
+//    still -22.63dB (unchanged); delta 30.72 vs minDelta 6 (5.1x margin).
+//    allowedHealth scoping removed — no longer needed.
+//  - env1.a.dir: `to`=0.4 used to register a non-null attackSeconds because
+//    env1.a's OWN ParamSlot also glided from the compiled (fast) default for
+//    its first ~5-20ms, giving the envelope an artificially quick initial
+//    climb that happened to satisfy envelope.ts's onset detector (a hop must
+//    jump from below -55dB to above -45dB in one 5ms step — see envelope.ts
+//    ONSET_ON_DB/ONSET_OFF_DB). Post-fix, a genuinely linear 0.4s attack
+//    ramps too smoothly through that 10dB gray zone for any single 5ms hop
+//    to span it, so attackSeconds comes back null (onsets: []) — confirmed
+//    by direct probing (packages/audio-lab, ad hoc renders): attack values
+//    0.01-0.15s all register cleanly, 0.16s+ do not (hard cliff, not a soft
+//    threshold). Moved `to` 0.4 -> 0.12 (safe margin below the 0.16 cliff)
+//    and minDelta 0.15 -> 0.04 to match: measured attackSeconds 0.025 (from)
+//    -> 0.12 (to), delta 0.095, vs minDelta 0.04 (2.4x margin).
+//  - synth2.matrix.lfo2->env2.a (synth2-matrix.ts): also recalibrated in
+//    this pass — see that file's header for the writeup (the shared
+//    ENVTIME_SPEC['env2.a'] baseline picked up env2.d/env2.s overrides that
+//    also raised every OTHER env2.a-routed source's margin, verified by
+//    direct probing before committing).
 import type { CheckSpec } from '../types';
 import type { MetricId } from '../types';
 import { synth2Base, synth2Held } from './baselines';
@@ -204,9 +241,13 @@ export const synth2Checks: CheckSpec[] = [
   c('osc3.level.dir', 'level raises output (rmsDb, see osc1.level.dir)', dir('osc3.level', 0.05, 0.25, 'rmsDb', 'up', 4), { 'osc1.level': 0, 'osc2.level': 0 }),
   c('osc3.sync.chg', 'hard sync vs free detuned osc3', dir('osc3.sync', 0, 1, 'meanCentroidHz', 'change', 100), { ...solo3, 'osc3.coarse': 7 }),
   // --- noise + FM ---
-  // `from` (noise.level=0, all osc off) is legitimately near-silent — no way
-  // to test a level knob's zero boundary without it. Scoped, see header.
-  c('noise.level.dir', 'noise level raises output', dir('noise.level', 0, 0.35, 'rmsDb', 'up', 6), { 'osc1.level': 0, 'osc2.level': 0, 'osc3.level': 0 }),
+  // `from` moved 0 -> 0.01 (F2 recalibration, 2026-07-19, see header): with
+  // the cold-start ParamSlot glide fixed, noise.level=0 + all osc off is
+  // real digital silence (rmsDb -> null, not just quiet) instead of the old
+  // transient's residual near-silent hum. 0.01 renders clean (no health
+  // flags) at rmsDb -53.35dB; measured delta to the `to` leg (0.35 ->
+  // -22.63dB) is 30.72, vs minDelta 6 (5.1x margin).
+  c('noise.level.dir', 'noise level raises output', dir('noise.level', 0.01, 0.35, 'rmsDb', 'up', 6), { 'osc1.level': 0, 'osc2.level': 0, 'osc3.level': 0 }),
   c('noise.color.dir', 'color morphs dark to bright', dir('noise.color', 0.1, 0.9, 'meanCentroidHz', 'up', 800), noiseSolo),
   // fm.osc2 = 'FM 1→2' (osc1 modulates osc2, the descriptor label is
   // explicit) — solo the CARRIER (osc2) and detune the MODULATOR (osc1).
@@ -216,8 +257,16 @@ export const synth2Checks: CheckSpec[] = [
   // --- env1 (amp) ---
   // from=0.01 not 0.001: the descriptor minimum combined with the cold-start
   // ParamSlot glide (see header) clips 2 samples; 0.01 is still a
-  // near-instant attack for this check and renders clean (same 0.380s delta).
-  c('env1.a.dir', 'attack knob slows the attack', dir('env1.a', 0.01, 0.4, 'attackSeconds', 'up', 0.15), {}, true),
+  // near-instant attack for this check and renders clean.
+  // `to` moved 0.4 -> 0.12 (F2 recalibration, 2026-07-19, see header): the
+  // onset detector (envelope.ts) needs a hop (5ms) to see the signal jump
+  // from below -55dB to above -45dB in one step; a real (post-fix) linear
+  // attack ramp only clears that gap fast enough for attackSeconds to
+  // register non-null up to ~0.15s at this baseline's levels (measured
+  // cliff: 0.15 registers, 0.16 does not). 0.12 keeps a safe margin below
+  // that cliff. minDelta lowered 0.15 -> 0.04 to match: measured attackSeconds
+  // 0.025 (from) -> 0.12 (to), delta 0.095, vs minDelta 0.04 (2.4x margin).
+  c('env1.a.dir', 'attack knob slows the attack', dir('env1.a', 0.01, 0.12, 'attackSeconds', 'up', 0.04), {}, true),
   c('env1.d.dir', 'decay knob lengthens decay (s=0)', dir('env1.d', 0.05, 1.0, 'decaySeconds', 'up', 0.3), { 'env1.s': 0 }, true),
   c('env1.s.dir', 'sustain raises held level', dir('env1.s', 0.05, 0.9, 'rmsDb', 'up', 5), { 'env1.d': 0.15 }, true),
   c('env1.r.rel', 'release lengthens the tail', dir('env1.r', 0.05, 1.2, 'decaySeconds', 'up', 0.3),
@@ -241,11 +290,18 @@ export const synth2Checks: CheckSpec[] = [
   c('filter.keyTrack.dir', 'keytrack opens the filter on a high note', dir('filter.keyTrack', 0, 1, 'meanCentroidHz', 'up', 150),
     { 'filter.cutoff': 300 }), // note override below
   c('filter.envAmount.dir', 'env amount opens the filter', dir('filter.envAmount', 0, 4, 'meanCentroidHz', 'up', 200), { 'filter.cutoff': 300 }),
-  // drive is a no-op outside the resonance>0.9 self-oscillation zone
-  // (SvfCore only applies its tanh saturator there) — moved into that zone
-  // with near-zero oscillator levels so drive's effect on the regulated
-  // self-oscillation is audible without stacking a separate clip source.
-  c('filter.drive.dir', 'drive adds harmonics (self-oscillation zone — drive is a no-op below resonance 0.9, see header)', dir('filter.drive', 0, 1, 'meanCentroidHz', 'up', 120), { 'filter.cutoff': 800, 'filter.resonance': 0.95, 'osc1.level': 0.1, 'osc2.level': 0.1, 'osc3.level': 0 }),
+  // F1 fix (2026-07-19): drive now saturates the normal (non-oscillating)
+  // path too (SvfCore.ts), so this no longer needs the resonance>0.9
+  // self-oscillation-zone engineering — a normal, moderate-resonance patch
+  // is enough. Measured (task-3 lab calibration): meanCentroidHz 1178.12
+  // (drive=0) -> 1679.44 (drive=1), delta 501.32 vs minDelta 200 (2.5x
+  // margin); rmsDb also rises +9.2dB (-18.43 -> -9.19), confirming louder +
+  // brighter, not an inverse effect. drive=1 leg trips DC_OFFSET (0.018,
+  // just over the 0.01 threshold) — a genuine small saturation artifact
+  // (measured even with a single solo oscillator, so it isn't beating
+  // between osc1/osc2), same category as the scoped hard-sync/noise-color
+  // DC_OFFSET cases below — allowedHealth scoped, not re-parameterized.
+  c('filter.drive.dir', 'drive saturates and brightens the filter output (normal path)', dir('filter.drive', 0, 1, 'meanCentroidHz', 'up', 200), { 'filter.cutoff': 800, 'filter.resonance': 0.4, 'osc1.level': 0.25, 'osc2.level': 0.25, 'osc3.level': 0 }),
   c('filter.type.enum', 'lp/bp/hp are audible and spectrally ordered',
     { kind: 'enum', param: 'filter.type', values: [0, 1, 2], minPeakDb: -40, distinct: { metric: 'meanCentroidHz', minSpread: 600 } },
     { 'filter.cutoff': 800 }),
@@ -332,8 +388,14 @@ loop1.baseline = { ...loop1.baseline, notes: [{ time: 0, note: 'A3', duration: 6
 find('synth2.osc2.sync.chg').allowedHealth = ['DC_OFFSET'];
 find('synth2.osc3.sync.chg').allowedHealth = ['DC_OFFSET'];
 
-// MOSTLY_SILENT is expected at these legitimate zero/near-zero boundaries.
-find('synth2.noise.level.dir').allowedHealth = ['MOSTLY_SILENT'];
+// filter.drive.dir (F1, 2026-07-19): the tanh saturator's `to` (drive=1) leg
+// measures dcOffset 0.018, just over the 0.01 flag threshold — a genuine
+// small saturation artifact (see check comment above), not a bug.
+find('synth2.filter.drive.dir').allowedHealth = ['DC_OFFSET'];
+
+// MOSTLY_SILENT is expected at this legitimate zero/near-zero boundary.
+// (noise.level.dir's own MOSTLY_SILENT scoping was removed in the F2
+// recalibration above: `from` moved 0 -> 0.01, which renders clean.)
 find('synth2.env1.d.dir').allowedHealth = ['MOSTLY_SILENT'];
 
 // noise.color.dir: DISCOVERED NON-DETERMINISM. Synth2Kernel seeds its noise

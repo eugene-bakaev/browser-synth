@@ -40,6 +40,14 @@ export class ParamSlot {
     this.target = v > this.max ? this.max : v >= this.min ? v : this.min;
   }
 
+  /** Jump the smoother to its target. Cold-voice noteOn (F2, 2026-07-19): a
+   *  freshly-activated voice must START at the session's values, not glide
+   *  ~5ms from the compiled defaults — smoothing protects a RUNNING voice
+   *  against clicks, it must not smear the first note's onset. */
+  snap(): void {
+    this.current = this.target;
+  }
+
   next(): number {
     this.current += (this.target - this.current) * this.coeff;
     let v = this.current;

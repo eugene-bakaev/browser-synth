@@ -107,4 +107,24 @@ describe('report null-safety + new fields', () => {
     // and absent (null) when not given
     expect(buildReport(clip).summary.pitchSettle).toBeNull();
   });
+
+  it('pitchSettle.settleSeconds is elapsed since the note, not absolute clip time', () => {
+    // 220Hz for 0.5s, then 440Hz — phase-continuous so pitch tracking is clean.
+    const sr = 44100;
+    const n = sr; // 1s
+    const samples = new Float32Array(n);
+    let ph = 0;
+    for (let i = 0; i < n; i++) {
+      const f = i < n / 2 ? 220 : 440;
+      ph += (2 * Math.PI * f) / sr;
+      samples[i] = 0.5 * Math.sin(ph);
+    }
+    const r = buildReport({ samples, sampleRate: sr }, { noteTargets: [{ time: 0.5, freq: 440 }] });
+    const entry = r.summary.pitchSettle![0];
+    expect(entry.settleSeconds).not.toBeNull();
+    // The pitch reaches 440 within ~2 analysis hops of t=0.5. Elapsed must be
+    // small; the old absolute value would be >= 0.5.
+    expect(entry.settleSeconds!).toBeLessThan(0.2);
+    expect(entry.settleSeconds!).toBeGreaterThanOrEqual(0);
+  });
 });

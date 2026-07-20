@@ -49,10 +49,14 @@
 //    under the minDelta of 8). medianF0 (the shifted value itself) measured
 //    145.6 for the same cell — matches the metric already used by the
 //    calibrated non-matrix osc1.coarse.dir/osc1.fine.dir checks.
-//  - filter.drive needs the same resonance:0.95 self-oscillation-zone
-//    engineering as its calibrated non-matrix check (Task 8): the drive
-//    saturator is a no-op below resonance 0.9, so a mod route into it is
-//    inert at the generic baseline's default resonance.
+//  - filter.drive: WAS engineered into the resonance:0.95 self-oscillation
+//    zone (Task 8/10) because the drive saturator used to be a no-op below
+//    resonance 0.9. FIXED (audit-fix campaign Task 3, 2026-07-19): SvfCore.ts
+//    now saturates the normal path too, so this dest uses the same normal
+//    moderate-resonance patch as every other filter-family cell. Un-inerted
+//    lfo2 and noise (both now measurably live — see MIN_DELTA_OVERRIDE and
+//    EXPECTED_INERT for the numbers); see synth2.checks.ts's filter.drive.dir
+//    for the full drive-curve measurement.
 //  - ENVTIME family (env1/2/3 x a/d/s/r, 12 dests) needed the most
 //    engineering — see the ENVTIME_SPEC table below and the report for the
 //    full per-dest writeup. Short version: 'a'/'d'/'r' are one-shot-per-note
@@ -83,6 +87,32 @@
 //  - Self-reference cells beyond the plan's lfoN->lfoN.shape: env3->env3.s
 //    (its own default-0 sustain gives it nothing to reference) and
 //    lfo2->env3.s (measured negative/near-zero even after retuning).
+//
+// RECALIBRATED (F2 fix, 2026-07-19, audit-fix campaign Task 2; two
+// consecutive `npm run lab:audit` runs, both fully green): Voice.noteOn now
+// snaps every ParamSlot to its target on a cold voice instead of gliding
+// from the compiled default (ParamSlot.ts / Voice.ts) — see synth2.checks.ts
+// header for the full mechanism. ENVTIME_SPEC['env2.a']'s baseline left
+// env2.d/env2.s at their compiled defaults (0.2 / 0.5), so the note's own
+// attack-THEN-decay-to-sustain arc (env2 modulates cutoff via the 2.4
+// default filter.envAmount) produced a big, nonlinear rise-then-fall
+// centroid trajectory — present in every render regardless of any matrix
+// route. modDepth's linear-detrend residual (analyze/moddepth.ts) can't
+// separate that curvature from a genuine periodic modulation, so it
+// dominated: off=272.0, on=271.7 (lfo2 routed), delta -0.29, nowhere near
+// minDepth 8. This was ALWAYS true of the baseline's shape (not something
+// the F2 fix introduced) — it was masked before the fix because the
+// cold-start glide added its own transient noise on top, which happened to
+// make the two legs differ by enough to clear the old (too-low, coincidental)
+// margin. Fixed by adding env2.d:0.01, env2.s:1 — env2 now ramps up during
+// attack and HOLDS at full level (no decay-back-down arc), isolating the
+// attack-shape effect. Measured (env2.a baseline only, amount 0.8, direct
+// probing before committing): off=213.74, on(lfo2)=252.56, delta 38.83 (4.85x
+// minDepth 8). Verified this baseline change doesn't regress env2.a's other
+// 6 real (non-inert) sources sharing the same object — all improved or held
+// comfortable margins: lfo1 depth delta 14.00->57.50; env1/env2/env3/
+// velocity/noise scalar (meanCentroidHz) deltas all stayed in the
+// hundreds, minScalar 4.5 unchanged.
 import { MOD_DESTS, MOD_SOURCES } from '@fiddle/shared';
 import type { CheckSpec, MetricId } from '../types';
 import type { EngineRenderSpec, MatrixRoute, NoteEvent } from '../../render/engine';
@@ -148,11 +178,6 @@ export const EXPECTED_INERT: ReadonlyArray<readonly [string, string]> = [
   // that still fits lfo1/lfo2's real (10-30) range — same nondeterminism
   // caution as the other noise entries above.
   ['noise', 'filter.keyTrack'],
-  // filter.drive's self-oscillation-zone baseline: lfo2 measured -3.1
-  // (near-zero) and noise measured 14.1 (real but too close to the noise
-  // floor to trust across seeds) — lfo1 alone (81.8) carries the periodic
-  // side of this dest.
-  ['lfo2', 'filter.drive'], ['noise', 'filter.drive'],
   // envtime noise cases weaker than the env-owner sources the scalar
   // threshold was calibrated to: env2.d measured -90.3 (needs <=130 margin
   // from env-owners) and env3.a measured 0.9 (needs <=40) — both far under
@@ -195,10 +220,23 @@ const MIN_DELTA_OVERRIDE: Partial<Record<string, { minDepth?: number; minScalar?
   // lfo1/lfo2 measured 16.9/32.8 (family default 80 fails both); env-owners
   // measured 66-79 (family default 100 fails all three).
   'filter.keyTrack': { minDepth: 8, minScalar: 33 },
-  // drive's self-oscillation-zone baseline: lfo1 (the one surviving
-  // periodic source, see EXPECTED_INERT) measured 81.8; env-owners measured
-  // 18-62, velocity 163 — the family defaults (80/100) fail on both fronts.
-  'filter.drive': { minDepth: 35, minScalar: 9 },
+  // filter.drive (F1 fix, 2026-07-19): re-baselined off the self-oscillation
+  // zone onto the normal-path patch (see baselineFor + synth2.checks.ts).
+  // Periodic sources (modDepthCentroid, off-vs-on): lfo1 138.05, lfo2 8.815
+  // (weakest — both fully deterministic, repeat-verified), noise worst-seed
+  // 26.98 over 60 fresh renders (nondeterministic mod-source RNG, same
+  // caveat as elsewhere in this file). minDepth 4 gives lfo2 2.2x, noise's
+  // worst seed 6.7x, lfo1 34x. Scalar sources (meanCentroidHz): env1/env2
+  // 163.27 (identical — both sit at the same default sustain plateau for
+  // most of the held note), env3 40.89 (weakest — env3.s defaults to 0, a
+  // smaller sustained drive contribution), velocity 352.34. minScalar 20
+  // gives env3 2.04x margin (deterministic — no seed risk), the rest 8-18x.
+  // The `on`/hard leg for env1/env2/velocity (a large, CONSTANT drive
+  // contribution held for the whole plateau, unlike lfo1/lfo2's oscillating
+  // contribution) trips DC_OFFSET — same saturation artifact as the
+  // non-matrix filter.drive.dir check; scoped via allowedHealth below, not
+  // re-parameterized.
+  'filter.drive': { minDepth: 4, minScalar: 20 },
   // resonance's depth response has high seed-to-seed variance for the noise
   // source (30 fresh renders: min 58, median 131, max 198 — 3/30 dipped
   // under the family default 80, the audit's first observed flake) and lfo2
@@ -246,10 +284,13 @@ function baselineFor(dest: string): CheckSpec['baseline'] {
   if (dest === 'fm.osc2') return synth2Held({ ...solo(2, 0.25), 'osc1.coarse': 19, 'filter.cutoff': 1200, 'env3.s': 0.4 });
   if (dest === 'fm.osc3') return synth2Held({ ...solo(3, 0.25), 'osc2.coarse': 19, 'filter.cutoff': 1200, 'env3.s': 0.4 });
 
-  // --- filter.drive is a no-op outside the resonance>0.9 self-oscillation
-  // zone (Task 8 finding) — engineer the baseline into that zone. ---
+  // --- filter.drive (F1 fix, 2026-07-19): drive now saturates the normal
+  // (non-oscillating) path too (SvfCore.ts), so this no longer needs the
+  // resonance>0.9 self-oscillation-zone engineering (Task 8) — a normal
+  // moderate-resonance patch is enough, matching the calibrated non-matrix
+  // filter.drive.dir check (synth2.checks.ts). ---
   if (dest === 'filter.drive') {
-    return synth2Held({ 'osc1.level': 0.1, 'osc2.level': 0.1, 'osc3.level': 0, 'filter.cutoff': 800, 'filter.resonance': 0.95 });
+    return synth2Held({ 'osc1.level': 0.25, 'osc2.level': 0.25, 'osc3.level': 0, 'filter.cutoff': 800, 'filter.resonance': 0.4 });
   }
 
   // --- filter.morph is BIT-IDENTICAL to classic at filter.model's default
@@ -326,8 +367,12 @@ const ENVTIME_SPEC: Record<string, EnvSpec> = {
     baseline: synth2Base({ params: { 'env1.r': 0.1 }, notes: [note('A3', 0.43)], seconds: 1.8 }),
   },
   'env2.a': {
+    // env2.d:0.01, env2.s:1 (F2 recalibration, 2026-07-19, see header): holds
+    // env2 at full level after attack instead of decaying back down, so the
+    // centroid trajectory isolates the attack-shape effect instead of being
+    // dominated by env2's own decay-to-sustain arc.
     kind: 'split', depthMetric: 'modDepthCentroid', minDepth: 8, scalarMetric: 'meanCentroidHz', minScalar: 4.5,
-    baseline: synth2Base({ params: { 'filter.cutoff': 300, 'env2.a': 0.15, 'lfo2.rate': 4 },
+    baseline: synth2Base({ params: { 'filter.cutoff': 300, 'env2.a': 0.15, 'env2.d': 0.01, 'env2.s': 1, 'lfo2.rate': 4 },
       notes: [note('A3', 0.37)], seconds: 0.47 }),
   },
   'env2.d': {
@@ -457,6 +502,19 @@ export function synth2MatrixChecks(fast: boolean): CheckSpec[] {
       // (synth2.checks.ts) — measured ~2.7% of fresh renders there; the
       // directional metric itself is never at risk.
       if (source === 'noise' && dest === 'noise.color') check.allowedHealth = ['DC_OFFSET'];
+      // filter.drive (F1 fix, 2026-07-19; narrowed per review, 2026-07-19): a
+      // large, CONSTANT drive contribution held for the whole plateau
+      // saturates through tanh long enough to trip DC_OFFSET — same genuine
+      // small artifact as the non-matrix filter.drive.dir check
+      // (synth2.checks.ts). Measured per-pair (task-3-report.md): only
+      // env1/env2/velocity's `on`/hard leg actually trips it; lfo1/lfo2/
+      // noise/env3 measured health-clean. Scoped to exactly those pairs
+      // (not the whole dest) so a future genuine DC bias on a currently-
+      // clean cell still fails loudly, matching the noise->noise.color
+      // pair-scoping convention above.
+      if (dest === 'filter.drive' && (source === 'env1' || source === 'env2' || source === 'velocity')) {
+        check.allowedHealth = ['DC_OFFSET'];
+      }
       checks.push(check);
     }
   }
