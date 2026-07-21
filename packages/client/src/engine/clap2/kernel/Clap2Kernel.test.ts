@@ -52,6 +52,31 @@ describe('clap2 param block layout', () => {
 });
 
 describe('Clap2Kernel', () => {
+  function renderHitSeeded(seed: number, seconds: number): Float32Array {
+    const kernel = new Clap2Kernel(SR, seed);
+    kernel.applyParams(defaultParamBlock());
+    kernel.noteOn(0, 0, 0, 1);
+    return renderBlocks(kernel, 0, Math.ceil((SR * seconds) / BLOCK));
+  }
+
+  it('is reproducible for a given seed', () => {
+    const a = renderHitSeeded(12345, 0.2);
+    const b = renderHitSeeded(12345, 0.2);
+    expect(rmsDiff(a, b, 0, a.length)).toBe(0); // identical stream
+  });
+
+  it('different seeds produce different renders (per-session entropy is real)', () => {
+    const a = renderHitSeeded(111, 0.2);
+    const b = renderHitSeeded(222, 0.2);
+    expect(rmsDiff(a, b, 0, a.length)).toBeGreaterThan(1e-3);
+  });
+
+  it('the default seed is stable (audit/render reproducibility)', () => {
+    const a = renderHit({}, 0.2);
+    const b = renderHit({}, 0.2);
+    expect(rmsDiff(a, b, 0, a.length)).toBe(0);
+  });
+
   it('renders exact silence with no trigger', () => {
     const out = renderBlocks(new Clap2Kernel(SR), 0, 8);
     for (let i = 0; i < out.length; i++) expect(out[i]).toBe(0);

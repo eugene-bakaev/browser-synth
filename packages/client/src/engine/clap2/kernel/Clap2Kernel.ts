@@ -44,10 +44,13 @@ export class Clap2Kernel {
   private svfLow = 0;
   private svfBand = 0;
 
-  // Deterministic xorshift32 noise (seeded so tests are reproducible). Never 0.
-  private rng = 0x6d2b79f5;
+  // Deterministic xorshift32 noise — free-runs across note-ons (never re-seeded on
+  // trigger) so consecutive hits differ; seeded from the constructor so the worklet
+  // can inject per-session entropy while tests/audit stay reproducible on the default.
+  private rng: number;
 
-  constructor(private readonly sampleRate: number) {
+  constructor(private readonly sampleRate: number, seed = 0x6d2b79f5) {
+    this.rng = (seed >>> 0) || 0x6d2b79f5; // unsign; avoid the xorshift zero fixed-point
     this.events = Array.from({ length: MAX_EVENTS }, () => ({ frame: 0, velocity: 1 }));
   }
 
