@@ -13,12 +13,12 @@ import { buildDrumDefaults, type DrumParamDescriptor } from './drum-descriptors.
 
 // APPEND-ONLY (block index = array position; see drum-descriptors.ts).
 export const CLAP2_DESCRIPTORS: readonly DrumParamDescriptor[] = [
-  { key: 'tone',   min: 500,   max: 3000,  default: 1000,  label: 'Tone',   format: 'hz', curve: 'exp' },
-  { key: 'spread', min: 0.005, max: 0.040, default: 0.012, label: 'Spread', format: 'ms', curve: 'exp' },
-  { key: 'bursts', min: 2,     max: 5,     default: 3,     label: 'Bursts', step: 1,      curve: 'linear' },
-  { key: 'body',   min: 0.002, max: 0.030, default: 0.008, label: 'Body',   format: 'ms', curve: 'exp' },
-  { key: 'room',   min: 0.050, max: 0.800, default: 0.250, label: 'Room',   format: 'ms', curve: 'exp' },
-  { key: 'mix',    min: 0,     max: 1,     default: 0.5,   label: 'Mix',    format: 'percent' },
+  { key: 'tone',   min: 500,   max: 3000,  default: 1100,  label: 'Tone',   format: 'hz', curve: 'exp' },
+  { key: 'spread', min: 0.005, max: 0.040, default: 0.022, label: 'Spread', format: 'ms', curve: 'exp' },
+  { key: 'bursts', min: 2,     max: 5,     default: 4,     label: 'Bursts', step: 1,      curve: 'linear' },
+  { key: 'body',   min: 0.002, max: 0.030, default: 0.005, label: 'Body',   format: 'ms', curve: 'exp' },
+  { key: 'room',   min: 0.050, max: 0.800, default: 0.140, label: 'Room',   format: 'ms', curve: 'exp' },
+  { key: 'mix',    min: 0,     max: 1,     default: 0.30,  label: 'Mix',    format: 'percent' },
   { key: 'level',  min: 0,     max: 1,     default: 0.8,   label: 'Level',  format: 'percent' },
 ] as const satisfies readonly DrumParamDescriptor[];
 
