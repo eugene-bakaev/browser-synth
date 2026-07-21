@@ -16,6 +16,12 @@ const MAX_EVENTS = 16;
 const BANDPASS_Q = 1.2;   // analog ClapEngine value; fixed (not a knob)
 const OUT_TRIM = 0.5;     // headroom: keeps overlapping transients + tail bounded
 
+const ATTACK = 0.00015;                       // 0.15 ms per-slap attack (was 0.5 ms; sharper)
+const BASE_GAP = [1.0, 1.3, 1.7, 2.2];        // inter-slap gap multipliers (× spread), widening
+const AMP_DECAY = 0.78;                        // each slap ~0.78× the previous
+const JITTER_GAP = 0.18;                       // ±18% per-note gap jitter
+const JITTER_AMP = 0.22;                       // ±22% per-note amplitude jitter
+
 const I_TONE = PARAM_INDEX['tone'];
 const I_SPREAD = PARAM_INDEX['spread'];
 const I_BURSTS = PARAM_INDEX['bursts'];
@@ -49,8 +55,19 @@ export class Clap2Kernel {
   // can inject per-session entropy while tests/audit stay reproducible on the default.
   private rng: number;
 
+  // Independent free-running PRNG for the per-note slap jitter, decorrelated from the
+  // noise stream (different seed derivation). Free-runs across triggers like the noise.
+  private scatterRng: number;
+
+  // Per-trigger pattern, drawn in trigger(): absolute slap onset offsets (s) and
+  // per-slap amplitudes. Fixed within a hit, re-drawn (jittered) every hit.
+  private readonly slapOffset = new Float32Array(5);
+  private readonly slapAmp = new Float32Array(5);
+  private slapCount = 0;
+
   constructor(private readonly sampleRate: number, seed = 0x6d2b79f5) {
     this.rng = (seed >>> 0) || 0x6d2b79f5; // unsign; avoid the xorshift zero fixed-point
+    this.scatterRng = ((seed >>> 0) ^ 0x9e3779b9) >>> 0 || 0x85ebca6b; // decorrelated from rng
     this.events = Array.from({ length: MAX_EVENTS }, () => ({ frame: 0, velocity: 1 }));
   }
 
@@ -100,6 +117,19 @@ export class Clap2Kernel {
     this.velocity = velocity;
     this.svfLow = 0;
     this.svfBand = 0;
+
+    // Draw the non-uniform, amplitude-decaying, per-note-jittered slap pattern.
+    const bursts = Math.max(2, Math.min(5, Math.round(this.block[I_BURSTS])));
+    const spread = Math.max(1e-4, this.block[I_SPREAD]);
+    this.slapCount = bursts;
+    let off = 0;
+    for (let j = 0; j < bursts; j++) {
+      this.slapOffset[j] = off;
+      const gap = BASE_GAP[Math.min(j, BASE_GAP.length - 1)] * (1 + JITTER_GAP * this.scatter());
+      off += spread * Math.max(0.2, gap);
+      const amp = Math.pow(AMP_DECAY, j) * (1 + JITTER_AMP * this.scatter());
+      this.slapAmp[j] = Math.max(0.05, amp);
+    }
   }
 
   /** xorshift32 → [-1, 1). */
@@ -112,14 +142,22 @@ export class Clap2Kernel {
     return (this.rng / 0xffffffff) * 2 - 1;
   }
 
+  /** xorshift32 scatter draw → [-1, 1). Independent of the noise stream. */
+  private scatter(): number {
+    let x = this.scatterRng;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.scatterRng = x >>> 0;
+    return (this.scatterRng / 0xffffffff) * 2 - 1;
+  }
+
   private render(out: Float32Array, from: number, to: number): void {
     if (to <= from || !this.active) return;
     const sr = this.sampleRate;
     const dt = 1 / sr;
 
     const tone = this.block[I_TONE];
-    const spread = Math.max(1e-4, this.block[I_SPREAD]);
-    const bursts = Math.max(2, Math.min(5, Math.round(this.block[I_BURSTS])));
     const body = Math.max(1e-3, this.block[I_BODY]);
     const room = Math.max(1e-3, this.block[I_ROOM]);
     const mix = Math.min(1, Math.max(0, this.block[I_MIX]));
@@ -135,18 +173,19 @@ export class Clap2Kernel {
     const burstGain = 1 - 0.6 * mix; // 1.0 … 0.4
     const roomGain = 0.2 + 0.8 * mix; // 0.2 … 1.0
 
-    const lastOnset = (bursts - 1) * spread;
+    const lastOnset = this.slapOffset[this.slapCount - 1];
 
     for (let i = from; i < to; i++) {
       const t = this.t;
 
-      // Burst train: sum of per-transient AD envelopes; the j-th delayed by j*spread.
+      // Burst train: sum of per-slap AD envelopes at the drawn (non-uniform, jittered)
+      // offsets and decaying amplitudes — the j-th slap starts at slapOffset[j].
       let burst = 0;
-      for (let j = 0; j < bursts; j++) {
-        const td = t - j * spread;
+      for (let j = 0; j < this.slapCount; j++) {
+        const td = t - this.slapOffset[j];
         if (td >= 0) {
-          const atk = td < 0.0005 ? td / 0.0005 : 1; // 0.5ms attack, no onset click
-          burst += atk * Math.exp(-td / body);
+          const atk = td < ATTACK ? td / ATTACK : 1; // sharp attack, no onset click
+          burst += this.slapAmp[j] * atk * Math.exp(-td / body);
         }
       }
       const roomEnv = Math.exp(-t / room);
