@@ -277,4 +277,20 @@ describe('Clap2Kernel', () => {
       expect(Math.abs(out[i])).toBeLessThan(4);
     }
   });
+
+  it('mix=0 has (almost) no room tail — pure slaps', () => {
+    // With mix=0 the burst train ends by ~lastOnset+body; the tail region must be
+    // near-silent (no 0.2-floor room bleed).
+    const out = renderHit({ mix: 0, bursts: 3, spread: 0.02, body: 0.006, room: 0.4 }, 0.6);
+    const tail = rms(out, Math.floor(SR * 0.3), Math.floor(SR * 0.5)); // 300–500ms
+    expect(tail).toBeLessThan(1e-4);
+  });
+
+  it('mix still moves energy into the tail (knob remains wired)', () => {
+    const tailRms = (mix: number) => {
+      const out = renderHit({ mix, bursts: 2, room: 0.4 }, 0.6);
+      return rms(out, Math.floor(SR * 0.2), Math.floor(SR * 0.4));
+    };
+    expect(tailRms(0.9)).toBeGreaterThan(tailRms(0.1) * 2);
+  });
 });

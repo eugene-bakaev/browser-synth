@@ -170,10 +170,10 @@ export class Clap2Kernel {
     const f = 2 * Math.sin((Math.PI * fc) / sr);
     const q = 1 / BANDPASS_Q;
 
-    // Mix → independent gains so neither the claps nor the room tail ever vanishes
-    // at the knob extremes (default 0.5 ≈ a balanced 909 clap).
-    const burstGain = 1 - 0.6 * mix; // 1.0 … 0.4
-    const roomGain = 0.2 + 0.8 * mix; // 0.2 … 1.0
+    // Mix → a burst/room crossfade. roomGain floors at 0 (was 0.2) so mix=0 is
+    // pure slaps — no room bleed (fixes the audit's "tail never fully off").
+    const burstGain = 1 - 0.5 * mix; // 1.0 … 0.5
+    const roomGain = mix;            // 0.0 … 1.0
 
     const lastOnset = this.slapOffset[this.slapCount - 1];
 
