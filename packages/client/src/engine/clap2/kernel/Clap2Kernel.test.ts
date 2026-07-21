@@ -50,6 +50,14 @@ function slapPeaks(buf: Float32Array, onsetsSec: number[], winSec: number): numb
   });
 }
 
+// Crude spectral-centroid proxy: mean |first difference| / mean |signal| rises with
+// brightness (more HF ⇒ larger sample-to-sample change relative to amplitude).
+function brightness(buf: Float32Array, from: number, to: number): number {
+  let diff = 0, mag = 0;
+  for (let i = from + 1; i < to; i++) { diff += Math.abs(buf[i] - buf[i - 1]); mag += Math.abs(buf[i]); }
+  return diff / Math.max(1e-9, mag);
+}
+
 describe('clap2 param block layout', () => {
   it('one index per descriptor, in table order', () => {
     expect(PARAM_COUNT).toBe(CLAP2_DESCRIPTORS.length);
@@ -247,5 +255,26 @@ describe('Clap2Kernel', () => {
     const lo = renderHit({ tone: 600 }, 0.1);
     const hi = renderHit({ tone: 2800 }, 0.1);
     expect(rmsDiff(hi, lo, 0, Math.floor(SR * 0.05))).toBeGreaterThan(1e-3);
+  });
+
+  it('the attack is brighter than the body (HF injection on onset)', () => {
+    const out = renderHit({ mix: 0, tone: 1000, body: 0.01 }, 0.1);
+    const attackBright = brightness(out, 0, Math.floor(SR * 0.002));      // first 2ms
+    const bodyBright = brightness(out, Math.floor(SR * 0.02), Math.floor(SR * 0.04)); // 20–40ms
+    expect(attackBright).toBeGreaterThan(bodyBright);
+  });
+
+  it('tone still shifts the band (knob remains wired after broadening)', () => {
+    const lo = renderHit({ tone: 600 }, 0.1);
+    const hi = renderHit({ tone: 2800 }, 0.1);
+    expect(rmsDiff(hi, lo, 0, Math.floor(SR * 0.05))).toBeGreaterThan(1e-3);
+  });
+
+  it('stays finite and bounded with the HF path added', () => {
+    const out = renderHit({ tone: 2800, bursts: 5, mix: 0.5 }, 0.4);
+    for (let i = 0; i < out.length; i++) {
+      expect(Number.isFinite(out[i])).toBe(true);
+      expect(Math.abs(out[i])).toBeLessThan(4);
+    }
   });
 });

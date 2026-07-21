@@ -13,7 +13,9 @@
 import { PARAM_COUNT, PARAM_INDEX, defaultParamBlock } from './params';
 
 const MAX_EVENTS = 16;
-const BANDPASS_Q = 1.2;   // analog ClapEngine value; fixed (not a knob)
+const BANDPASS_Q = 0.7;   // broadened (was 1.2): a wider hand-cavity formant, not a whistle
+const HF_INJECT = 0.5;    // highpass (bright) blend on the slap attacks
+const BRIGHT_TC = 0.0012; // 1.2 ms bright-path decay — snap on the attack, gone by the body
 const OUT_TRIM = 0.5;     // headroom: keeps overlapping transients + tail bounded
 
 const ATTACK = 0.00015;                       // 0.15 ms per-slap attack (was 0.5 ms; sharper)
@@ -181,11 +183,13 @@ export class Clap2Kernel {
       // Burst train: sum of per-slap AD envelopes at the drawn (non-uniform, jittered)
       // offsets and decaying amplitudes — the j-th slap starts at slapOffset[j].
       let burst = 0;
+      let bright = 0;
       for (let j = 0; j < this.slapCount; j++) {
         const td = t - this.slapOffset[j];
         if (td >= 0) {
           const atk = td < ATTACK ? td / ATTACK : 1; // sharp attack, no onset click
           burst += this.slapAmp[j] * atk * Math.exp(-td / body);
+          bright += this.slapAmp[j] * atk * Math.exp(-td / BRIGHT_TC); // fast bright env
         }
       }
       const roomEnv = Math.exp(-t / room);
@@ -197,14 +201,16 @@ export class Clap2Kernel {
         return; // remaining samples stay 0 (out was zero-filled)
       }
 
-      // Bandpass the white noise (Chamberlin SVF; band output).
+      // Two signal paths: bandpassed noise carries the body/room env; the SVF
+      // highpass carries a fast bright "snap" on each slap attack.
       const input = this.noise();
       this.svfLow += f * this.svfBand;
       const high = input - this.svfLow - q * this.svfBand;
       this.svfBand += f * high;
       const bp = this.svfBand;
 
-      out[i] += bp * env * this.velocity * level * OUT_TRIM;
+      const sample = bp * env + high * bright * burstGain * HF_INJECT;
+      out[i] += sample * this.velocity * level * OUT_TRIM;
       this.t += dt;
     }
   }
