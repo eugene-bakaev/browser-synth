@@ -29,7 +29,9 @@ declare function registerProcessor(
 ): void;
 
 class Clap2Processor extends AudioWorkletProcessor {
-  private readonly kernel = new Clap2Kernel(sampleRate);
+  // Per-session entropy so the free-running noise (and Task-2 scatter) differ across
+  // sessions/reloads; the kernel's default seed keeps offline tests/audit reproducible.
+  private readonly kernel = new Clap2Kernel(sampleRate, (Math.random() * 0x1_0000_0000) >>> 0);
   private alive = true;
 
   constructor() {

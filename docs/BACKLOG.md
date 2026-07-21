@@ -223,7 +223,7 @@ voicing/ranges were tuned by analysis + browser objective checks, not yet by ear
 Fold this into the broader drum-voicing polish whenever the polish stage happens.
 
 ### clap2 voicing — doesn't sound like a convincing hand-clap
-**Reported:** 2026-06-23 · **Status:** open (deferred) · **Area:** `packages/client/src/engine/clap2/kernel/Clap2Kernel.ts` (+ descriptor `packages/shared/src/engines/clap2.ts`)
+**Reported:** 2026-06-23 · **Status:** RESOLVED 2026-07-21 (`feat/clap2-voicing`, Campaign 2) · **Area:** `packages/client/src/engine/clap2/kernel/Clap2Kernel.ts` (+ descriptor `packages/shared/src/engines/clap2.ts`)
 
 clap2 shipped (merged) end-to-end and is technically correct — the worklet loads,
 params persist, the perceptual tapers and Bursts integer format all verified — but on
@@ -267,6 +267,31 @@ event — consistent with the "too uniform / merged" hypothesis above); (2)
 `roomGain = 0.2 + 0.8*mix` floors at 0.2, so the room tail is never fully off
 even at mix=0. Ear-pass render attached in the audit conversation; the voicing
 question itself stays exactly as written above.
+
+**2026-07-21 RESOLUTION (Campaign 2, `feat/clap2-voicing`, SDD):** re-voiced the
+engine against every hypothesis above, driven to objective audio-lab targets and
+**ear-approved by the user** in `dev:obs`. Changes (all wire-safe; descriptor ranges
+unchanged, no knobs appended):
+- **Non-uniform, amplitude-decaying, per-note-jittered slap train** replacing the even
+  equal-amplitude comb: widening gaps (`BASE_GAP [1,1.3,1.7,2.2]×spread`), ~0.78×/slap
+  decay, ±18% gap / ±22% amp jitter from a free-running seeded scatter PRNG (per-session
+  entropy in the worklet, fixed default seed for tests/audit). Fixes hypothesis 1.
+- **Sharper 0.15 ms attack** (was 0.5 ms). Fixes hypothesis 4.
+- **Broadened bandpass** (Q 1.2→0.7) + **HF attack injection** (reuses the SVF highpass,
+  fast 1.2 ms bright env) for the bright snap. Addresses hypothesis 2.
+- **Dropped the room-gain floor** (`roomGain = mix`, was `0.2+0.8·mix`) so `mix=0` is
+  pure slaps; re-voiced tail via shorter default room. Fixes hypothesis 3 + fact (2).
+- **Tuned defaults:** tone 1000→1100, spread 0.012→0.022, bursts 3→4, body 0.008→0.005,
+  room 0.250→0.140, mix 0.5→0.30.
+Objective targets met: the default clap now resolves **≥2 distinct slaps** at `mix=0`
+(fact (1) fixed — was "always 1"), decreasing slap amplitude, attack brighter than body,
+`mix=0` tail silent, no clipping. Audit recalibrated (`clap2.checks.ts`): `spread.dir`
+→ onsetCount, `body.dir` → `mix:0`, new `onset.separation` check; stale "always 1" /
+"floor" / "untouched" notes corrected. **User verdict:** a distinct, cooler/brighter
+clap that is **not a strict TR-909 reproduction** — accepted as the final voice.
+Follow-up (optional, not scheduled): a tighter-909-fidelity pass could tame the HF
+(`HF_INJECT`/`BRIGHT_TC`, mean centroid ~7.7 kHz is hot) and shape a more formant-like
+body if a faithful 909 clap is later desired.
 
 ### local-init.sql missing the 0005_presets table
 **Reported:** 2026-07-02 · **Status:** open · **Area:** `packages/server/db/local-init.sql`, `supabase/migrations/0005_presets.sql`
