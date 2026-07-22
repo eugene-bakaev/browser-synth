@@ -35,6 +35,11 @@
 //  7677 -> 4644); the bright attack-snap (HF-inject path) is untouched. Removing that
 //  HF energy dropped the default peak -13.5 -> -16.5dB, so fingerprint.peak's floor
 //  moved -15 -> -18 (still audible). tone.dir/onset checks unaffected. Ear-approved.
+//  2026-07-22 loudness parity (feat/clap2-loudness-parity): the F8 body-LP shaved ~3dB
+//  incidentally with the HF; OUT_TRIM 0.5 -> 0.707 (+3dB) restores peak -16.5 -> -13.5
+//  (the Campaign-2 ear-approved level), tone untouched. fingerprint.peak floor back to
+//  -15. Cross-drum peak "parity" is a mixer concern, not a kernel one (raw kick2/snare2
+//  render hot/unstaged near 0dBFS); clap sits hat2-adjacent, this is self-parity only.
 import type { CheckSpec } from '../types';
 import { drumBase } from './baselines';
 
@@ -45,7 +50,7 @@ const d = (id: string, title: string, a: CheckSpec['assertion'], params: Record<
 });
 
 export const clap2Checks: CheckSpec[] = [
-  d('fingerprint.peak', 'default clap is audible', { kind: 'absolute', metric: 'peakDb', min: -18, max: 0 }), // floor -15→-18: the F8 body-LP removed ~3dB of HF energy (peak -13.5→-16.5), still clearly audible
+  d('fingerprint.peak', 'default clap is audible', { kind: 'absolute', metric: 'peakDb', min: -15, max: 0 }), // floor back to -15: the loudness-parity OUT_TRIM bump (+3dB) restores peak -16.5→-13.5
   d('tone.dir', 'tone brightens the bandpass', { kind: 'directional', param: 'tone', from: 600, to: 2600, metric: 'meanCentroidHz', direction: 'up', minDelta: 300 }),
   d('spread.dir', 'wider spread resolves more distinct slaps (looser train)', { kind: 'directional', param: 'spread', from: 0.006, to: 0.038, metric: 'onsetCount', direction: 'up', minDelta: 1 }, { mix: 0 }), // room off so the detector resolves the slaps
   d('bursts.dir', 'more bursts raise total energy (pure-burst, room off)', { kind: 'directional', param: 'bursts', from: 2, to: 5, metric: 'rmsDb', direction: 'up', minDelta: 1.2 }, { spread: 0.03, mix: 0 }),
