@@ -13,8 +13,7 @@ import { Snare2Engine } from '../engine/Snare2Engine';
 import { Hat2Engine } from '../engine/Hat2Engine';
 import { Clap2Engine } from '../engine/Clap2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
-import { noteToFreq } from '../utils/notes';
-import { resolveChordFreqs } from '../utils/chords';
+import { resolveStepTriggers } from '../sequencer/schedule';
 import type { AppliedCommand } from '../project/appliedCommand';
 
 // Worklet asset URL — must be a separate browser asset loaded via
@@ -407,47 +406,11 @@ export class AudioEngine {
     } else {
       this.sequencer.start(state.ctx, () => project.bpm, (stepIndex, time) => {
         this.currentStep.value = stepIndex;
-
-        for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-          const track = project.tracks[i];
-          if (!track.enabled) continue;
-          // Engine construction rides the synchronous enabled stream reaction,
-          // so an enabled track always has one — guard anyway so a scheduling tick
-          // racing a toggle can't crash the audio callback.
-          const engine = state.engines[i];
-          if (!engine) continue;
-          const step = track.steps[stepIndex % track.patternLength];
-          if (step.note && !step.muted) {
-            const engineTypeI = track.engineType;
-            if (engineTypeI === 'synth') {
-              const currentMode = track.engines.synth.mode;
-              const tickDuration = (60 / project.bpm) / 4;
-              const duration = step.length * tickDuration;
-              if (currentMode === 'poly') {
-                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engine.trigger(freqs, duration, time, step.velocity);
-              } else {
-                const freq = noteToFreq(step.note, step.octave);
-                engine.trigger(freq, duration, time, step.velocity);
-              }
-            } else if (engineTypeI === 'synth2') {
-              const currentMode = track.engines.synth2.mode;
-              const tickDuration = (60 / project.bpm) / 4;
-              const duration = step.length * tickDuration;
-              if (currentMode === 'poly') {
-                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engine.trigger(freqs, duration, time, step.velocity);
-              } else {
-                engine.trigger(noteToFreq(step.note, step.octave), duration, time, step.velocity);
-              }
-            } else {
-              // Drums are fire-and-forget: pitch + decay come from the engine's
-              // Tune/Decay knobs, not from step data. freq/duration are passed
-              // as 0 — every drum engine ignores them. step.note here is used
-              // only as a trigger flag (null = no trigger) by the outer if.
-              engine.trigger(0, 0, time, step.velocity);
-            }
-          }
+        for (const ev of resolveStepTriggers(project, stepIndex, time)) {
+          // The enabled/note/mute/freq/duration decisions now live in
+          // resolveStepTriggers; only the live engine-existence guard stays here
+          // (a tick racing an engine swap must not crash the audio callback).
+          state.engines[ev.trackIndex]?.trigger(ev.freq, ev.duration, ev.time, ev.velocity);
         }
       });
     }
