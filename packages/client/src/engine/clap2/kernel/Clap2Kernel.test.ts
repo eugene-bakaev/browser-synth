@@ -213,6 +213,41 @@ describe('Clap2Kernel', () => {
     expect(rmsDiff(hit1, hit2, 0, hit1.length)).toBeGreaterThan(1e-3);
   });
 
+  it('scatter pattern free-runs across triggers (a re-seed would make hits identical)', () => {
+    // The `hit-to-hit variation` test above still passes even if the slap PATTERN were
+    // reset on every trigger, because the independent noise() stream keeps diverging.
+    // This locks the pattern itself: read the drawn per-slap onset offsets + amplitudes
+    // (white-box, like HatEngine/SnareEngine tests) after two consecutive triggers on
+    // one kernel. scatterRng free-runs, so the jittered pattern must differ hit-to-hit.
+    // A regression that re-seeded scatterRng inside trigger() would draw the identical
+    // pattern both times and fail here.
+    type Pattern = { slapOffset: Float32Array; slapAmp: Float32Array; slapCount: number };
+    const snap = (k: Clap2Kernel) => {
+      const p = k as unknown as Pattern;
+      return {
+        off: Array.from(p.slapOffset.subarray(0, p.slapCount)),
+        amp: Array.from(p.slapAmp.subarray(0, p.slapCount)),
+      };
+    };
+
+    const kernel = new Clap2Kernel(SR, 7);
+    kernel.applyParams(withParam({ mix: 0, bursts: 5, spread: 0.03 }));
+    const buf = new Float32Array(BLOCK);
+
+    kernel.noteOn(0, 0, 0, 1);
+    kernel.process(buf, BLOCK, 0); // fires trigger() → draws slap pattern #1
+    const p1 = snap(kernel);
+
+    kernel.noteOn(0, 0, 0, 1);
+    kernel.process(buf, BLOCK, BLOCK); // fires trigger() again → pattern #2 (scatter free-runs)
+    const p2 = snap(kernel);
+
+    expect(p1.off.length).toBe(5); // same bursts ⇒ same-length patterns to compare
+    expect(p2.off.length).toBe(5);
+    expect(p2.off).not.toEqual(p1.off); // jittered gaps advanced ⇒ onset offsets differ
+    expect(p2.amp).not.toEqual(p1.amp); // jittered amplitudes advanced ⇒ amps differ
+  });
+
   it('same seed reproduces the scattered pattern', () => {
     const render = (seed: number) => {
       const k = new Clap2Kernel(SR, seed);
