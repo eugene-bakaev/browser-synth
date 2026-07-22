@@ -16,7 +16,9 @@ const MAX_EVENTS = 16;
 const BANDPASS_Q = 0.7;   // broadened (was 1.2): a wider hand-cavity formant, not a whistle
 const HF_INJECT = 0.5;    // highpass (bright) blend on the slap attacks
 const BRIGHT_TC = 0.0012; // 1.2 ms bright-path decay — snap on the attack, gone by the body
-const OUT_TRIM = 0.5;     // headroom: keeps overlapping transients + tail bounded
+const OUT_TRIM = 0.707;   // headroom trim; 0.5→0.707 (+3dB) restores the loudness the F8
+                          // body-LP incidentally shaved off (peak −16.5→−13.5, the level
+                          // ear-approved in the Campaign-2 re-voice), tone unchanged.
 const BODY_LP_HZ = 2500;  // F8: gentle 1-pole LP on the BODY path only — tames the broad
                           // bandpass's white-noise HF skirt (centroid was ~7.7kHz) while the
                           // bright attack snap (HF-inject path) is left untouched.
