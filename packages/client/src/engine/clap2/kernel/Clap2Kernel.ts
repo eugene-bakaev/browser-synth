@@ -17,6 +17,9 @@ const BANDPASS_Q = 0.7;   // broadened (was 1.2): a wider hand-cavity formant, n
 const HF_INJECT = 0.5;    // highpass (bright) blend on the slap attacks
 const BRIGHT_TC = 0.0012; // 1.2 ms bright-path decay — snap on the attack, gone by the body
 const OUT_TRIM = 0.5;     // headroom: keeps overlapping transients + tail bounded
+const BODY_LP_HZ = 2500;  // F8: gentle 1-pole LP on the BODY path only — tames the broad
+                          // bandpass's white-noise HF skirt (centroid was ~7.7kHz) while the
+                          // bright attack snap (HF-inject path) is left untouched.
 
 const ATTACK = 0.00015;                       // 0.15 ms per-slap attack (was 0.5 ms; sharper)
 const BASE_GAP = [1.0, 1.3, 1.7, 2.2];        // inter-slap gap multipliers (× spread), widening
@@ -51,6 +54,9 @@ export class Clap2Kernel {
   // Chamberlin state-variable filter state (bandpass of the noise source).
   private svfLow = 0;
   private svfBand = 0;
+
+  // One-pole lowpass state on the body (bandpass) path — see BODY_LP_HZ.
+  private bodyLp = 0;
 
   // Deterministic xorshift32 noise — free-runs across note-ons (never re-seeded on
   // trigger) so consecutive hits differ; seeded from the constructor so the worklet
@@ -119,6 +125,7 @@ export class Clap2Kernel {
     this.velocity = velocity;
     this.svfLow = 0;
     this.svfBand = 0;
+    this.bodyLp = 0;
 
     // Draw the non-uniform, amplitude-decaying, per-note-jittered slap pattern.
     const bursts = Math.max(2, Math.min(5, Math.round(this.block[I_BURSTS])));
@@ -170,6 +177,9 @@ export class Clap2Kernel {
     const f = 2 * Math.sin((Math.PI * fc) / sr);
     const q = 1 / BANDPASS_Q;
 
+    // Body-path 1-pole LP coefficient (F8). Corner clamped below the SVF clamp.
+    const lpCoef = 1 - Math.exp((-2 * Math.PI * Math.min(BODY_LP_HZ, sr / 6)) / sr);
+
     // Mix → a burst/room crossfade. roomGain floors at 0 (was 0.2) so mix=0 is
     // pure slaps — no room bleed (fixes the audit's "tail never fully off").
     const burstGain = 1 - 0.5 * mix; // 1.0 … 0.5
@@ -207,7 +217,8 @@ export class Clap2Kernel {
       this.svfLow += f * this.svfBand;
       const high = input - this.svfLow - q * this.svfBand;
       this.svfBand += f * high;
-      const bp = this.svfBand;
+      this.bodyLp += lpCoef * (this.svfBand - this.bodyLp); // tame the body HF skirt
+      const bp = this.bodyLp;
 
       const sample = bp * env + high * bright * burstGain * HF_INJECT;
       out[i] += sample * this.velocity * level * OUT_TRIM;
