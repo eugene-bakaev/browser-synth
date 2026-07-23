@@ -14,7 +14,7 @@ export interface Tier2Result { channels: Float32Array[]; sampleRate: number }
 
 export async function renderProjectTier2(
   project: Project,
-  opts: { bars: number; soloTrack?: number },
+  opts: { bars: number; soloTrack?: number; leadInSeconds?: number },
 ): Promise<Tier2Result> {
   for (const w of REQUIRED) {
     try {

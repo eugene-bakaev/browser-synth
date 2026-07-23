@@ -25,10 +25,16 @@ function trackGain(project: Project, i: number, soloTrack?: number): number {
   return audible ? sliderToLinearGain(track.mixer.volume) : 0;
 }
 
-async function renderProject(project: Project, opts: { bars: number; soloTrack?: number }) {
+async function renderProject(project: Project, opts: { bars: number; soloTrack?: number; leadInSeconds?: number }) {
   const bpm = project.bpm;
   const totalSteps = opts.bars * 16;
-  const dur = totalSteps * stepDuration(bpm) + TAIL_SECONDS;
+  // Opt-in silent lead-in: lets the master-bus compressor settle past its
+  // cold-start (see docs/BACKLOG.md) before the scored pattern plays, so
+  // sequencer-correctness checks measure a steady-state graph. Defaults to 0
+  // (identical behavior for the Task 4 smoke test + Task 5 CLI, neither of
+  // which pass this option).
+  const lead = opts.leadInSeconds ?? 0;
+  const dur = lead + totalSteps * stepDuration(bpm) + TAIL_SECONDS;
   const ctx = new OfflineAudioContext(2, Math.ceil(dur * SR), SR);
   await registerWorklets(ctx);
 
@@ -53,7 +59,7 @@ async function renderProject(project: Project, opts: { bars: number; soloTrack?:
   }
 
   for (let k = 0; k < totalSteps; k++) {
-    const t = k * stepDuration(bpm);
+    const t = lead + k * stepDuration(bpm);
     for (const ev of resolveStepTriggers(project, k, t)) {
       engines[ev.trackIndex]?.trigger(ev.freq, ev.duration, ev.time, ev.velocity);
     }
@@ -64,8 +70,14 @@ async function renderProject(project: Project, opts: { bars: number; soloTrack?:
   await new Promise((r) => setTimeout(r, 100));
 
   const buf = await ctx.startRendering();
+  // Trim the silent lead-in so returned/analyzed times stay grid-relative
+  // (0-based, matching expectedOnsets). No-op when lead === 0.
+  const start = Math.round(lead * SR);
   return {
-    channels: [f32ToBase64(buf.getChannelData(0)), f32ToBase64(buf.getChannelData(1))],
+    channels: [
+      f32ToBase64(buf.getChannelData(0).subarray(start)),
+      f32ToBase64(buf.getChannelData(1).subarray(start)),
+    ],
     sampleRate: SR,
   };
 }
