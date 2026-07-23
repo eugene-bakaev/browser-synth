@@ -2,65 +2,12 @@ import { ref, reactive, computed, shallowRef, type Ref, type ComputedRef } from 
 import { TRACK_POOL_SIZE, divisionToHz, envDivisionToSeconds, ENV_SYNC_DEFAULT_LABEL, LFO_SYNC_DEFAULT_LABEL } from '@fiddle/shared';
 import { type Project, type EngineType } from '../project';
 import { SoundEngine } from '../engine/types';
-import { SynthEngine } from '../engine/SynthEngine';
-import { KickEngine }  from '../engine/KickEngine';
-import { HatEngine }   from '../engine/HatEngine';
-import { SnareEngine } from '../engine/SnareEngine';
-import { ClapEngine }  from '../engine/ClapEngine';
-import { Synth2Engine } from '../engine/Synth2Engine';
-import { Kick2Engine } from '../engine/Kick2Engine';
-import { Snare2Engine } from '../engine/Snare2Engine';
-import { Hat2Engine } from '../engine/Hat2Engine';
-import { Clap2Engine } from '../engine/Clap2Engine';
 import { Sequencer } from '../sequencer/Sequencer';
-import { noteToFreq } from '../utils/notes';
-import { resolveChordFreqs } from '../utils/chords';
+import { resolveStepTriggers } from '../sequencer/schedule';
 import type { AppliedCommand } from '../project/appliedCommand';
-
-// Worklet asset URL — must be a separate browser asset loaded via
-// audioContext.audioWorklet.addModule, not bundled into the main chunk. Vite
-// recognizes the `new URL(string-literal, import.meta.url)` pattern and emits
-// the file alongside the main bundle with a hashed filename. The processor
-// inside registers itself as 'pulse'. (Path is identical from audio/ or
-// composables/ — both are one level under src/.)
-const pulseWorkletUrl = new URL('../engine/worklets/pulse-processor.js', import.meta.url).href;
-
-// synth2 worklet — esbuild-bundled into public/worklets by `build:worklet`
-// (a static asset, NOT in Vite's module graph — see client package.json).
-const synth2WorkletUrl = '/worklets/synth2-processor.js';
-// kick2 worklet — same esbuild-bundled static-asset story as synth2.
-const kick2WorkletUrl = '/worklets/kick2-processor.js';
-// snare2 worklet — same esbuild-bundled static-asset story as kick2.
-const snare2WorkletUrl = '/worklets/snare2-processor.js';
-// hat2 worklet — same esbuild-bundled static-asset story as snare2.
-const hat2WorkletUrl = '/worklets/hat2-processor.js';
-// clap2 worklet — same esbuild-bundled static-asset story as hat2.
-const clap2WorkletUrl = '/worklets/clap2-processor.js';
+import { engineFactories, sliderToLinearGain, buildMasterChain, registerWorklets } from './graph';
 
 const ENGINE_SWAP_FADE_SECONDS = 0.02;
-
-const engineFactories: Record<EngineType, (ctx: AudioContext, dest: AudioNode) => SoundEngine> = {
-  synth:  (ctx, dest) => new SynthEngine(ctx, dest),
-  kick:   (ctx, dest) => new KickEngine(ctx, dest),
-  hat:    (ctx, dest) => new HatEngine(ctx, dest),
-  snare:  (ctx, dest) => new SnareEngine(ctx, dest),
-  clap:   (ctx, dest) => new ClapEngine(ctx, dest),
-  synth2: (ctx, dest) => new Synth2Engine(ctx, dest),
-  kick2:  (ctx, dest) => new Kick2Engine(ctx, dest),
-  snare2: (ctx, dest) => new Snare2Engine(ctx, dest),
-  hat2:   (ctx, dest) => new Hat2Engine(ctx, dest),
-  clap2:  (ctx, dest) => new Clap2Engine(ctx, dest),
-};
-
-// Mixer volume is stored as slider position 0..1 (perceptual). The actual
-// AudioParam.gain needs a linear multiplier — convert via -54..+6 dB then
-// 10^(dB/20). Slider at 0 is hard silence (matches muted semantics). The
-// matching display formula lives in Knob.vue case 'db' — keep them in sync.
-function sliderToLinearGain(slider: number): number {
-  if (slider <= 0) return 0;
-  const db = -54 + slider * 60;
-  return Math.pow(10, db / 20);
-}
 
 // JSON-clone: walks string-keyed enumerable props only, skipping the Symbol
 // metadata that Vue's reactive proxy attaches. structuredClone fails on
@@ -156,38 +103,13 @@ export class AudioEngine {
     const project = this.deps.project;
     const ctx = new AudioContext();
 
-    // Pulse oscillator worklet must be registered before any SynthVoice (and
-    // its inner OscillatorModule) constructs an AudioWorkletNode('pulse'). The
-    // module load is async; the rest of the graph wiring must wait.
-    await ctx.audioWorklet.addModule(pulseWorkletUrl);
-    // synth2 worklet must likewise be registered before any Synth2Engine
-    // constructs an AudioWorkletNode('synth2').
-    await ctx.audioWorklet.addModule(synth2WorkletUrl);
-    // kick2 worklet must likewise be registered before any Kick2Engine constructs
-    // an AudioWorkletNode('kick2').
-    await ctx.audioWorklet.addModule(kick2WorkletUrl);
-    // snare2 worklet must likewise be registered before any Snare2Engine constructs
-    // an AudioWorkletNode('snare2').
-    await ctx.audioWorklet.addModule(snare2WorkletUrl);
-    // hat2 worklet must likewise be registered before any Hat2Engine constructs an
-    // AudioWorkletNode('hat2').
-    await ctx.audioWorklet.addModule(hat2WorkletUrl);
-    // clap2 worklet must likewise be registered before any Clap2Engine constructs an
-    // AudioWorkletNode('clap2').
-    await ctx.audioWorklet.addModule(clap2WorkletUrl);
+    // Register every worklet module the engines need before any engine
+    // constructs its AudioWorkletNode (pulse, synth2, kick2, snare2, hat2,
+    // clap2, in that order — see graph.ts).
+    await registerWorklets(ctx);
 
-    const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-12, ctx.currentTime);
-    compressor.knee.setValueAtTime(30, ctx.currentTime);
-    compressor.ratio.setValueAtTime(12, ctx.currentTime);
-    compressor.attack.setValueAtTime(0.003, ctx.currentTime);
-    compressor.release.setValueAtTime(0.25, ctx.currentTime);
-
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(0.6, ctx.currentTime);
-
-    compressor.connect(masterGain);
-    masterGain.connect(ctx.destination);
+    const master = buildMasterChain(ctx);
+    master.output.connect(ctx.destination);
 
     // Per-track analysers tee off each trackGain so the focused panel's
     // oscilloscope shows only that channel, not the summed mix.
@@ -196,7 +118,7 @@ export class AudioEngine {
     for (let i = 0; i < TRACK_POOL_SIZE; i++) {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.8, ctx.currentTime);
-      g.connect(compressor);
+      g.connect(master.input);
       const a = ctx.createAnalyser();
       a.fftSize = 1024;
       g.connect(a);
@@ -407,47 +329,11 @@ export class AudioEngine {
     } else {
       this.sequencer.start(state.ctx, () => project.bpm, (stepIndex, time) => {
         this.currentStep.value = stepIndex;
-
-        for (let i = 0; i < TRACK_POOL_SIZE; i++) {
-          const track = project.tracks[i];
-          if (!track.enabled) continue;
-          // Engine construction rides the synchronous enabled stream reaction,
-          // so an enabled track always has one — guard anyway so a scheduling tick
-          // racing a toggle can't crash the audio callback.
-          const engine = state.engines[i];
-          if (!engine) continue;
-          const step = track.steps[stepIndex % track.patternLength];
-          if (step.note && !step.muted) {
-            const engineTypeI = track.engineType;
-            if (engineTypeI === 'synth') {
-              const currentMode = track.engines.synth.mode;
-              const tickDuration = (60 / project.bpm) / 4;
-              const duration = step.length * tickDuration;
-              if (currentMode === 'poly') {
-                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engine.trigger(freqs, duration, time, step.velocity);
-              } else {
-                const freq = noteToFreq(step.note, step.octave);
-                engine.trigger(freq, duration, time, step.velocity);
-              }
-            } else if (engineTypeI === 'synth2') {
-              const currentMode = track.engines.synth2.mode;
-              const tickDuration = (60 / project.bpm) / 4;
-              const duration = step.length * tickDuration;
-              if (currentMode === 'poly') {
-                const freqs = resolveChordFreqs(step.note, step.chordType || 'maj', step.octave);
-                engine.trigger(freqs, duration, time, step.velocity);
-              } else {
-                engine.trigger(noteToFreq(step.note, step.octave), duration, time, step.velocity);
-              }
-            } else {
-              // Drums are fire-and-forget: pitch + decay come from the engine's
-              // Tune/Decay knobs, not from step data. freq/duration are passed
-              // as 0 — every drum engine ignores them. step.note here is used
-              // only as a trigger flag (null = no trigger) by the outer if.
-              engine.trigger(0, 0, time, step.velocity);
-            }
-          }
+        for (const ev of resolveStepTriggers(project, stepIndex, time)) {
+          // The enabled/note/mute/freq/duration decisions now live in
+          // resolveStepTriggers; only the live engine-existence guard stays here
+          // (a tick racing an engine swap must not crash the audio callback).
+          state.engines[ev.trackIndex]?.trigger(ev.freq, ev.duration, ev.time, ev.velocity);
         }
       });
     }

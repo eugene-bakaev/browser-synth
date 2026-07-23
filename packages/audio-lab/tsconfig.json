@@ -1,7 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // Tier-2's harness deep-imports @fiddle/client/src/audio/graph.ts, which
+    // pulls the full Engine wrapper classes into this program. Those source
+    // files are typechecked under client's OWN tsconfig (which disables these
+    // two flags — drum engines intentionally ignore unused trigger() args to
+    // satisfy the shared SoundEngine signature). Match that override here so
+    // the same files don't fail under audio-lab's stricter defaults.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["src/**/*.ts"]
 }

@@ -22,7 +22,8 @@
     "e2e": "playwright test",
     "lab": "npm run lab -w @fiddle/audio-lab --",
     "lab:audit": "npm run audit -w @fiddle/audio-lab",
-    "lab:audit:fast": "npm run audit:fast -w @fiddle/audio-lab"
+    "lab:audit:fast": "npm run audit:fast -w @fiddle/audio-lab",
+    "lab:tier2": "npm run tier2 -w @fiddle/audio-lab"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

@@ -5,6 +5,50 @@ aren't tied to the branch currently in flight.
 
 ## Open
 
+### Master-bus compressor cold-start masks the first ~500ms of a fresh render (~13-14dB quieter) — live-app relevance UNVERIFIED
+**Reported:** 2026-07-23 (Tier-2 sequencer-correctness checks, Task 6) · **Status:** open (informational, no DSP change made) · **Area:** `packages/client/src/audio/graph.ts` `buildMasterChain` (`ctx.createDynamicsCompressor()`, shared by the live `AudioEngine` and the offline Tier-2 harness)
+
+Building the Tier-2 sequencer-correctness checks (`packages/audio-lab/src/tier2/sequencer.tier2.test.ts`)
+surfaced a real amplitude anomaly, not a sequencer bug: the very first audio
+event to pass through a freshly constructed `DynamicsCompressorNode` (threshold
+−12dB, ratio 12, attack 3ms, release 250ms) comes out roughly 13-14dB quieter
+than an otherwise-identical later hit, recovering within about the first
+20-30ms of real time (confirmed by a silence-only lead-in sweep — 0s/0.01s
+still shows the miss, 0.03s+ is clean — so this is a fixed, short cold-start,
+not a signal-driven release-time recovery).
+
+**Evidence:** solo-rendering the fixture's hat2 track (`buildSequencerFixture`,
+polymeter hit at absolute step 0) over 3 bars detected only 3 of the expected 4
+onsets — the t=0 onset was missing because hat2's already-quiet steady-state
+level (~−22.8dB peak) fell below the onset detector's −45dBFS RMS threshold
+once cold-start attenuation was applied. Isolated the cause by temporarily
+bypassing the compressor in `buildMasterChain` (gain node straight to
+destination) and re-measuring: the anomaly disappeared completely (kick2's t=0
+hit went from −19.45dB to −6.28dB, in line with every later hit). kick2/clap2
+have enough headroom above the onset threshold that this never affected their
+checks — it took an already-quiet engine to expose it.
+
+**Fix applied (measurement-side only, per this task's scope):** `renderProject`
+in `packages/audio-lab/src/tier2/harness/main.ts` gained an opt-in
+`leadInSeconds` — a silent warm-up rendered before the scored pattern and
+trimmed from the returned audio, so analyzed onset times stay grid-relative.
+Defaults to 0 (identical behavior for the Task 4 smoke test and the Task 5
+`render-project` CLI — neither passes the option). The sequencer checks use
+`leadInSeconds = 0.4` (>10x margin over the observed ~0.02-0.03s threshold).
+**No DSP/compressor change was made** — this documents the finding without
+fixing it, per instruction.
+
+**Live-app relevance is UNVERIFIED, not confirmed.** The finding was observed
+in an `OfflineAudioContext` render; whether a real-time `AudioContext`'s
+`DynamicsCompressorNode` exhibits the same cold-start on the very first sound
+after a fresh graph build (e.g. the first drum hit after opening the page, or
+after any full graph rebuild) has not been tested and would need its own
+browser-based measurement to confirm. If confirmed, the practical live impact
+would likely be a barely-perceptible quiet first hit — worth a deliberate,
+separately-scoped decision (e.g. a brief compressor warm-up, or reconsidering
+default threshold/attack for the quieter drum engines) rather than folding a
+compressor/DSP change into an unrelated task.
+
 ### Post-Phase-5 audit: re-verify the project-writer inventory is complete
 **Reported:** 2026-07-02 · **Status:** open / scheduled AFTER Phase 5 lands · **Area:** lifecycle-architecture redesign — the "single writer" claim behind `packages/client/src/sync/CommandBus.ts` + `packages/client/src/audio/AudioEngine.ts`
 
