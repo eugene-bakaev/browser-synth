@@ -13,6 +13,7 @@ import { decodeWav } from './report/wav';
 const USAGE = `audio-lab usage:
   npm run lab -- render-engine <engine> [--set key=value]... [--matrix src:dest:amount]...
       [--notes NOTE:START:DUR[,...]] [--seconds N] [--mono] [--label NAME] [--out DIR] [--sr HZ]
+  npm run lab -- render-project <file.json> [--bars N] [--solo TRACK] [--label NAME] [--out DIR]
   npm run lab -- analyze <file.wav> [--label NAME] [--out DIR]
   npm run lab -- compare <runDirA> <runDirB>
 
@@ -25,7 +26,8 @@ export class CliUsageError extends Error {}
 export type CliCommand =
   | { kind: 'render-engine'; spec: EngineRenderSpec; label: string; out?: string }
   | { kind: 'analyze'; file: string; label: string; out?: string }
-  | { kind: 'compare'; dirA: string; dirB: string };
+  | { kind: 'compare'; dirA: string; dirB: string }
+  | { kind: 'render-project'; file: string; bars: number; soloTrack?: number; label: string; out?: string };
 
 export function parseCliArgs(argv: string[]): CliCommand {
   const [command, ...rest] = argv;
@@ -35,6 +37,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
     if (rest.length !== 2) throw new CliUsageError(USAGE);
     return { kind: 'compare', dirA: rest[0], dirB: rest[1] };
   }
+  if (command === 'render-project') return parseRenderProject(rest);
   throw new CliUsageError(USAGE);
 }
 
@@ -123,6 +126,23 @@ function parseAnalyze(args: string[]): CliCommand {
   return { kind: 'analyze', file, label: bag.single.get('--label') ?? base, out: bag.single.get('--out') };
 }
 
+function parseRenderProject(args: string[]): CliCommand {
+  const bag = collectFlags(args);
+  const file = bag.positional[0];
+  if (!file) throw new CliUsageError(USAGE);
+  const base = file.split('/').pop()!.replace(/\.json$/i, '');
+  const bars = bag.single.has('--bars') ? Number(bag.single.get('--bars')) : 2;
+  const soloTrack = bag.single.has('--solo') ? Number(bag.single.get('--solo')) : undefined;
+  return {
+    kind: 'render-project',
+    file,
+    bars,
+    soloTrack,
+    label: bag.single.get('--label') ?? base,
+    out: bag.single.get('--out'),
+  };
+}
+
 function summaryText(report: RunReport): string {
   return JSON.stringify(report.summary, null, 2);
 }
@@ -142,6 +162,17 @@ export async function runCli(cmd: CliCommand): Promise<{ dir?: string; summaryTe
     const clip = decodeWav(new Uint8Array(await readFile(cmd.file)));
     const dir = cmd.out ?? defaultRunDir(cmd.label);
     const report = await writeRunDir({ dir, spec: { source: cmd.file }, clip });
+    return { dir, summaryText: summaryText(report) };
+  }
+  if (cmd.kind === 'render-project') {
+    const { normalizeProject } = await import('@fiddle/shared');
+    const { renderProjectTier2, toMonoClip } = await import('./tier2/driver');
+    const raw = JSON.parse(await readFile(cmd.file, 'utf8'));
+    const project = normalizeProject(raw);
+    const res = await renderProjectTier2(project, { bars: cmd.bars, soloTrack: cmd.soloTrack });
+    const clip = toMonoClip(res);
+    const dir = cmd.out ?? defaultRunDir(cmd.label);
+    const report = await writeRunDir({ dir, spec: { file: cmd.file, bars: cmd.bars, soloTrack: cmd.soloTrack }, clip });
     return { dir, summaryText: summaryText(report) };
   }
   const a = JSON.parse(await readFile(join(cmd.dirA, 'report.json'), 'utf8')) as RunReport;

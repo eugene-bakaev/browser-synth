@@ -43,6 +43,15 @@ describe('parseCliArgs', () => {
     expect(() => parseCliArgs(['render-engine', 'synth2', '--set', 'noequals'])).toThrow(/key=value/);
     expect(() => parseCliArgs(['compare', 'onlyone'])).toThrow(/usage/i);
   });
+
+  it('parses render-project with defaults', () => {
+    const c = parseCliArgs(['render-project', 'foo/bar.json']);
+    expect(c).toMatchObject({ kind: 'render-project', file: 'foo/bar.json', bars: 2, label: 'bar' });
+  });
+  it('parses render-project flags', () => {
+    const c = parseCliArgs(['render-project', 'p.json', '--bars', '4', '--solo', '2', '--label', 'x']);
+    expect(c).toMatchObject({ kind: 'render-project', bars: 4, soloTrack: 2, label: 'x' });
+  });
 });
 
 describe('runCli', () => {
