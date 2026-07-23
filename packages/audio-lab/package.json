@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "audit": "vitest run --config vitest.audit.config.ts",
-    "audit:fast": "AUDIT_FAST=1 vitest run --config vitest.audit.config.ts"
+    "audit:fast": "AUDIT_FAST=1 vitest run --config vitest.audit.config.ts",
+    "tier2": "vitest run --config vitest.tier2.config.ts"
   },
   "dependencies": {
     "@fiddle/client": "*",
@@ -18,10 +19,12 @@
     "pngjs": "^7.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "@types/node": "^22.10.0",
     "@types/pngjs": "^6.0.5",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0",
+    "vite": "^5.0.0",
     "vitest": "^4.1.7"
   }
 }
