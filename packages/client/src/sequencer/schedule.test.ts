@@ -37,6 +37,27 @@ describe('resolveStepTriggers', () => {
     expect((ev.freq as number[]).length).toBe(3); // min triad
   });
 
+  it('fires a mono v1 synth note as a single frequency', () => {
+    const p = bareProject();
+    const t = p.tracks[0];
+    t.enabled = true; t.engineType = 'synth'; t.engines.synth.mode = 'mono'; t.patternLength = 16;
+    t.steps[0] = { ...t.steps[0], note: 'C', octave: 4, length: 2, velocity: 0.5, muted: false };
+    const evs = resolveStepTriggers(p, 0, 3.0);
+    expect(evs).toHaveLength(1);
+    expect(evs[0]).toMatchObject({ trackIndex: 0, freq: noteToFreq('C', 4), time: 3.0, velocity: 0.5 });
+    expect(evs[0].duration).toBeCloseTo(2 * stepDuration(p.bpm), 12);
+  });
+
+  it('fires a poly v1 synth note as a chord array', () => {
+    const p = bareProject();
+    const t = p.tracks[0];
+    t.enabled = true; t.engineType = 'synth'; t.engines.synth.mode = 'poly';
+    t.steps[0] = { ...t.steps[0], note: 'C', octave: 4, chordType: 'min', muted: false };
+    const [ev] = resolveStepTriggers(p, 0, 0);
+    expect(Array.isArray(ev.freq)).toBe(true);
+    expect((ev.freq as number[]).length).toBe(3); // min triad
+  });
+
   it('fires drums as freq 0, duration 0', () => {
     const p = bareProject();
     const t = p.tracks[0];

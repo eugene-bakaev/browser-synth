@@ -1,8 +1,9 @@
-// Pure step->trigger walk shared by live playback (AudioEngine.togglePlay) and
-// the offline Tier-2 harness, so the two can never drift. No AudioContext, no
-// engine objects, no Vue — resolveStepTriggers is a pure function of project
-// state. Mirrors the mapping AudioEngine.onStep used to inline (per-track
-// modulo, note/mute gating, poly-chord vs mono vs fire-and-forget drums).
+// Pure step->trigger walk shared by live playback (the AudioEngine onStep
+// callback that sequencer.start drives) and the offline Tier-2 harness, so the
+// two can never drift. No AudioContext, no engine objects, no Vue —
+// resolveStepTriggers is a pure function of project state. Mirrors the mapping
+// AudioEngine.onStep used to inline (per-track modulo, note/mute gating,
+// poly-chord vs mono vs fire-and-forget drums).
 import type { Project } from '../project';
 import { noteToFreq } from '../utils/notes';
 import { resolveChordFreqs } from '../utils/chords';
