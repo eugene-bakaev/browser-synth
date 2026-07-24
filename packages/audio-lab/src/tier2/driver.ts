@@ -26,11 +26,14 @@ export async function renderProjectTier2(
 
   const server = await createServer({ configFile: abs('../../vite.harness.config.ts') });
   await server.listen();
-  const url = server.resolvedUrls?.local[0];
-  if (!url) throw new Error('Tier-2: harness server did not resolve a URL');
 
   let browser: Browser | undefined;
   try {
+    // Resolve the URL inside the try so a failure to resolve still hits the
+    // finally and closes the already-listening server (no leak).
+    const url = server.resolvedUrls?.local[0];
+    if (!url) throw new Error('Tier-2: harness server did not resolve a URL');
+
     browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto(url);
@@ -42,11 +45,15 @@ export async function renderProjectTier2(
 
     const channels = result.channels.map((b64) => {
       const buf = Buffer.from(b64, 'base64');
-      return new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
+      // Copy into a fresh ArrayBuffer: a small pooled Node Buffer can have a
+      // byteOffset that isn't a multiple of 4, which Float32Array rejects.
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      return new Float32Array(ab, 0, Math.floor(ab.byteLength / 4));
     });
     return { channels, sampleRate: result.sampleRate };
   } finally {
-    await browser?.close();
+    // Guard browser.close() so a failure there can't skip server.close().
+    await browser?.close().catch(() => {});
     await server.close();
   }
 }
