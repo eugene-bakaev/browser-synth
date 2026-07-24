@@ -520,6 +520,19 @@ Evidence: surfaced in Task 2 recalibration + campaign-1 final review.
 
 ## Resolved
 
+### Tier-2 harness deferred minors — driver teardown + v1 synth test coverage + doc comment
+**Reported:** 2026-07-23 (Tier-2 harness `feat/audio-lab-tier2` final review triage) · **Status:** resolved · **Area:** `packages/audio-lab/src/tier2/driver.ts`, `packages/client/src/sequencer/schedule.ts` + `schedule.test.ts`
+
+**Resolved:** 2026-07-24 (branch `chore/tier2-deferred-minors`) — three no-behavior-change cleanups the Tier-2 review had deferred:
+
+- **`driver.ts` teardown + Float32Array alignment.** The harness URL is now resolved inside the `try` so a failed resolve still closes the already-listening Vite server (was a leak); `browser.close()` is guarded in the `finally` so its failure can't skip `server.close()`; and each decoded channel is copied into a fresh `ArrayBuffer` before the `Float32Array` view, since a small pooled Node `Buffer` can have a non-4-aligned `byteOffset` the view constructor rejects (latent — real payloads are 100s of KB with `byteOffset` 0 — but free to harden).
+- **`schedule.test.ts` v1 `synth` coverage.** Added mono + poly `engineType: 'synth'` cases so the v1 branch of `resolveStepTriggers` is tested on par with the existing `synth2` cases.
+- **`schedule.ts` doc comment.** Referenced `AudioEngine.togglePlay`; the mirrored closure is the `onStep` callback `sequencer.start` drives — corrected.
+
+Two sibling minors from the same triage were **not** actioned, deliberately: the audio-lab `tsconfig` `noUnusedLocals`/`noUnusedParameters` broadening is inert (the only unused-symbol hits are in client engine files, none in audio-lab's own code) and only warrants a note if audio-lab grows its own files; and the "−6.28dB vs −6.1dB" figure in the compressor entry below is not an error — −6.28dB is the compressor-*bypass* measurement while −6.1dB is the smoke-test peak *through* the compressor (two different experiments; −6.28 is correctly in line with later hits, within 0.15dB).
+
+Gates: client `schedule` 8/8, audio-lab 87/87, `lab:tier2` 5/5, client + audio-lab typechecks clean.
+
 ### Master-bus compressor cold-start ramp on a fresh render — VERIFIED not live-relevant (measurement artifact)
 **Reported:** 2026-07-23 (Tier-2 sequencer-correctness checks, Task 6) · **Status:** resolved (verified not a bug — no DSP change) · **Area:** `packages/client/src/audio/graph.ts` `buildMasterChain` (`ctx.createDynamicsCompressor()`, shared by the live `AudioEngine` and the offline Tier-2 harness)
 
